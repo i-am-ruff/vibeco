@@ -168,13 +168,97 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated during roadmap creation) | | |
+| FOUND-01 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Pending |
+| FOUND-05 | Phase 1 | Pending |
+| FOUND-06 | Phase 1 | Pending |
+| FOUND-07 | Phase 1 | Pending |
+| COORD-04 | Phase 1 | Pending |
+| COORD-05 | Phase 1 | Pending |
+| COORD-06 | Phase 1 | Pending |
+| COORD-07 | Phase 1 | Pending |
+| LIFE-01 | Phase 2 | Pending |
+| LIFE-02 | Phase 2 | Pending |
+| LIFE-03 | Phase 2 | Pending |
+| LIFE-04 | Phase 2 | Pending |
+| LIFE-05 | Phase 2 | Pending |
+| LIFE-06 | Phase 2 | Pending |
+| LIFE-07 | Phase 2 | Pending |
+| PRE-01 | Phase 2 | Pending |
+| PRE-02 | Phase 2 | Pending |
+| PRE-03 | Phase 2 | Pending |
+| MON-01 | Phase 3 | Pending |
+| MON-02 | Phase 3 | Pending |
+| MON-03 | Phase 3 | Pending |
+| MON-04 | Phase 3 | Pending |
+| MON-05 | Phase 3 | Pending |
+| MON-06 | Phase 3 | Pending |
+| MON-07 | Phase 3 | Pending |
+| MON-08 | Phase 3 | Pending |
+| COORD-01 | Phase 3 | Pending |
+| COORD-02 | Phase 3 | Pending |
+| COORD-03 | Phase 3 | Pending |
+| SAFE-03 | Phase 3 | Pending |
+| DISC-01 | Phase 4 | Pending |
+| DISC-02 | Phase 4 | Pending |
+| DISC-03 | Phase 4 | Pending |
+| DISC-04 | Phase 4 | Pending |
+| DISC-05 | Phase 4 | Pending |
+| DISC-06 | Phase 4 | Pending |
+| DISC-07 | Phase 4 | Pending |
+| DISC-08 | Phase 4 | Pending |
+| DISC-09 | Phase 4 | Pending |
+| DISC-10 | Phase 4 | Pending |
+| DISC-11 | Phase 4 | Pending |
+| DISC-12 | Phase 4 | Pending |
+| HOOK-01 | Phase 5 | Pending |
+| HOOK-02 | Phase 5 | Pending |
+| HOOK-03 | Phase 5 | Pending |
+| HOOK-04 | Phase 5 | Pending |
+| HOOK-05 | Phase 5 | Pending |
+| HOOK-06 | Phase 5 | Pending |
+| HOOK-07 | Phase 5 | Pending |
+| GATE-01 | Phase 5 | Pending |
+| GATE-02 | Phase 5 | Pending |
+| GATE-03 | Phase 5 | Pending |
+| GATE-04 | Phase 5 | Pending |
+| SAFE-01 | Phase 5 | Pending |
+| SAFE-02 | Phase 5 | Pending |
+| STRAT-01 | Phase 6 | Pending |
+| STRAT-02 | Phase 6 | Pending |
+| STRAT-03 | Phase 6 | Pending |
+| STRAT-04 | Phase 6 | Pending |
+| STRAT-05 | Phase 6 | Pending |
+| STRAT-06 | Phase 6 | Pending |
+| STRAT-07 | Phase 6 | Pending |
+| STRAT-08 | Phase 6 | Pending |
+| STRAT-09 | Phase 6 | Pending |
+| MILE-01 | Phase 6 | Pending |
+| MILE-02 | Phase 6 | Pending |
+| MILE-03 | Phase 6 | Pending |
+| INTG-01 | Phase 7 | Pending |
+| INTG-02 | Phase 7 | Pending |
+| INTG-03 | Phase 7 | Pending |
+| INTG-04 | Phase 7 | Pending |
+| INTG-05 | Phase 7 | Pending |
+| INTG-06 | Phase 7 | Pending |
+| INTG-07 | Phase 7 | Pending |
+| INTG-08 | Phase 7 | Pending |
+| COMM-01 | Phase 7 | Pending |
+| COMM-02 | Phase 7 | Pending |
+| COMM-03 | Phase 7 | Pending |
+| COMM-04 | Phase 7 | Pending |
+| COMM-05 | Phase 7 | Pending |
+| COMM-06 | Phase 7 | Pending |
+| SAFE-04 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 72 total
-- Mapped to phases: 0
-- Unmapped: 72 (pending roadmap)
+- v1 requirements: 85 total
+- Mapped to phases: 85
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-25*
-*Last updated: 2026-03-25 after initial definition*
+*Last updated: 2026-03-25 after roadmap creation*
