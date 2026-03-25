@@ -1,11 +1,18 @@
 """Embed builders for Discord bot messages.
 
-Provides build_status_embed (for !status) and build_alert_embed (for #alerts).
+Provides build_status_embed (for !status), build_alert_embed (for #alerts),
+build_plan_review_embed (for plan review), and build_checkin_embed (for checkins).
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import discord
+
+if TYPE_CHECKING:
+    from vcompany.communication.checkin import CheckinData
 
 
 def build_status_embed(status_text: str) -> discord.Embed:
@@ -127,4 +134,41 @@ def build_plan_review_embed(
         )
 
     embed.set_footer(text=f"Path: {plan_path}")
+    return embed
+
+
+def build_checkin_embed(checkin: CheckinData) -> discord.Embed:
+    """Build checkin embed per COMM-01/COMM-02.
+
+    Displays: commit count, summary, gaps/notes, next phase, dependency status.
+
+    Args:
+        checkin: CheckinData from gather_checkin_data.
+
+    Returns:
+        discord.Embed with all checkin fields.
+    """
+    embed = discord.Embed(
+        title=f"Phase Complete: {checkin.agent_id}",
+        color=discord.Color.green(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="Commits", value=str(checkin.commit_count), inline=True)
+    embed.add_field(name="Next Phase", value=checkin.next_phase, inline=True)
+    embed.add_field(
+        name="Summary",
+        value=checkin.summary[:1024] or "No commits",
+        inline=False,
+    )
+    if checkin.gaps:
+        embed.add_field(
+            name="Gaps / Notes",
+            value=checkin.gaps[:1024],
+            inline=False,
+        )
+    embed.add_field(
+        name="Dependencies",
+        value=checkin.dependency_status[:1024] or "None",
+        inline=False,
+    )
     return embed
