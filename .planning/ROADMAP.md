@@ -82,7 +82,12 @@ Plans:
   3. Commands are gated by Discord roles (only authorized roles can dispatch, kill, approve)
   4. All blocking CLI calls use asyncio.to_thread() so the bot never disconnects from the Discord gateway
   5. Bot monitors its own connectivity and reconnects automatically after network interruptions
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 04-01-PLAN.md -- Bot foundation (discord.py dep, config, client, channel setup, views, permissions, embeds)
+- [ ] 04-02-PLAN.md -- CommandsCog (all operator commands with role checks and async threading)
+- [ ] 04-03-PLAN.md -- AlertsCog (callback wiring, buffer, reconnect flush) + placeholder Cogs
+- [ ] 04-04-PLAN.md -- Bot startup wiring (on_ready init, monitor background task, vco bot CLI)
 
 ### Phase 5: Hooks and Plan Gate
 **Goal**: Agents can ask questions that route through Discord for answers, and new plans are gated for review before execution proceeds
@@ -130,7 +135,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 1. Foundation and Configuration | 0/4 | Planning complete | - |
 | 2. Agent Lifecycle and Pre-flight | 0/3 | Planning complete | - |
 | 3. Monitor Loop and Coordination | 0/4 | Planning complete | - |
-| 4. Discord Bot Core | 0/TBD | Not started | - |
+| 4. Discord Bot Core | 0/4 | Planning complete | - |
 | 5. Hooks and Plan Gate | 0/TBD | Not started | - |
 | 6. PM/Strategist and Milestones | 0/TBD | Not started | - |
 | 7. Integration Pipeline and Communications | 0/TBD | Not started | - |
