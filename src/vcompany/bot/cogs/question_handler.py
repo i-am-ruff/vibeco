@@ -10,6 +10,7 @@ Implements the bot-side of the hook<->bot IPC per D-02 and Research Open Questio
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -29,6 +30,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
+    from vcompany.strategist.pm import PMTier
 
 
 class AnswerView(discord.ui.View):
@@ -175,11 +177,23 @@ def _write_answer_file_sync(
 
 
 class QuestionHandlerCog(commands.Cog):
-    """Listens for webhook-posted questions in #strategist and provides answer UI."""
+    """Listens for webhook-posted questions in #strategist and provides answer UI.
+
+    Phase 6: PM intercept layer. When PM is injected via set_pm(), agent
+    questions route through PM evaluation before showing answer buttons.
+    HIGH confidence -> auto-answer. MEDIUM -> suggest + buttons for override.
+    LOW -> escalate to Strategist, then to Owner via post_owner_escalation
+    with indefinite wait per D-07.
+    """
 
     def __init__(self, bot: VcoBot) -> None:
         self.bot = bot
         self._strategist_channel: discord.TextChannel | None = None
+        self._pm: PMTier | None = None
+
+    def set_pm(self, pm: PMTier) -> None:
+        """Inject PMTier for question evaluation. Called from bot startup."""
+        self._pm = pm
 
     async def _resolve_channel(self) -> None:
         """Find #strategist channel in the guild."""
@@ -224,13 +238,76 @@ class QuestionHandlerCog(commands.Cog):
             if title_match:
                 agent_id = title_match.group(1)
 
+        # Extract question text from embed description for PM evaluation
+        question_text = embed.description or ""
+
         # Extract options from embed fields
         options = [
             {"name": field.name, "value": field.value or ""}
             for field in embed.fields
         ]
 
-        # Create answer view and post follow-up
+        # Phase 6: PM intercept before answer buttons
+        if self._pm and question_text:
+            try:
+                decision = await self._pm.evaluate_question(question_text, agent_id)
+
+                if decision.confidence.level == "HIGH":
+                    # Auto-answer: write answer file directly, skip buttons
+                    await asyncio.to_thread(
+                        _write_answer_file_sync, request_id, agent_id, decision.answer or "", "PM (auto)"
+                    )
+                    await message.reply(f"PM auto-answered for **{agent_id}**: {decision.answer}")
+                    # Log decision
+                    await self._log_decision(agent_id, question_text, decision.answer or "", "HIGH", "PM")
+                    return
+
+                elif decision.confidence.level == "MEDIUM":
+                    # Answer but show buttons for override
+                    await message.reply(f"PM suggests: {decision.answer}\n*{decision.note}*")
+                    # Log decision
+                    await self._log_decision(agent_id, question_text, decision.answer or "", "MEDIUM", "PM")
+                    # Fall through to show answer buttons for owner override
+
+                else:  # LOW
+                    # Escalate to Strategist per D-05
+                    strategist_cog = self.bot.get_cog("StrategistCog")
+                    if strategist_cog:
+                        strat_answer = await strategist_cog.handle_pm_escalation(
+                            agent_id, question_text, decision.confidence.score
+                        )
+                        if strat_answer:
+                            # Strategist answered confidently
+                            await asyncio.to_thread(
+                                _write_answer_file_sync, request_id, agent_id, strat_answer, "Strategist"
+                            )
+                            await message.reply(f"Strategist answered for **{agent_id}**: {strat_answer}")
+                            await self._log_decision(
+                                agent_id, question_text, strat_answer, "MEDIUM", "Strategist"
+                            )
+                            return
+                        else:
+                            # Strategist also not confident -- escalate to Owner per D-07
+                            # Use post_owner_escalation which waits INDEFINITELY (no timeout)
+                            # This bypasses the Phase 5 AnswerView 10-minute timeout entirely
+                            owner_answer = await strategist_cog.post_owner_escalation(
+                                agent_id, question_text, decision.confidence.score
+                            )
+                            await asyncio.to_thread(
+                                _write_answer_file_sync, request_id, agent_id, owner_answer, "Owner"
+                            )
+                            await message.reply(f"Owner answered for **{agent_id}**: {owner_answer}")
+                            await self._log_decision(
+                                agent_id, question_text, owner_answer, "OWNER", "Owner"
+                            )
+                            return
+                    # If StrategistCog not initialized, fall through to standard AnswerView buttons
+                    # (graceful degradation when ANTHROPIC_API_KEY is not set)
+            except Exception:
+                logger.exception("PM evaluation failed for %s, falling through to buttons", agent_id)
+                # Fall through to standard buttons on any PM error
+
+        # Create answer view and post follow-up (standard Phase 5 flow)
         view = AnswerView(
             request_id=request_id,
             agent_id=agent_id,
@@ -241,6 +318,31 @@ class QuestionHandlerCog(commands.Cog):
             f"Select an answer for **{agent_id}** (Request: `{request_id}`):",
             view=view,
         )
+
+
+    async def _log_decision(
+        self,
+        agent_id: str,
+        question: str,
+        decision: str,
+        confidence_level: str,
+        decided_by: str,
+    ) -> None:
+        """Log a decision via StrategistCog's DecisionLogger if available."""
+        strategist_cog = self.bot.get_cog("StrategistCog")
+        if strategist_cog and strategist_cog.decision_logger:
+            from vcompany.strategist.models import DecisionLogEntry
+
+            await strategist_cog.decision_logger.log_decision(
+                DecisionLogEntry(
+                    timestamp=datetime.now(timezone.utc),
+                    question_or_plan=question,
+                    decision=decision,
+                    confidence_level=confidence_level,
+                    decided_by=decided_by,
+                    agent_id=agent_id,
+                )
+            )
 
 
 async def setup(bot: commands.Bot) -> None:

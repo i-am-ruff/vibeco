@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import discord
@@ -29,6 +30,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
+    from vcompany.strategist.plan_reviewer import PlanReviewer
 
 
 class PlanReviewCog(commands.Cog):
@@ -38,6 +40,11 @@ class PlanReviewCog(commands.Cog):
         self.bot = bot
         self._plan_review_channel: discord.TextChannel | None = None
         self._alerts_channel: discord.TextChannel | None = None
+        self._plan_reviewer: PlanReviewer | None = None
+
+    def set_plan_reviewer(self, reviewer: PlanReviewer) -> None:
+        """Inject PlanReviewer for PM review. Called from bot startup."""
+        self._plan_reviewer = reviewer
 
     async def _resolve_channels(self) -> None:
         """Find #plan-review and #alerts channels in the guild."""
@@ -96,6 +103,40 @@ class PlanReviewCog(commands.Cog):
             safety_valid=safety_valid,
             safety_message=safety_message,
         )
+
+        # Phase 6: PM review intercept before posting to #plan-review
+        if self._plan_reviewer:
+            try:
+                review_decision = await asyncio.to_thread(
+                    self._plan_reviewer.review_plan, agent_id, plan_content
+                )
+                if review_decision.confidence.level == "HIGH":
+                    # Auto-approve per D-15
+                    self._update_gate_state(agent_id, str(plan_path), status="approved")
+                    await self._handle_approval(agent_id, str(plan_path))
+                    # Still post notification to #plan-review for owner visibility
+                    embed.add_field(
+                        name="PM Review", value="Auto-approved (HIGH confidence)", inline=False
+                    )
+                    try:
+                        await self._plan_review_channel.send(embed=embed)
+                    except Exception:
+                        logger.exception("Failed to post auto-approval notice for %s", agent_id)
+                    # Log decision
+                    await self._log_plan_decision(
+                        agent_id, str(plan_path), "Plan approved by PM", "HIGH"
+                    )
+                    return
+                else:
+                    # LOW confidence or check failures -- add PM notes to embed, let human review
+                    embed.add_field(
+                        name="PM Review",
+                        value=f"Needs review: {review_decision.note}",
+                        inline=False,
+                    )
+                    # Fall through to normal review flow with buttons
+            except Exception:
+                logger.exception("PM plan review failed for %s, falling through to manual review", agent_id)
 
         # Create view with Approve/Reject buttons (D-08)
         view = PlanReviewView(agent_id=agent_id, plan_path=str(plan_path))
@@ -248,6 +289,25 @@ class PlanReviewCog(commands.Cog):
             state.plan_gate_status = "rejected"
             if plan_path in state.pending_plans:
                 state.pending_plans.remove(plan_path)
+
+    async def _log_plan_decision(
+        self, agent_id: str, plan_path: str, decision: str, confidence_level: str
+    ) -> None:
+        """Log a plan review decision via StrategistCog's DecisionLogger if available."""
+        strategist_cog = self.bot.get_cog("StrategistCog")
+        if strategist_cog and strategist_cog.decision_logger:
+            from vcompany.strategist.models import DecisionLogEntry
+
+            await strategist_cog.decision_logger.log_decision(
+                DecisionLogEntry(
+                    timestamp=datetime.now(timezone.utc),
+                    question_or_plan=f"Plan review: {plan_path}",
+                    decision=decision,
+                    confidence_level=confidence_level,
+                    decided_by="PM",
+                    agent_id=agent_id,
+                )
+            )
 
     def make_sync_callback(self) -> dict:
         """Create sync callback for on_plan_detected routing.

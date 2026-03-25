@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -46,6 +47,8 @@ class MonitorLoop:
         on_agent_dead: Callable[[str], None] | None = None,
         on_agent_stuck: Callable[[str], None] | None = None,
         on_plan_detected: Callable[[str, Path], None] | None = None,
+        on_status_digest: Callable[[str], None] | None = None,
+        digest_interval: int = 1800,
         cycle_interval: int | None = None,
     ) -> None:
         self._project_dir = Path(project_dir)
@@ -54,6 +57,10 @@ class MonitorLoop:
         self._on_agent_dead = on_agent_dead
         self._on_agent_stuck = on_agent_stuck
         self._on_plan_detected = on_plan_detected
+        self._on_status_digest = on_status_digest
+        self._digest_interval = digest_interval
+        self._last_digest_time: float = 0.0
+        self._last_status_content: str = ""
         self._cycle_interval = cycle_interval if cycle_interval is not None else self.CYCLE_INTERVAL
         self._running = False
 
@@ -108,6 +115,18 @@ class MonitorLoop:
         try:
             status_content = generate_project_status(self._project_dir, self._config)
             distribute_project_status(self._project_dir, self._config, status_content)
+
+            # Phase 6: Periodic status digest to Strategist per D-13
+            now = time.monotonic()
+            if self._on_status_digest and (now - self._last_digest_time >= self._digest_interval):
+                # Only send if status changed per D-13
+                if status_content != self._last_status_content:
+                    try:
+                        self._on_status_digest(status_content)
+                    except Exception:
+                        logger.exception("Failed to send status digest")
+                    self._last_status_content = status_content
+                self._last_digest_time = now
         except Exception:
             logger.exception("Failed to generate/distribute project status")
 
