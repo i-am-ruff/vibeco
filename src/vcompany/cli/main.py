@@ -2,6 +2,7 @@
 
 import click
 
+from vcompany.cli.bot_cmd import bot
 from vcompany.cli.clone_cmd import clone
 from vcompany.cli.dispatch_cmd import dispatch
 from vcompany.cli.init_cmd import init
@@ -19,6 +20,7 @@ def cli():
     pass
 
 
+cli.add_command(bot)
 cli.add_command(clone)
 cli.add_command(dispatch)
 cli.add_command(init)
