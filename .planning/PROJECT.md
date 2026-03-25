@@ -28,14 +28,16 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - Role-based access — Owner (vco-owner) + Viewer tiers with is_owner decorator — Phase 4
 - Channel auto-setup — category per project with standard + per-agent channels — Phase 4
 - Alert system — AlertsCog with buffer/flush, sync-to-async callback bridge to monitor — Phase 4
+- AskUserQuestion hook (ask_discord.py) — stdlib-only PreToolUse hook with webhook posting, file-based answer polling, configurable timeout (block/continue) — Phase 5
+- Plan gate — PlanReviewCog with approve/reject buttons, safety table validation, plan gate state tracking, execution triggering — Phase 5
+- Interaction safety tables — validator enforces 6-column markdown tables in PLAN.md, configurable strictness (warn/block) — Phase 5
+- QuestionHandlerCog — answer delivery via atomic file write to /tmp/vco-answers/, webhook question detection — Phase 5
 
 ### Active
 
 - [ ] vco CLI with init, clone, dispatch, monitor, integrate, standup, status, kill, relaunch, sync-context commands
 - [ ] Agent isolation model — each agent gets its own repo clone with non-overlapping directory ownership
 - [ ] GSD configuration injection per agent clone (yolo mode, assumptions discuss, agent system prompt)
-- [ ] AskUserQuestion hook (ask_discord.py) — intercepts agent questions, routes through Discord, returns answers with 10-min timeout/fallback
-- [ ] Plan gate — monitor detects new PLAN.md files, pauses agent, posts to #plan-review, waits for PM approval before execution proceeds
 - [ ] PM/Strategist Discord bot — answers agent questions from project context, reviews plans against milestone scope, escalates low-confidence decisions to owner
 - [ ] Strategist confidence scoring (high/medium/low) with automatic @Owner escalation
 - [ ] PROJECT-STATUS.md auto-generation — monitor reads all clones' state, assembles cross-agent status, distributes to all clones
