@@ -63,9 +63,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **HOOK-06**: Hook is self-contained (no imports from main codebase) — runs in agent clone context
 - [x] **HOOK-07**: Hook wrapped in try/except with guaranteed fallback response (never hangs)
 - [x] **GATE-01**: Plan gate detects PLAN.md completion (atomic write marker, not creation event)
-- [ ] **GATE-02**: Plan gate posts plans to #plan-review with agent ID, plan descriptions, task counts
-- [ ] **GATE-03**: Plan gate pauses agent execution until PM/owner approves or rejects
-- [ ] **GATE-04**: On rejection, agent receives feedback and re-plans
+- [x] **GATE-02**: Plan gate posts plans to #plan-review with agent ID, plan descriptions, task counts
+- [x] **GATE-03**: Plan gate pauses agent execution until PM/owner approves or rejects
+- [x] **GATE-04**: On rejection, agent receives feedback and re-plans
 
 ### PM/Strategist Bot
 
@@ -221,9 +221,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | HOOK-06 | Phase 5 | Complete |
 | HOOK-07 | Phase 5 | Complete |
 | GATE-01 | Phase 5 | Complete |
-| GATE-02 | Phase 5 | Pending |
-| GATE-03 | Phase 5 | Pending |
-| GATE-04 | Phase 5 | Pending |
+| GATE-02 | Phase 5 | Complete |
+| GATE-03 | Phase 5 | Complete |
+| GATE-04 | Phase 5 | Complete |
 | SAFE-01 | Phase 5 | Complete |
 | SAFE-02 | Phase 5 | Complete |
 | STRAT-01 | Phase 6 | Pending |

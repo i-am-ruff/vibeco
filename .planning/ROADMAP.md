@@ -103,7 +103,7 @@ Plans:
 Plans:
 - [x] 05-01-PLAN.md -- Self-contained ask_discord.py hook (AskUserQuestion interception, webhook posting, file-based answer polling)
 - [x] 05-02-PLAN.md -- Plan gate state model, safety table validator, GSD config auto_advance disable
-- [ ] 05-03-PLAN.md -- PlanReviewCog expansion (views, embeds, approve/reject workflow, execution trigger)
+- [x] 05-03-PLAN.md -- PlanReviewCog expansion (views, embeds, approve/reject workflow, execution trigger)
 - [ ] 05-04-PLAN.md -- QuestionHandlerCog (answer delivery) + bot startup wiring for plan gate callback
 
 ### Phase 6: PM/Strategist and Milestones
@@ -141,6 +141,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 2. Agent Lifecycle and Pre-flight | 0/3 | Planning complete | - |
 | 3. Monitor Loop and Coordination | 0/4 | Planning complete | - |
 | 4. Discord Bot Core | 0/4 | Planning complete | - |
-| 5. Hooks and Plan Gate | 0/4 | Planning complete | - |
+| 5. Hooks and Plan Gate | 3/4 | In Progress|  |
 | 6. PM/Strategist and Milestones | 0/TBD | Not started | - |
 | 7. Integration Pipeline and Communications | 0/TBD | Not started | - |
