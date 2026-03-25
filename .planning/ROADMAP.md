@@ -107,7 +107,7 @@ Plans:
 - [ ] 05-04-PLAN.md -- QuestionHandlerCog (answer delivery) + bot startup wiring for plan gate callback
 
 ### Phase 6: PM/Strategist and Milestones
-**Goal**: An AI-powered PM autonomously answers agent questions, reviews plans against scope, and escalates low-confidence decisions to the owner
+**Goal**: A two-tier AI decision system where the PM handles tactical questions/plan reviews with heuristic confidence, and the Strategist maintains a persistent conversation for strategic decisions and owner interaction
 **Depends on**: Phase 5
 **Requirements**: STRAT-01, STRAT-02, STRAT-03, STRAT-04, STRAT-05, STRAT-06, STRAT-07, STRAT-08, STRAT-09, MILE-01, MILE-02, MILE-03
 **Success Criteria** (what must be TRUE):
@@ -116,7 +116,13 @@ Plans:
   3. The Strategist checks plans against PROJECT-STATUS.md and requires stubs/mocks when dependencies have not shipped
   4. All PM decisions are logged to the #decisions channel as an append-only record
   5. Running `vco new-milestone` updates milestone scope, resets agent states, and re-dispatches agents for the new milestone
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 06-01-PLAN.md -- PM data models, heuristic confidence scorer, PM-CONTEXT.md builder
+- [ ] 06-02-PLAN.md -- Strategist persistent conversation manager + Knowledge Transfer handoff
+- [ ] 06-03-PLAN.md -- PM tier (question evaluation + plan reviewer with three-check system)
+- [ ] 06-04-PLAN.md -- StrategistCog expansion + decision logging to #decisions
+- [ ] 06-05-PLAN.md -- Wiring (PM intercepts, bot startup, status digests, milestone CLI, sync-context update)
 
 ### Phase 7: Integration Pipeline and Communications
 **Goal**: Agent branches merge cleanly with automated testing and failure attribution, and agents communicate progress through structured standup and checkin rituals
@@ -142,5 +148,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 3. Monitor Loop and Coordination | 0/4 | Planning complete | - |
 | 4. Discord Bot Core | 0/4 | Planning complete | - |
 | 5. Hooks and Plan Gate | 3/4 | In Progress|  |
-| 6. PM/Strategist and Milestones | 0/TBD | Not started | - |
+| 6. PM/Strategist and Milestones | 0/5 | Planning complete | - |
 | 7. Integration Pipeline and Communications | 0/TBD | Not started | - |
