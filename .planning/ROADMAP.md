@@ -84,7 +84,7 @@ Plans:
   5. Bot monitors its own connectivity and reconnects automatically after network interruptions
 **Plans**: 4 plans
 Plans:
-- [ ] 04-01-PLAN.md -- Bot foundation (discord.py dep, config, client, channel setup, views, permissions, embeds)
+- [x] 04-01-PLAN.md -- Bot foundation (discord.py dep, config, client, channel setup, views, permissions, embeds)
 - [ ] 04-02-PLAN.md -- CommandsCog (all operator commands with role checks and async threading)
 - [ ] 04-03-PLAN.md -- AlertsCog (callback wiring, buffer, reconnect flush) + placeholder Cogs
 - [ ] 04-04-PLAN.md -- Bot startup wiring (on_ready init, monitor background task, vco bot CLI)

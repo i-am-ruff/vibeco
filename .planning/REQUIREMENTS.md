@@ -40,8 +40,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Discord Bot
 
-- [ ] **DISC-01**: Discord bot uses discord.py Cogs architecture (Commands, Strategist, PlanReview, Alerts)
-- [ ] **DISC-02**: Bot creates channel structure on project init (#strategist, #plan-review, #standup, #agent-{id}, #alerts, #decisions)
+- [x] **DISC-01**: Discord bot uses discord.py Cogs architecture (Commands, Strategist, PlanReview, Alerts)
+- [x] **DISC-02**: Bot creates channel structure on project init (#strategist, #plan-review, #standup, #agent-{id}, #alerts, #decisions)
 - [ ] **DISC-03**: `!new-project` command accepts project config and triggers `vco init` + `vco clone`
 - [ ] **DISC-04**: `!dispatch` command triggers `vco dispatch` for specific agent or all
 - [ ] **DISC-05**: `!status` command shows aggregate view of all agents (phase, state, blockers)
@@ -49,9 +49,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **DISC-07**: `!kill` command terminates a specific agent
 - [ ] **DISC-08**: `!relaunch` command restarts a specific agent
 - [ ] **DISC-09**: `!integrate` command triggers merge pipeline
-- [ ] **DISC-10**: Role-based access control — Discord roles determine who can dispatch, kill, approve, etc.
+- [x] **DISC-10**: Role-based access control — Discord roles determine who can dispatch, kill, approve, etc.
 - [ ] **DISC-11**: All blocking calls use asyncio.to_thread() to prevent gateway disconnects
-- [ ] **DISC-12**: Bot monitors its own connectivity and reconnects automatically
+- [x] **DISC-12**: Bot monitors its own connectivity and reconnects automatically
 
 ### Hooks and Plan Gate
 
@@ -201,8 +201,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | COORD-02 | Phase 3 | Complete |
 | COORD-03 | Phase 3 | Complete |
 | SAFE-03 | Phase 3 | Complete |
-| DISC-01 | Phase 4 | Pending |
-| DISC-02 | Phase 4 | Pending |
+| DISC-01 | Phase 4 | Complete |
+| DISC-02 | Phase 4 | Complete |
 | DISC-03 | Phase 4 | Pending |
 | DISC-04 | Phase 4 | Pending |
 | DISC-05 | Phase 4 | Pending |
@@ -210,9 +210,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | DISC-07 | Phase 4 | Pending |
 | DISC-08 | Phase 4 | Pending |
 | DISC-09 | Phase 4 | Pending |
-| DISC-10 | Phase 4 | Pending |
+| DISC-10 | Phase 4 | Complete |
 | DISC-11 | Phase 4 | Pending |
-| DISC-12 | Phase 4 | Pending |
+| DISC-12 | Phase 4 | Complete |
 | HOOK-01 | Phase 5 | Pending |
 | HOOK-02 | Phase 5 | Pending |
 | HOOK-03 | Phase 5 | Pending |
