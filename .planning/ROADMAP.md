@@ -65,7 +65,12 @@ Plans:
   3. An agent with no git commits for 30+ minutes triggers a stuck alert
   4. PROJECT-STATUS.md is generated from all clones' state every cycle and distributed to every clone
   5. Running `vco sync-context` pushes updated INTERFACES.md, MILESTONE-SCOPE.md, and STRATEGIST-PROMPT.md to all clones
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 03-01-PLAN.md -- Monitor state models + check functions (liveness, stuck, plan gate)
+- [ ] 03-02-PLAN.md -- PROJECT-STATUS.md generation/distribution + heartbeat watchdog
+- [ ] 03-03-PLAN.md -- MonitorLoop class + vco monitor CLI command
+- [ ] 03-04-PLAN.md -- Coordination system (INTERFACES.md, sync-context, INTERACTIONS.md)
 
 ### Phase 4: Discord Bot Core
 **Goal**: The owner can control and observe the entire agent fleet from Discord using bot commands
@@ -124,7 +129,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 |-------|----------------|--------|-----------|
 | 1. Foundation and Configuration | 0/4 | Planning complete | - |
 | 2. Agent Lifecycle and Pre-flight | 0/3 | Planning complete | - |
-| 3. Monitor Loop and Coordination | 0/TBD | Not started | - |
+| 3. Monitor Loop and Coordination | 0/4 | Planning complete | - |
 | 4. Discord Bot Core | 0/TBD | Not started | - |
 | 5. Hooks and Plan Gate | 0/TBD | Not started | - |
 | 6. PM/Strategist and Milestones | 0/TBD | Not started | - |
