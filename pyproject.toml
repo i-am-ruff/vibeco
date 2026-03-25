@@ -36,6 +36,9 @@ packages = ["src/vcompany"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "integration: interaction regression tests (run only during vco integrate, not on every pytest run)",
+]
 
 [tool.ruff]
 line-length = 100
