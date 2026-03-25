@@ -67,7 +67,7 @@ Plans:
   5. Running `vco sync-context` pushes updated INTERFACES.md, MILESTONE-SCOPE.md, and STRATEGIST-PROMPT.md to all clones
 **Plans**: 4 plans
 Plans:
-- [ ] 03-01-PLAN.md -- Monitor state models + check functions (liveness, stuck, plan gate)
+- [x] 03-01-PLAN.md -- Monitor state models + check functions (liveness, stuck, plan gate)
 - [ ] 03-02-PLAN.md -- PROJECT-STATUS.md generation/distribution + heartbeat watchdog
 - [ ] 03-03-PLAN.md -- MonitorLoop class + vco monitor CLI command
 - [ ] 03-04-PLAN.md -- Coordination system (INTERFACES.md, sync-context, INTERACTIONS.md)

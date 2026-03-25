@@ -29,10 +29,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Monitor Loop
 
-- [ ] **MON-01**: Monitor loop runs every 60s per agent with independent try/except per check
-- [ ] **MON-02**: Liveness check verifies tmux pane alive AND actual process PID inside pane (not just session existence)
-- [ ] **MON-03**: Stuck detection alerts when an agent has no git commits for 30+ minutes
-- [ ] **MON-04**: Monitor detects new PLAN.md files and triggers plan gate flow
+- [x] **MON-01**: Monitor loop runs every 60s per agent with independent try/except per check
+- [x] **MON-02**: Liveness check verifies tmux pane alive AND actual process PID inside pane (not just session existence)
+- [x] **MON-03**: Stuck detection alerts when an agent has no git commits for 30+ minutes
+- [x] **MON-04**: Monitor detects new PLAN.md files and triggers plan gate flow
 - [ ] **MON-05**: Monitor reads each clone's .planning/ROADMAP.md and git log to track phase progress
 - [ ] **MON-06**: Monitor generates PROJECT-STATUS.md from all clones' state every cycle
 - [ ] **MON-07**: Monitor distributes PROJECT-STATUS.md to all agent clones after generation
@@ -189,10 +189,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | PRE-01 | Phase 2 | Complete |
 | PRE-02 | Phase 2 | Complete |
 | PRE-03 | Phase 2 | Complete |
-| MON-01 | Phase 3 | Pending |
-| MON-02 | Phase 3 | Pending |
-| MON-03 | Phase 3 | Pending |
-| MON-04 | Phase 3 | Pending |
+| MON-01 | Phase 3 | Complete |
+| MON-02 | Phase 3 | Complete |
+| MON-03 | Phase 3 | Complete |
+| MON-04 | Phase 3 | Complete |
 | MON-05 | Phase 3 | Pending |
 | MON-06 | Phase 3 | Pending |
 | MON-07 | Phase 3 | Pending |
