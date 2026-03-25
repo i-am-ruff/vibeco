@@ -141,6 +141,11 @@ class VcoBot(commands.Bot):
                 on_plan_detected=plan_detected_callback,
             )
 
+            # Phase 7: Wire checkin callback from CommandsCog into monitor (D-09)
+            commands_cog = self.get_cog("CommandsCog")
+            if commands_cog:
+                commands_cog.wire_monitor_callbacks()
+
             # Start monitor loop as background task per D-13
             self._monitor_task = asyncio.create_task(
                 self.monitor_loop.run(), name="monitor-loop"

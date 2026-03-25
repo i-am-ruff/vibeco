@@ -17,9 +17,15 @@ import discord
 from discord.ext import commands
 
 from vcompany.bot.channel_setup import setup_project_channels
-from vcompany.bot.embeds import build_alert_embed, build_status_embed
+from vcompany.bot.embeds import (
+    build_alert_embed,
+    build_conflict_embed,
+    build_integration_embed,
+    build_status_embed,
+)
 from vcompany.bot.permissions import is_owner
 from vcompany.bot.views.confirm import ConfirmView
+from vcompany.integration.pipeline import IntegrationPipeline
 from vcompany.monitor.status_generator import generate_project_status
 
 if TYPE_CHECKING:
@@ -220,21 +226,109 @@ class CommandsCog(commands.Cog):
     @commands.command(name="integrate")
     @is_owner()
     async def integrate_cmd(self, ctx: commands.Context) -> None:
-        """Integration pipeline placeholder with confirmation (DISC-09)."""
+        """Trigger integration pipeline per D-01 interlock model (DISC-09).
+
+        If agents are still working, sets integration_pending on monitor.
+        If all agents are already idle, runs pipeline immediately.
+        Reports results with embeds. On test failure, dispatches fixes.
+        On merge conflict, attempts PM resolution before escalating.
+        """
         try:
             view = ConfirmView()
             view.interaction_user_id = ctx.author.id
             await ctx.send("Trigger integration pipeline?", view=view)
             await view.wait()
 
-            if view.value is True:
-                await ctx.send("Integration pipeline coming in Phase 7.")
-            else:
+            if view.value is not True:
                 await ctx.send("Integration cancelled.")
+                return
+
+            # Check if monitor is available and set pending
+            monitor = self.bot.monitor_loop
+            if monitor:
+                # Use public all_agents_idle() -- do NOT access monitor._agent_states
+                if not monitor.all_agents_idle():
+                    monitor.set_integration_pending(True)
+                    await ctx.send(
+                        "Integration pending -- will trigger when all agents "
+                        "complete their current phase."
+                    )
+                    return
+
+            # Run pipeline immediately
+            await ctx.send("Starting integration pipeline...")
+            project_dir = self.bot.project_dir
+            agent_ids = [a.id for a in self.bot.project_config.agents]
+
+            pipeline = IntegrationPipeline(
+                project_dir=project_dir,
+                agent_ids=agent_ids,
+                pm=getattr(self.bot, "_pm", None),
+            )
+            result = await pipeline.run()
+
+            # Handle result
+            embed = build_integration_embed(result)
+            await ctx.send(embed=embed)
+
+            if result.status == "test_failure" and result.attribution:
+                # Auto-dispatch fixes per D-07/INTG-05
+                agent_mgr = self.bot.agent_manager
+                if agent_mgr:
+                    for agent_id, tests in result.attribution.items():
+                        if agent_id.startswith("_"):
+                            continue  # Skip _interaction, _flaky
+                        agent_mgr.dispatch_fix(agent_id, tests)
+                    await ctx.send("Fix tasks dispatched to responsible agents.")
+
+            if result.status == "merge_conflict":
+                # Post conflict details per INTG-07
+                conflict_embed = build_conflict_embed(
+                    agent_branches=[f"agent/{aid}" for aid in agent_ids],
+                    conflict_files=result.conflict_files,
+                    resolved=[],
+                    unresolved=result.conflict_files,
+                )
+                if ctx.guild:
+                    alerts_channel = discord.utils.get(
+                        ctx.guild.text_channels, name="alerts"
+                    )
+                    if alerts_channel:
+                        await alerts_channel.send(embed=conflict_embed)
+
         except Exception as exc:
             logger.exception("Error in !integrate")
             embed = build_alert_embed("integrate error", str(exc), "error")
             await ctx.send(embed=embed)
+
+    # ── Checkin callback wiring (D-09) ─────────────────────────────
+
+    async def _on_checkin(self, agent_id: str) -> None:
+        """Auto-post checkin after phase completion per D-09."""
+        from vcompany.communication.checkin import gather_checkin_data, post_checkin
+
+        project_dir = self.bot.project_dir
+        clone_dir = project_dir / "clones" / agent_id
+        if clone_dir.exists():
+            checkin_data = gather_checkin_data(agent_id, clone_dir)
+            guild = self.bot.guilds[0] if self.bot.guilds else None
+            if guild:
+                channel = discord.utils.get(
+                    guild.text_channels, name=f"agent-{agent_id}"
+                )
+                if channel:
+                    await post_checkin(checkin_data, channel)
+
+    async def cog_load(self) -> None:
+        """Wire checkin callback into monitor when cog loads."""
+        # Defer wiring to on_ready since monitor may not exist yet
+        pass
+
+    def wire_monitor_callbacks(self) -> None:
+        """Wire _on_checkin into monitor loop. Called from on_ready after monitor init."""
+        monitor = self.bot.monitor_loop
+        if monitor:
+            monitor._on_checkin = self._on_checkin
 
 
 async def setup(bot: commands.Bot) -> None:
