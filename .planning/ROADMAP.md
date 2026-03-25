@@ -101,7 +101,7 @@ Plans:
   5. A plan checker validates that plans include interaction safety tables analyzing concurrent scenarios
 **Plans**: 4 plans
 Plans:
-- [ ] 05-01-PLAN.md -- Self-contained ask_discord.py hook (AskUserQuestion interception, webhook posting, file-based answer polling)
+- [x] 05-01-PLAN.md -- Self-contained ask_discord.py hook (AskUserQuestion interception, webhook posting, file-based answer polling)
 - [ ] 05-02-PLAN.md -- Plan gate state model, safety table validator, GSD config auto_advance disable
 - [ ] 05-03-PLAN.md -- PlanReviewCog expansion (views, embeds, approve/reject workflow, execution trigger)
 - [ ] 05-04-PLAN.md -- QuestionHandlerCog (answer delivery) + bot startup wiring for plan gate callback

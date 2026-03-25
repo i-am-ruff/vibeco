@@ -55,13 +55,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Hooks and Plan Gate
 
-- [ ] **HOOK-01**: ask_discord.py intercepts AskUserQuestion tool calls via PreToolUse hook
-- [ ] **HOOK-02**: Hook posts formatted question with agent ID and options to #strategist channel
-- [ ] **HOOK-03**: Hook polls for reply every 5s with 10-minute timeout
-- [ ] **HOOK-04**: On timeout, hook falls back to recommended/first option, notes assumption, alerts #alerts
-- [ ] **HOOK-05**: Hook returns deny + permissionDecisionReason carrying the answer back to Claude
-- [ ] **HOOK-06**: Hook is self-contained (no imports from main codebase) — runs in agent clone context
-- [ ] **HOOK-07**: Hook wrapped in try/except with guaranteed fallback response (never hangs)
+- [x] **HOOK-01**: ask_discord.py intercepts AskUserQuestion tool calls via PreToolUse hook
+- [x] **HOOK-02**: Hook posts formatted question with agent ID and options to #strategist channel
+- [x] **HOOK-03**: Hook polls for reply every 5s with 10-minute timeout
+- [x] **HOOK-04**: On timeout, hook falls back to recommended/first option, notes assumption, alerts #alerts
+- [x] **HOOK-05**: Hook returns deny + permissionDecisionReason carrying the answer back to Claude
+- [x] **HOOK-06**: Hook is self-contained (no imports from main codebase) — runs in agent clone context
+- [x] **HOOK-07**: Hook wrapped in try/except with guaranteed fallback response (never hangs)
 - [ ] **GATE-01**: Plan gate detects PLAN.md completion (atomic write marker, not creation event)
 - [ ] **GATE-02**: Plan gate posts plans to #plan-review with agent ID, plan descriptions, task counts
 - [ ] **GATE-03**: Plan gate pauses agent execution until PM/owner approves or rejects
@@ -213,13 +213,13 @@ Deferred to future release. Tracked but not in current roadmap.
 | DISC-10 | Phase 4 | Complete |
 | DISC-11 | Phase 4 | Complete |
 | DISC-12 | Phase 4 | Complete |
-| HOOK-01 | Phase 5 | Pending |
-| HOOK-02 | Phase 5 | Pending |
-| HOOK-03 | Phase 5 | Pending |
-| HOOK-04 | Phase 5 | Pending |
-| HOOK-05 | Phase 5 | Pending |
-| HOOK-06 | Phase 5 | Pending |
-| HOOK-07 | Phase 5 | Pending |
+| HOOK-01 | Phase 5 | Complete |
+| HOOK-02 | Phase 5 | Complete |
+| HOOK-03 | Phase 5 | Complete |
+| HOOK-04 | Phase 5 | Complete |
+| HOOK-05 | Phase 5 | Complete |
+| HOOK-06 | Phase 5 | Complete |
+| HOOK-07 | Phase 5 | Complete |
 | GATE-01 | Phase 5 | Pending |
 | GATE-02 | Phase 5 | Pending |
 | GATE-03 | Phase 5 | Pending |
