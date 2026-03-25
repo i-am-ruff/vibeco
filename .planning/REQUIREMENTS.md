@@ -69,15 +69,15 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### PM/Strategist Bot
 
-- [ ] **STRAT-01**: Strategist loads project context (blueprint, interfaces, milestone scope, status, prior decisions) into system prompt
-- [ ] **STRAT-02**: Strategist answers agent questions using project context with confidence scoring
-- [ ] **STRAT-03**: HIGH confidence (>90%) answers directly
-- [ ] **STRAT-04**: MEDIUM confidence (70-90%) answers with "PM confidence: medium — @Owner can override"
-- [ ] **STRAT-05**: LOW confidence (<70%) tags @Owner and waits for human input
-- [ ] **STRAT-06**: Strategist reviews plans against milestone scope — rejects off-scope, duplicate, or over-scoped plans
-- [ ] **STRAT-07**: Strategist checks plans against PROJECT-STATUS.md — requires stubs/mocks when dependencies aren't shipped
-- [ ] **STRAT-08**: Context management summarizes older decisions and status when approaching context limits
-- [ ] **STRAT-09**: Decision log — all PM decisions posted to #decisions channel (append-only)
+- [x] **STRAT-01**: Strategist loads project context (blueprint, interfaces, milestone scope, status, prior decisions) into system prompt
+- [x] **STRAT-02**: Strategist answers agent questions using project context with confidence scoring
+- [x] **STRAT-03**: HIGH confidence (>90%) answers directly
+- [x] **STRAT-04**: MEDIUM confidence (70-90%) answers with "PM confidence: medium — @Owner can override"
+- [x] **STRAT-05**: LOW confidence (<70%) tags @Owner and waits for human input
+- [x] **STRAT-06**: Strategist reviews plans against milestone scope — rejects off-scope, duplicate, or over-scoped plans
+- [x] **STRAT-07**: Strategist checks plans against PROJECT-STATUS.md — requires stubs/mocks when dependencies aren't shipped
+- [x] **STRAT-08**: Context management summarizes older decisions and status when approaching context limits
+- [x] **STRAT-09**: Decision log — all PM decisions posted to #decisions channel (append-only)
 
 ### Coordination and Contracts
 
@@ -95,15 +95,15 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **INTG-02**: `vco integrate` creates integration branch from main, merges all agent branches
 - [ ] **INTG-03**: Integration runs full test suite after merge
 - [ ] **INTG-04**: Test failures attributed to specific agent branches
-- [ ] **INTG-05**: On test failure, orchestrator dispatches /gsd:quick fix to responsible agent
+- [x] **INTG-05**: On test failure, orchestrator dispatches /gsd:quick fix to responsible agent
 - [ ] **INTG-06**: On success, creates PR to main
-- [ ] **INTG-07**: Merge conflict detection reports conflicts to Discord with file list and details
-- [ ] **INTG-08**: Conflict resolver agent attempts automatic resolution of small conflicts before escalating
+- [x] **INTG-07**: Merge conflict detection reports conflicts to Discord with file list and details
+- [x] **INTG-08**: Conflict resolver agent attempts automatic resolution of small conflicts before escalating
 
 ### Standup and Checkin
 
-- [ ] **COMM-01**: /vco:checkin posts phase completion status to agent's own #agent-{id} channel
-- [ ] **COMM-02**: Checkin includes: commits count, summary, gaps/notes, next phase, dependency status
+- [x] **COMM-01**: /vco:checkin posts phase completion status to agent's own #agent-{id} channel
+- [x] **COMM-02**: Checkin includes: commits count, summary, gaps/notes, next phase, dependency status
 - [ ] **COMM-03**: /vco:standup posts structured status to #standup, creates thread per agent
 - [ ] **COMM-04**: Standup sessions listen for owner replies in threads (poll every 5s, 5-min timeout)
 - [ ] **COMM-05**: Owner can reprioritize agents, change scope, or ask questions via standup threads
@@ -111,9 +111,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Milestone Management
 
-- [ ] **MILE-01**: `vco new-milestone` updates milestone scope, resets agent states, re-dispatches
-- [ ] **MILE-02**: Three input documents define a project: PROJECT-BLUEPRINT.md, INTERFACES.md, MILESTONE-SCOPE.md
-- [ ] **MILE-03**: STRATEGIST-PROMPT.md generated from blueprint + interfaces + scope + status + decisions
+- [x] **MILE-01**: `vco new-milestone` updates milestone scope, resets agent states, re-dispatches
+- [x] **MILE-02**: Three input documents define a project: PROJECT-BLUEPRINT.md, INTERFACES.md, MILESTONE-SCOPE.md
+- [x] **MILE-03**: STRATEGIST-PROMPT.md generated from blueprint + interfaces + scope + status + decisions
 
 ### Pre-flight
 
@@ -226,28 +226,28 @@ Deferred to future release. Tracked but not in current roadmap.
 | GATE-04 | Phase 5 | Complete |
 | SAFE-01 | Phase 5 | Complete |
 | SAFE-02 | Phase 5 | Complete |
-| STRAT-01 | Phase 6 | Pending |
-| STRAT-02 | Phase 6 | Pending |
-| STRAT-03 | Phase 6 | Pending |
-| STRAT-04 | Phase 6 | Pending |
-| STRAT-05 | Phase 6 | Pending |
-| STRAT-06 | Phase 6 | Pending |
-| STRAT-07 | Phase 6 | Pending |
-| STRAT-08 | Phase 6 | Pending |
-| STRAT-09 | Phase 6 | Pending |
-| MILE-01 | Phase 6 | Pending |
-| MILE-02 | Phase 6 | Pending |
-| MILE-03 | Phase 6 | Pending |
+| STRAT-01 | Phase 6 | Complete |
+| STRAT-02 | Phase 6 | Complete |
+| STRAT-03 | Phase 6 | Complete |
+| STRAT-04 | Phase 6 | Complete |
+| STRAT-05 | Phase 6 | Complete |
+| STRAT-06 | Phase 6 | Complete |
+| STRAT-07 | Phase 6 | Complete |
+| STRAT-08 | Phase 6 | Complete |
+| STRAT-09 | Phase 6 | Complete |
+| MILE-01 | Phase 6 | Complete |
+| MILE-02 | Phase 6 | Complete |
+| MILE-03 | Phase 6 | Complete |
 | INTG-01 | Phase 7 | Pending |
 | INTG-02 | Phase 7 | Pending |
 | INTG-03 | Phase 7 | Pending |
 | INTG-04 | Phase 7 | Pending |
-| INTG-05 | Phase 7 | Pending |
+| INTG-05 | Phase 7 | Complete |
 | INTG-06 | Phase 7 | Pending |
-| INTG-07 | Phase 7 | Pending |
-| INTG-08 | Phase 7 | Pending |
-| COMM-01 | Phase 7 | Pending |
-| COMM-02 | Phase 7 | Pending |
+| INTG-07 | Phase 7 | Complete |
+| INTG-08 | Phase 7 | Complete |
+| COMM-01 | Phase 7 | Complete |
+| COMM-02 | Phase 7 | Complete |
 | COMM-03 | Phase 7 | Pending |
 | COMM-04 | Phase 7 | Pending |
 | COMM-05 | Phase 7 | Pending |
