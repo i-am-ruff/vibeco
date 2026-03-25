@@ -130,7 +130,7 @@ class TestGatherCheckinData:
         )
         mock_channel = AsyncMock()
 
-        with patch("vcompany.communication.checkin.build_checkin_embed") as mock_build:
+        with patch("vcompany.bot.embeds.build_checkin_embed", create=True) as mock_build:
             mock_embed = MagicMock()
             mock_build.return_value = mock_embed
             await post_checkin(checkin, mock_channel)
