@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. All coordination file writes use atomic tmp-then-rename pattern (verified by test)
 **Plans**: 4 plans
 Plans:
-- [ ] 01-01-PLAN.md -- Project bootstrap + Pydantic config models
+- [x] 01-01-PLAN.md -- Project bootstrap + Pydantic config models
 - [ ] 01-02-PLAN.md -- Git wrapper, tmux wrapper, atomic file ops
 - [ ] 01-03-PLAN.md -- Jinja2 templates + vco init command
 - [ ] 01-04-PLAN.md -- vco clone command + artifact deployment
