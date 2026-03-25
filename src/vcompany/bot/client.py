@@ -20,6 +20,7 @@ from vcompany.models.config import ProjectConfig
 from vcompany.monitor.loop import MonitorLoop
 from vcompany.orchestrator.agent_manager import AgentManager
 from vcompany.orchestrator.crash_tracker import CrashTracker
+from vcompany.tmux.session import TmuxManager
 
 logger = logging.getLogger("vcompany.bot.client")
 
@@ -75,7 +76,7 @@ class VcoBot(commands.Bot):
         logger.info("Loaded %d cog extensions", len(_COG_EXTENSIONS))
 
     async def on_ready(self) -> None:
-        """First-time initialization: create vco-owner role if missing (D-10).
+        """First-time initialization: role creation + orchestration wiring (D-10, D-13).
 
         Guarded with _initialized flag to handle reconnect events (Pitfall 7).
         """
@@ -101,9 +102,58 @@ class VcoBot(commands.Bot):
         else:
             logger.info("vco-owner role already exists in guild %s", guild.name)
 
+        # D-13: Initialize AgentManager, MonitorLoop, CrashTracker
+        try:
+            tmux = TmuxManager()
+
+            # Get AlertsCog for callback injection
+            alerts_cog = self.get_cog("AlertsCog")
+            callbacks = alerts_cog.make_sync_callbacks() if alerts_cog else {}
+
+            # Initialize AgentManager
+            self.agent_manager = AgentManager(self.project_dir, self.project_config, tmux)
+
+            # Initialize CrashTracker with circuit breaker callback
+            self.crash_tracker = CrashTracker(
+                crash_log_path=self.project_dir / "state" / "crash_log.json",
+                on_circuit_open=callbacks.get("on_circuit_open"),
+            )
+
+            # Initialize MonitorLoop with alert callbacks
+            self.monitor_loop = MonitorLoop(
+                project_dir=self.project_dir,
+                config=self.project_config,
+                tmux=tmux,
+                on_agent_dead=callbacks.get("on_agent_dead"),
+                on_agent_stuck=callbacks.get("on_agent_stuck"),
+                on_plan_detected=callbacks.get("on_plan_detected"),
+            )
+
+            # Start monitor loop as background task per D-13
+            self._monitor_task = asyncio.create_task(
+                self.monitor_loop.run(), name="monitor-loop"
+            )
+            logger.info("Monitor loop started as background task")
+
+        except Exception:
+            logger.exception("Failed to initialize orchestration components")
+            # Bot still works for commands, just without monitor
+
         self._initialized = True
         self._ready_flag = True
         logger.info("VcoBot ready in guild %s", guild.name)
+
+    async def close(self) -> None:
+        """Graceful shutdown: stop monitor loop, then close bot."""
+        if self.monitor_loop:
+            self.monitor_loop.stop()
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+        await super().close()
 
     @property
     def is_bot_ready(self) -> bool:
