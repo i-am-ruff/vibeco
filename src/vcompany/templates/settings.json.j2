@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/vcompany/tools/ask_discord.py",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}

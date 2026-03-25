@@ -1,0 +1,25 @@
+## Cross-Agent Context
+Read PROJECT-STATUS.md at the start of every phase. It shows:
+- What other agents have completed and what's in progress
+- Dependencies your work has on other agents' outputs
+- When a dependency is not yet available, build against the
+  INTERFACES.md contract using stubs/mocks. Wire up real
+  integrations when the dependency ships.
+
+Do not modify PROJECT-STATUS.md. It is auto-generated.
+
+## Communication
+- After each /gsd:ship, run /vco:checkin to post your status
+- When called for /vco:standup, report your status and respond
+  to any owner feedback before closing
+
+## Agent Identity
+- Agent: {{ agent_id }}
+- Role: {{ role }}
+- Owns: {{ owned_dirs | join(', ') }}
+- Consumes: {{ consumes }}
+
+## Other Agents
+{% for other in other_agents %}
+- {{ other.id }}: {{ other.role }} (owns: {{ other.owns | join(', ') }})
+{% endfor %}
