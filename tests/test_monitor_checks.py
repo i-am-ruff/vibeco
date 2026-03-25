@@ -224,10 +224,12 @@ class TestErrorIsolation:
 
     def test_check_exception_isolated_plan_gate(self, tmp_path: Path) -> None:
         """Plan gate catches exceptions, returns error result."""
-        # Pass a non-existent path that will cause an error in glob
-        bad_path = tmp_path / "nonexistent"
+        # Create phases dir but make rglob raise an exception via patch
+        phases_dir = tmp_path / ".planning" / "phases"
+        phases_dir.mkdir(parents=True)
 
-        result, mtimes = check_plan_gate("agent-1", bad_path, {})
+        with patch("pathlib.Path.rglob", side_effect=PermissionError("access denied")):
+            result, mtimes = check_plan_gate("agent-1", tmp_path, {})
 
         assert result.passed is False
         assert mtimes == {}
