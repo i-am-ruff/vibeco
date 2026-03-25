@@ -49,7 +49,11 @@ Plans:
   3. Running `vco kill agent-x` terminates the agent session cleanly (graceful then forced)
   4. A crashed agent is automatically relaunched with `/gsd:resume-work`, with exponential backoff (30s, 2min, 10min), and the circuit breaker stops after 3 crashes/hour with a Discord alert
   5. Pre-flight tests validate Claude Code headless behaviors (stream-json heartbeat, permission hang, --max-turns exit, --resume recovery) and their results determine the monitor strategy
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 02-01-PLAN.md -- State models + crash tracker (backoff, circuit breaker, classification)
+- [ ] 02-02-PLAN.md -- Agent manager + dispatch/kill/relaunch CLI commands
+- [ ] 02-03-PLAN.md -- Pre-flight test suite + CLI command
 
 ### Phase 3: Monitor Loop and Coordination
 **Goal**: Agents are continuously supervised with liveness checks, stuck detection, and cross-agent status awareness distributed to all clones
@@ -119,7 +123,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Configuration | 0/4 | Planning complete | - |
-| 2. Agent Lifecycle and Pre-flight | 0/TBD | Not started | - |
+| 2. Agent Lifecycle and Pre-flight | 0/3 | Planning complete | - |
 | 3. Monitor Loop and Coordination | 0/TBD | Not started | - |
 | 4. Discord Bot Core | 0/TBD | Not started | - |
 | 5. Hooks and Plan Gate | 0/TBD | Not started | - |
