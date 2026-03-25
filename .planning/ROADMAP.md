@@ -140,7 +140,7 @@ Plans:
 - [x] 07-02-PLAN.md -- Conflict resolver (AI-assisted) + fix dispatch + Discord embeds
 - [x] 07-03-PLAN.md -- Checkin data gathering + checkin embed builder
 - [x] 07-04-PLAN.md -- Monitor integration interlock + !integrate command wiring
-- [ ] 07-05-PLAN.md -- Standup session + ReleaseView + !standup command
+- [x] 07-05-PLAN.md -- Standup session + ReleaseView + !standup command
 - [ ] 07-06-PLAN.md -- Interaction regression tests (SAFE-04)
 
 ## Progress
