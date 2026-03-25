@@ -3,7 +3,10 @@
 import click
 
 from vcompany.cli.clone_cmd import clone
+from vcompany.cli.dispatch_cmd import dispatch
 from vcompany.cli.init_cmd import init
+from vcompany.cli.kill_cmd import kill
+from vcompany.cli.relaunch_cmd import relaunch
 
 
 @click.group()
@@ -14,4 +17,7 @@ def cli():
 
 
 cli.add_command(clone)
+cli.add_command(dispatch)
 cli.add_command(init)
+cli.add_command(kill)
+cli.add_command(relaunch)
