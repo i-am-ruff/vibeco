@@ -39,6 +39,11 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - Decision logging — all PM/Strategist decisions to #decisions channel + append-only JSONL — Phase 6
 - vco new-milestone — milestone infrastructure (scope update, agent reset, re-dispatch) — Phase 6
 - PM-CONTEXT.md — renamed from STRATEGIST-PROMPT.md, assembled from blueprint+interfaces+scope+status+decisions — Phase 6
+- Integration pipeline — IntegrationPipeline with interlock model, N+1 test attribution, AI conflict resolution via PM, auto PR creation — Phase 7
+- Fix dispatch — auto-dispatch /gsd:quick to responsible agent on test failure — Phase 7
+- Checkin ritual — auto-post phase completion status to #agent-{id} after each phase — Phase 7
+- Standup ritual — blocking interlock with per-agent threads, Release button, full owner control, no timeout — Phase 7
+- Interaction regression tests — 9 tests from INTERACTIONS.md patterns, @pytest.mark.integration — Phase 7
 
 ### Active
 
