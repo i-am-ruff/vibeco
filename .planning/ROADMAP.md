@@ -37,7 +37,7 @@ Plans:
 - [x] 01-01-PLAN.md -- Project bootstrap + Pydantic config models
 - [x] 01-02-PLAN.md -- Git wrapper, tmux wrapper, atomic file ops
 - [x] 01-03-PLAN.md -- Jinja2 templates + vco init command
-- [ ] 01-04-PLAN.md -- vco clone command + artifact deployment
+- [x] 01-04-PLAN.md -- vco clone command + artifact deployment
 
 ### Phase 2: Agent Lifecycle and Pre-flight
 **Goal**: Agents can be launched, terminated, and automatically recovered from crashes, with validated understanding of Claude Code headless behavior
