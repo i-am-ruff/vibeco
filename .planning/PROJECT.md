@@ -12,7 +12,10 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ### Validated
 
-(None yet — ship to validate)
+- agents.yaml configuration — Pydantic-validated agent roster with overlap detection — Phase 1
+- vco init + clone — project scaffolding and per-agent clone deployment with all artifacts — Phase 1
+- Agent isolation model — each agent gets its own repo clone with non-overlapping directory ownership — Phase 1
+- GSD configuration injection per agent clone (yolo mode, system prompt, hook config) — Phase 1
 
 ### Active
 
@@ -96,4 +99,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after initialization*
+*Last updated: 2026-03-25 after Phase 1 completion*
