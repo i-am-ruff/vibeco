@@ -10,7 +10,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Foundation
 
 - [x] **FOUND-01**: System uses Pydantic models to parse and validate agents.yaml (agent roster, owned dirs, shared_readonly, gsd_mode, system prompts)
-- [ ] **FOUND-02**: `vco init` creates project directory structure (clones/, context/, agents/) from agents.yaml
+- [x] **FOUND-02**: `vco init` creates project directory structure (clones/, context/, agents/) from agents.yaml
 - [ ] **FOUND-03**: `vco clone` creates one repo clone per agent, copies context files, deploys hooks + GSD config + vco commands
 - [x] **FOUND-04**: Git operations wrapper standardizes subprocess calls with error handling and logging
 - [x] **FOUND-05**: tmux wrapper abstracts libtmux behind stable interface (create_pane, send_command, is_alive, get_output)
@@ -84,7 +84,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **COORD-01**: INTERFACES.md is the single source of truth for API contracts, shared types, and integration boundaries
 - [ ] **COORD-02**: Interface change request flow: agent asks via AskUserQuestion → PM approves → orchestrator distributes updated INTERFACES.md
 - [ ] **COORD-03**: `vco sync-context` pushes updated INTERFACES.md, MILESTONE-SCOPE.md, and STRATEGIST-PROMPT.md to all clones
-- [ ] **COORD-04**: Agent system prompt template generates --append-system-prompt with owned dirs, rules, milestone scope
+- [x] **COORD-04**: Agent system prompt template generates --append-system-prompt with owned dirs, rules, milestone scope
 - [ ] **COORD-05**: CLAUDE.md generated per clone with cross-agent awareness rules and communication instructions
 - [ ] **COORD-06**: /vco:checkin.md and /vco:standup.md command files deployed to each clone's .claude/commands/vco/
 - [ ] **COORD-07**: .claude/settings.json with AskUserQuestion hook config deployed to each clone
@@ -169,13 +169,13 @@ Deferred to future release. Tracked but not in current roadmap.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FOUND-01 | Phase 1 | Complete |
-| FOUND-02 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Complete |
 | FOUND-03 | Phase 1 | Pending |
 | FOUND-04 | Phase 1 | Complete |
 | FOUND-05 | Phase 1 | Complete |
 | FOUND-06 | Phase 1 | Complete |
 | FOUND-07 | Phase 1 | Complete |
-| COORD-04 | Phase 1 | Pending |
+| COORD-04 | Phase 1 | Complete |
 | COORD-05 | Phase 1 | Pending |
 | COORD-06 | Phase 1 | Pending |
 | COORD-07 | Phase 1 | Pending |

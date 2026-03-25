@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] 01-01-PLAN.md -- Project bootstrap + Pydantic config models
 - [x] 01-02-PLAN.md -- Git wrapper, tmux wrapper, atomic file ops
-- [ ] 01-03-PLAN.md -- Jinja2 templates + vco init command
+- [x] 01-03-PLAN.md -- Jinja2 templates + vco init command
 - [ ] 01-04-PLAN.md -- vco clone command + artifact deployment
 
 ### Phase 2: Agent Lifecycle and Pre-flight
