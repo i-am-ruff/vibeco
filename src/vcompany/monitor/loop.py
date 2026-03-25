@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from vcompany.models.agent_state import AgentsRegistry
@@ -48,6 +48,8 @@ class MonitorLoop:
         on_agent_stuck: Callable[[str], None] | None = None,
         on_plan_detected: Callable[[str, Path], None] | None = None,
         on_status_digest: Callable[[str], None] | None = None,
+        on_integration_ready: Callable[[], Awaitable[None]] | None = None,
+        on_checkin: Callable[[str], Awaitable[None]] | None = None,
         digest_interval: int = 1800,
         cycle_interval: int | None = None,
     ) -> None:
@@ -58,6 +60,9 @@ class MonitorLoop:
         self._on_agent_stuck = on_agent_stuck
         self._on_plan_detected = on_plan_detected
         self._on_status_digest = on_status_digest
+        self._on_integration_ready = on_integration_ready
+        self._on_checkin = on_checkin
+        self._integration_pending = False
         self._digest_interval = digest_interval
         self._last_digest_time: float = 0.0
         self._last_status_content: str = ""
@@ -82,6 +87,24 @@ class MonitorLoop:
     def stop(self) -> None:
         """Graceful shutdown: stops after current cycle completes."""
         self._running = False
+
+    def set_integration_pending(self, pending: bool) -> None:
+        """Set integration pending flag for interlock model (D-01, D-02)."""
+        self._integration_pending = pending
+
+    def all_agents_idle(self) -> bool:
+        """Check if all tracked agents are idle (completed + plan_gate idle).
+
+        Public API for use by !integrate command and other callers.
+        Avoids external code accessing private _agent_states directly.
+        """
+        if not self._agent_states:
+            return False
+        return all(
+            state.phase_status == "completed"
+            and state.plan_gate_status == "idle"
+            for state in self._agent_states.values()
+        )
 
     async def _run_cycle(self) -> None:
         """Execute one monitoring cycle per D-01.
@@ -130,6 +153,12 @@ class MonitorLoop:
         except Exception:
             logger.exception("Failed to generate/distribute project status")
 
+        # Integration interlock check per D-01/D-02
+        if self._integration_pending:
+            if self.all_agents_idle() and self._on_integration_ready:
+                self._integration_pending = False
+                await self._on_integration_ready()
+
     async def _check_agent(self, agent_id: str, registry: AgentsRegistry) -> None:
         """Run all checks for a single agent. Wraps in try/except per D-01.
 
@@ -169,6 +198,12 @@ class MonitorLoop:
             if plan_result.new_plans and self._on_plan_detected:
                 for plan_path in plan_result.new_plans:
                     self._on_plan_detected(agent_id, Path(plan_path))
+
+            # Checkin auto-trigger per D-09
+            if state and state.phase_status == "completed" and not state.checkin_sent:
+                state.checkin_sent = True
+                if self._on_checkin:
+                    await self._on_checkin(agent_id)
 
         except Exception:
             logger.exception("Error checking agent %s", agent_id)

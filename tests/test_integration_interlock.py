@@ -228,8 +228,9 @@ class TestCheckinAutoTrigger:
             entry = MagicMock()
             entry.pane_id = "test-pane"
             entry.pid = 1234
-            registry.agents = {"agent-a": entry}
-            registry.agents.get = lambda aid: entry
+            agents_dict = MagicMock()
+            agents_dict.get = MagicMock(return_value=entry)
+            registry.agents = agents_dict
 
             await monitor._check_agent("agent-a", registry)
 
@@ -256,8 +257,9 @@ class TestCheckinAutoTrigger:
             entry = MagicMock()
             entry.pane_id = "test-pane"
             entry.pid = 1234
-            registry.agents = {"agent-a": entry}
-            registry.agents.get = lambda aid: entry
+            agents_dict = MagicMock()
+            agents_dict.get = MagicMock(return_value=entry)
+            registry.agents = agents_dict
 
             await monitor._check_agent("agent-a", registry)
 
@@ -283,8 +285,9 @@ class TestCheckinAutoTrigger:
             entry = MagicMock()
             entry.pane_id = "test-pane"
             entry.pid = 1234
-            registry.agents = {"agent-a": entry}
-            registry.agents.get = lambda aid: entry
+            agents_dict = MagicMock()
+            agents_dict.get = MagicMock(return_value=entry)
+            registry.agents = agents_dict
 
             await monitor._check_agent("agent-a", registry)
 

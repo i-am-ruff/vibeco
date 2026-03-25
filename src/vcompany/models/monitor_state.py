@@ -32,3 +32,7 @@ class AgentMonitorState(BaseModel):
     plan_gate_status: Literal["idle", "awaiting_review", "approved", "rejected"] = "idle"
     pending_plans: list[str] = []    # plan paths awaiting review
     approved_plans: list[str] = []   # plan paths approved this phase
+    # Phase 7: Integration interlock (D-01, D-02)
+    integration_pending: bool = False
+    # Phase 7: Checkin auto-trigger (D-09)
+    checkin_sent: bool = False
