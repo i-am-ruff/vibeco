@@ -33,10 +33,10 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **MON-02**: Liveness check verifies tmux pane alive AND actual process PID inside pane (not just session existence)
 - [x] **MON-03**: Stuck detection alerts when an agent has no git commits for 30+ minutes
 - [x] **MON-04**: Monitor detects new PLAN.md files and triggers plan gate flow
-- [ ] **MON-05**: Monitor reads each clone's .planning/ROADMAP.md and git log to track phase progress
-- [ ] **MON-06**: Monitor generates PROJECT-STATUS.md from all clones' state every cycle
-- [ ] **MON-07**: Monitor distributes PROJECT-STATUS.md to all agent clones after generation
-- [ ] **MON-08**: Monitor runs under a watchdog (heartbeat file or systemd) to detect if monitor itself dies
+- [x] **MON-05**: Monitor reads each clone's .planning/ROADMAP.md and git log to track phase progress
+- [x] **MON-06**: Monitor generates PROJECT-STATUS.md from all clones' state every cycle
+- [x] **MON-07**: Monitor distributes PROJECT-STATUS.md to all agent clones after generation
+- [x] **MON-08**: Monitor runs under a watchdog (heartbeat file or systemd) to detect if monitor itself dies
 
 ### Discord Bot
 
@@ -193,10 +193,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | MON-02 | Phase 3 | Complete |
 | MON-03 | Phase 3 | Complete |
 | MON-04 | Phase 3 | Complete |
-| MON-05 | Phase 3 | Pending |
-| MON-06 | Phase 3 | Pending |
-| MON-07 | Phase 3 | Pending |
-| MON-08 | Phase 3 | Pending |
+| MON-05 | Phase 3 | Complete |
+| MON-06 | Phase 3 | Complete |
+| MON-07 | Phase 3 | Complete |
+| MON-08 | Phase 3 | Complete |
 | COORD-01 | Phase 3 | Pending |
 | COORD-02 | Phase 3 | Pending |
 | COORD-03 | Phase 3 | Pending |

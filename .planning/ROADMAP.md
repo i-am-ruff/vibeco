@@ -68,7 +68,7 @@ Plans:
 **Plans**: 4 plans
 Plans:
 - [x] 03-01-PLAN.md -- Monitor state models + check functions (liveness, stuck, plan gate)
-- [ ] 03-02-PLAN.md -- PROJECT-STATUS.md generation/distribution + heartbeat watchdog
+- [x] 03-02-PLAN.md -- PROJECT-STATUS.md generation/distribution + heartbeat watchdog
 - [ ] 03-03-PLAN.md -- MonitorLoop class + vco monitor CLI command
 - [ ] 03-04-PLAN.md -- Coordination system (INTERFACES.md, sync-context, INTERACTIONS.md)
 

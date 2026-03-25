@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to execute
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-25T04:00:01.461Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-03-25T04:04:54.863Z"
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 11
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-25)
 ## Current Position
 
 Phase: 03 (monitor-loop-and-coordination) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Plan: 2 of 4
 | Phase 02 P02 | 3min | 2 tasks | 8 files |
 | Phase 02 P03 | 3min | 2 tasks | 4 files |
 | Phase 03 P01 | 3min | 1 tasks | 4 files |
+| Phase 03 P02 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Check functions return CheckResult instead of raising, enabling independent error isolation
 - [Phase 03]: Plan gate seeds mtimes on first run without triggering false positives
 - [Phase 03]: Liveness validates both tmux pane PID and agent process PID per D-02
+- [Phase 03]: String building over Jinja2 for PROJECT-STATUS.md -- format is well-defined, f-strings clearer
+- [Phase 03]: Heartbeat written at cycle START per Pitfall 6 to prevent false watchdog triggers
+- [Phase 03]: Default watchdog threshold 180s (3 missed 60s cycles) per D-19
 
 ### Pending Todos
 
@@ -100,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T04:00:01.456Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-03-25T04:04:54.861Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
