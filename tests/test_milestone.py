@@ -82,15 +82,18 @@ def _setup_project(tmp_path: Path) -> Path:
     (project_dir / "state").mkdir(parents=True)
     (project_dir / "clones" / "agent-a").mkdir(parents=True)
 
-    # Write minimal agents.yaml
+    # Write minimal agents.yaml matching ProjectConfig schema
     agents_yaml = {
         "project": "test-project",
+        "repo": "https://github.com/test/test.git",
         "agents": [
             {
                 "id": "agent-a",
                 "role": "backend",
                 "owns": ["src/backend/"],
-                "consumes": [],
+                "consumes": "INTERFACES.md",
+                "gsd_mode": "full",
+                "system_prompt": "You are a backend agent.",
             }
         ],
     }

@@ -1,17 +1,23 @@
 """Sync context files from project context/ to all agent clones.
 
-Copies INTERFACES.md, MILESTONE-SCOPE.md, and STRATEGIST-PROMPT.md to each
+Copies INTERFACES.md, MILESTONE-SCOPE.md, and PM-CONTEXT.md to each
 clone directory using write_atomic for safe concurrent reads.
+
+Per D-20: PM-CONTEXT.md replaces STRATEGIST-PROMPT.md. Backward compat
+renames old file if PM-CONTEXT.md doesn't exist yet.
 """
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from vcompany.models.config import ProjectConfig
 from vcompany.shared.file_ops import write_atomic
 
-# Files to sync from {project}/context/ to each clone
-SYNC_FILES = ["INTERFACES.md", "MILESTONE-SCOPE.md", "STRATEGIST-PROMPT.md"]
+logger = logging.getLogger("vcompany.coordination.sync_context")
+
+# Files to sync from {project}/context/ to each clone (D-20: PM-CONTEXT.md replaces STRATEGIST-PROMPT.md)
+SYNC_FILES = ["INTERFACES.md", "MILESTONE-SCOPE.md", "PM-CONTEXT.md"]
 
 
 @dataclass
@@ -26,6 +32,10 @@ class SyncResult:
 def sync_context_files(project_dir: Path, config: ProjectConfig) -> SyncResult:
     """Copy context files to all agent clones via write_atomic.
 
+    Before syncing, generates PM-CONTEXT.md if context_builder is available.
+    Handles backward compat: renames STRATEGIST-PROMPT.md to PM-CONTEXT.md
+    if the old file exists and the new one doesn't (D-20).
+
     Args:
         project_dir: Root project directory containing context/ and clones/.
         config: Project configuration with agent list.
@@ -35,6 +45,23 @@ def sync_context_files(project_dir: Path, config: ProjectConfig) -> SyncResult:
     """
     result = SyncResult()
     context_dir = project_dir / "context"
+
+    # D-20 backward compat: rename STRATEGIST-PROMPT.md -> PM-CONTEXT.md
+    old_prompt = context_dir / "STRATEGIST-PROMPT.md"
+    new_prompt = context_dir / "PM-CONTEXT.md"
+    if old_prompt.exists() and not new_prompt.exists():
+        old_prompt.rename(new_prompt)
+        logger.info("Renamed STRATEGIST-PROMPT.md -> PM-CONTEXT.md (D-20)")
+
+    # Generate PM-CONTEXT.md before syncing if context_builder is available
+    try:
+        from vcompany.strategist.context_builder import write_pm_context
+
+        write_pm_context(project_dir)
+    except ImportError:
+        logger.debug("context_builder not available, skipping PM-CONTEXT.md generation")
+    except Exception:
+        logger.exception("Failed to generate PM-CONTEXT.md")
 
     # Read source files (skip missing ones)
     source_files: dict[str, str] = {}
