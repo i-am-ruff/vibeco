@@ -81,9 +81,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Coordination and Contracts
 
-- [ ] **COORD-01**: INTERFACES.md is the single source of truth for API contracts, shared types, and integration boundaries
-- [ ] **COORD-02**: Interface change request flow: agent asks via AskUserQuestion → PM approves → orchestrator distributes updated INTERFACES.md
-- [ ] **COORD-03**: `vco sync-context` pushes updated INTERFACES.md, MILESTONE-SCOPE.md, and STRATEGIST-PROMPT.md to all clones
+- [x] **COORD-01**: INTERFACES.md is the single source of truth for API contracts, shared types, and integration boundaries
+- [x] **COORD-02**: Interface change request flow: agent asks via AskUserQuestion → PM approves → orchestrator distributes updated INTERFACES.md
+- [x] **COORD-03**: `vco sync-context` pushes updated INTERFACES.md, MILESTONE-SCOPE.md, and STRATEGIST-PROMPT.md to all clones
 - [x] **COORD-04**: Agent system prompt template generates --append-system-prompt with owned dirs, rules, milestone scope
 - [x] **COORD-05**: CLAUDE.md generated per clone with cross-agent awareness rules and communication instructions
 - [x] **COORD-06**: /vco:checkin.md and /vco:standup.md command files deployed to each clone's .claude/commands/vco/
@@ -125,7 +125,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **SAFE-01**: Every phase plan includes an Interaction Safety Table analyzing concurrent scenarios (Agent/Component × Circumstance × Action × Concurrent With × Safe? × Mitigation)
 - [ ] **SAFE-02**: Plan checker agent validates interaction safety table completeness — rejects plans missing concurrency analysis
-- [ ] **SAFE-03**: Known interaction patterns documented in a central INTERACTIONS.md reference (e.g., monitor reads during agent writes, simultaneous git pushes, hook timeout during context compression)
+- [x] **SAFE-03**: Known interaction patterns documented in a central INTERACTIONS.md reference (e.g., monitor reads during agent writes, simultaneous git pushes, hook timeout during context compression)
 - [ ] **SAFE-04**: Integration phase includes interaction regression tests for critical concurrent scenarios identified across all phases
 
 ## v2 Requirements
@@ -197,10 +197,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | MON-06 | Phase 3 | Complete |
 | MON-07 | Phase 3 | Complete |
 | MON-08 | Phase 3 | Complete |
-| COORD-01 | Phase 3 | Pending |
-| COORD-02 | Phase 3 | Pending |
-| COORD-03 | Phase 3 | Pending |
-| SAFE-03 | Phase 3 | Pending |
+| COORD-01 | Phase 3 | Complete |
+| COORD-02 | Phase 3 | Complete |
+| COORD-03 | Phase 3 | Complete |
+| SAFE-03 | Phase 3 | Complete |
 | DISC-01 | Phase 4 | Pending |
 | DISC-02 | Phase 4 | Pending |
 | DISC-03 | Phase 4 | Pending |

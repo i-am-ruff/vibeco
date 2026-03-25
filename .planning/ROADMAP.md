@@ -70,7 +70,7 @@ Plans:
 - [x] 03-01-PLAN.md -- Monitor state models + check functions (liveness, stuck, plan gate)
 - [x] 03-02-PLAN.md -- PROJECT-STATUS.md generation/distribution + heartbeat watchdog
 - [ ] 03-03-PLAN.md -- MonitorLoop class + vco monitor CLI command
-- [ ] 03-04-PLAN.md -- Coordination system (INTERFACES.md, sync-context, INTERACTIONS.md)
+- [x] 03-04-PLAN.md -- Coordination system (INTERFACES.md, sync-context, INTERACTIONS.md)
 
 ### Phase 4: Discord Bot Core
 **Goal**: The owner can control and observe the entire agent fleet from Discord using bot commands
