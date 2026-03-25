@@ -138,8 +138,8 @@ Plans:
 Plans:
 - [x] 07-01-PLAN.md -- Git ops extensions + integration pipeline core + test attribution
 - [x] 07-02-PLAN.md -- Conflict resolver (AI-assisted) + fix dispatch + Discord embeds
-- [ ] 07-03-PLAN.md -- Checkin data gathering + checkin embed builder
-- [ ] 07-04-PLAN.md -- Monitor integration interlock + !integrate command wiring
+- [x] 07-03-PLAN.md -- Checkin data gathering + checkin embed builder
+- [x] 07-04-PLAN.md -- Monitor integration interlock + !integrate command wiring
 - [ ] 07-05-PLAN.md -- Standup session + ReleaseView + !standup command
 - [ ] 07-06-PLAN.md -- Interaction regression tests (SAFE-04)
 
@@ -156,4 +156,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Discord Bot Core | 0/4 | Planning complete | - |
 | 5. Hooks and Plan Gate | 3/4 | In Progress|  |
 | 6. PM/Strategist and Milestones | 2/5 | In Progress|  |
-| 7. Integration Pipeline and Communications | 2/6 | In Progress|  |
+| 7. Integration Pipeline and Communications | 4/6 | In Progress|  |
