@@ -32,6 +32,13 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - Plan gate — PlanReviewCog with approve/reject buttons, safety table validation, plan gate state tracking, execution triggering — Phase 5
 - Interaction safety tables — validator enforces 6-column markdown tables in PLAN.md, configurable strictness (warn/block) — Phase 5
 - QuestionHandlerCog — answer delivery via atomic file write to /tmp/vco-answers/, webhook question detection — Phase 5
+- Two-tier AI decision system — persistent Strategist (Opus 1M, CEO-friend) + stateless PM (heuristic confidence) — Phase 6
+- PM tier — heuristic confidence scoring (context coverage + prior decisions), three-check plan review (scope/dependency/duplicate), auto-approve on HIGH — Phase 6
+- Strategist persistent conversation — AsyncAnthropic streaming, token tracking, Knowledge Transfer handoff at ~800K tokens, asyncio.Lock — Phase 6
+- Three-tier escalation chain — PM → Strategist → Owner with indefinite wait for LOW confidence — Phase 6
+- Decision logging — all PM/Strategist decisions to #decisions channel + append-only JSONL — Phase 6
+- vco new-milestone — milestone infrastructure (scope update, agent reset, re-dispatch) — Phase 6
+- PM-CONTEXT.md — renamed from STRATEGIST-PROMPT.md, assembled from blueprint+interfaces+scope+status+decisions — Phase 6
 
 ### Active
 
