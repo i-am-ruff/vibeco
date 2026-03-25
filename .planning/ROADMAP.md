@@ -52,7 +52,7 @@ Plans:
 **Plans**: 3 plans
 Plans:
 - [x] 02-01-PLAN.md -- State models + crash tracker (backoff, circuit breaker, classification)
-- [ ] 02-02-PLAN.md -- Agent manager + dispatch/kill/relaunch CLI commands
+- [x] 02-02-PLAN.md -- Agent manager + dispatch/kill/relaunch CLI commands
 - [ ] 02-03-PLAN.md -- Pre-flight test suite + CLI command
 
 ### Phase 3: Monitor Loop and Coordination
