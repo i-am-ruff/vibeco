@@ -2,7 +2,8 @@
 
 Provides build_status_embed (for !status), build_alert_embed (for #alerts),
 build_plan_review_embed (for plan review), build_conflict_embed (for merge conflicts),
-build_integration_embed (for integration results), and build_checkin_embed (for checkins).
+build_integration_embed (for integration results), build_standup_embed (for standup threads),
+and build_checkin_embed (for checkins).
 """
 
 from __future__ import annotations
@@ -253,6 +254,38 @@ def build_integration_embed(result: IntegrationResult) -> discord.Embed:
             inline=False,
         )
 
+    return embed
+
+
+def build_standup_embed(
+    agent_id: str, phase: str, status: str, summary: str
+) -> discord.Embed:
+    """Build standup embed for per-agent thread per COMM-03.
+
+    Args:
+        agent_id: Agent identifier.
+        phase: Current phase the agent is working on.
+        status: Agent status (e.g. "active", "idle").
+        summary: Recent work summary (truncated to 1024 chars).
+
+    Returns:
+        discord.Embed with Phase, Status, and Recent Work fields.
+    """
+    embed = discord.Embed(
+        title=f"Standup: {agent_id}",
+        color=discord.Color.blue(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="Phase", value=phase, inline=True)
+    embed.add_field(name="Status", value=status, inline=True)
+    embed.add_field(
+        name="Recent Work",
+        value=summary[:1024] or "No recent commits",
+        inline=False,
+    )
+    embed.set_footer(
+        text="Reply in this thread to communicate with the agent. Click Release when done."
+    )
     return embed
 
 

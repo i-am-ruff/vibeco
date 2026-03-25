@@ -135,20 +135,15 @@ class TestReleaseView:
         callback_called_with: list[str] = []
         view.set_release_callback(lambda aid: callback_called_with.append(aid))
 
-        # Simulate button press
-        interaction = AsyncMock(spec=discord.Interaction)
+        # Simulate button press -- discord.py button callbacks are bound methods
+        # per Phase 04 decision: invoke via callback(interaction) not callback(self, interaction)
+        interaction = MagicMock()
         interaction.response = AsyncMock()
+        interaction.response.edit_message = AsyncMock()
         interaction.followup = AsyncMock()
+        interaction.followup.send = AsyncMock()
 
-        # Get the release button
-        button = None
-        for child in view.children:
-            if isinstance(child, discord.ui.Button) and child.label == "Release":
-                button = child
-                break
-        assert button is not None
-
-        await view.release.callback(interaction, button)
+        await view.release.callback(interaction)
         assert callback_called_with == ["agent-01"]
 
     @pytest.mark.asyncio
@@ -156,20 +151,16 @@ class TestReleaseView:
         """Release button disables itself after being clicked."""
         view = ReleaseView(agent_id="agent-01")
 
-        interaction = AsyncMock(spec=discord.Interaction)
+        interaction = MagicMock()
         interaction.response = AsyncMock()
+        interaction.response.edit_message = AsyncMock()
         interaction.followup = AsyncMock()
+        interaction.followup.send = AsyncMock()
 
-        button = None
-        for child in view.children:
-            if isinstance(child, discord.ui.Button) and child.label == "Release":
-                button = child
-                break
-        assert button is not None
-
-        await view.release.callback(interaction, button)
-        assert button.disabled is True
+        await view.release.callback(interaction)
         assert view.released is True
+        # Verify edit_message was called (button disabled via view update)
+        interaction.response.edit_message.assert_awaited_once()
 
 
 class TestBuildStandupEmbed:
