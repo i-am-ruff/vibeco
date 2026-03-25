@@ -62,7 +62,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **HOOK-05**: Hook returns deny + permissionDecisionReason carrying the answer back to Claude
 - [x] **HOOK-06**: Hook is self-contained (no imports from main codebase) — runs in agent clone context
 - [x] **HOOK-07**: Hook wrapped in try/except with guaranteed fallback response (never hangs)
-- [ ] **GATE-01**: Plan gate detects PLAN.md completion (atomic write marker, not creation event)
+- [x] **GATE-01**: Plan gate detects PLAN.md completion (atomic write marker, not creation event)
 - [ ] **GATE-02**: Plan gate posts plans to #plan-review with agent ID, plan descriptions, task counts
 - [ ] **GATE-03**: Plan gate pauses agent execution until PM/owner approves or rejects
 - [ ] **GATE-04**: On rejection, agent receives feedback and re-plans
@@ -123,8 +123,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Interaction Safety
 
-- [ ] **SAFE-01**: Every phase plan includes an Interaction Safety Table analyzing concurrent scenarios (Agent/Component × Circumstance × Action × Concurrent With × Safe? × Mitigation)
-- [ ] **SAFE-02**: Plan checker agent validates interaction safety table completeness — rejects plans missing concurrency analysis
+- [x] **SAFE-01**: Every phase plan includes an Interaction Safety Table analyzing concurrent scenarios (Agent/Component × Circumstance × Action × Concurrent With × Safe? × Mitigation)
+- [x] **SAFE-02**: Plan checker agent validates interaction safety table completeness — rejects plans missing concurrency analysis
 - [x] **SAFE-03**: Known interaction patterns documented in a central INTERACTIONS.md reference (e.g., monitor reads during agent writes, simultaneous git pushes, hook timeout during context compression)
 - [ ] **SAFE-04**: Integration phase includes interaction regression tests for critical concurrent scenarios identified across all phases
 
@@ -220,12 +220,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | HOOK-05 | Phase 5 | Complete |
 | HOOK-06 | Phase 5 | Complete |
 | HOOK-07 | Phase 5 | Complete |
-| GATE-01 | Phase 5 | Pending |
+| GATE-01 | Phase 5 | Complete |
 | GATE-02 | Phase 5 | Pending |
 | GATE-03 | Phase 5 | Pending |
 | GATE-04 | Phase 5 | Pending |
-| SAFE-01 | Phase 5 | Pending |
-| SAFE-02 | Phase 5 | Pending |
+| SAFE-01 | Phase 5 | Complete |
+| SAFE-02 | Phase 5 | Complete |
 | STRAT-01 | Phase 6 | Pending |
 | STRAT-02 | Phase 6 | Pending |
 | STRAT-03 | Phase 6 | Pending |
