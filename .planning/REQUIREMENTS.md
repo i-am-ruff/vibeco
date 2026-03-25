@@ -12,9 +12,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **FOUND-01**: System uses Pydantic models to parse and validate agents.yaml (agent roster, owned dirs, shared_readonly, gsd_mode, system prompts)
 - [ ] **FOUND-02**: `vco init` creates project directory structure (clones/, context/, agents/) from agents.yaml
 - [ ] **FOUND-03**: `vco clone` creates one repo clone per agent, copies context files, deploys hooks + GSD config + vco commands
-- [ ] **FOUND-04**: Git operations wrapper standardizes subprocess calls with error handling and logging
-- [ ] **FOUND-05**: tmux wrapper abstracts libtmux behind stable interface (create_pane, send_command, is_alive, get_output)
-- [ ] **FOUND-06**: All coordination file writes use atomic pattern (write to .tmp, then os.rename)
+- [x] **FOUND-04**: Git operations wrapper standardizes subprocess calls with error handling and logging
+- [x] **FOUND-05**: tmux wrapper abstracts libtmux behind stable interface (create_pane, send_command, is_alive, get_output)
+- [x] **FOUND-06**: All coordination file writes use atomic pattern (write to .tmp, then os.rename)
 - [x] **FOUND-07**: Project uses uv for package management with pyproject.toml
 
 ### Agent Lifecycle
@@ -171,9 +171,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | FOUND-01 | Phase 1 | Complete |
 | FOUND-02 | Phase 1 | Pending |
 | FOUND-03 | Phase 1 | Pending |
-| FOUND-04 | Phase 1 | Pending |
-| FOUND-05 | Phase 1 | Pending |
-| FOUND-06 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Complete |
+| FOUND-05 | Phase 1 | Complete |
+| FOUND-06 | Phase 1 | Complete |
 | FOUND-07 | Phase 1 | Complete |
 | COORD-04 | Phase 1 | Pending |
 | COORD-05 | Phase 1 | Pending |
