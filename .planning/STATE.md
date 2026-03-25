@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to plan
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-25T20:20:40.078Z"
+stopped_at: Completed 06-05-PLAN.md
+last_updated: "2026-03-25T21:21:12.997Z"
 progress:
   total_phases: 7
-  completed_phases: 5
-  total_plans: 19
-  completed_plans: 19
+  completed_phases: 6
+  total_plans: 24
+  completed_plans: 24
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 05 — hooks-and-plan-gate
+**Current focus:** Phase 06 — pm-strategist-and-milestones
 
 ## Current Position
 
-Phase: 6
+Phase: 7
 Plan: Not started
 
 ## Performance Metrics
@@ -65,6 +65,11 @@ Plan: Not started
 | Phase 05 P02 | 3min | 2 tasks | 4 files |
 | Phase 05 P03 | 5min | 2 tasks | 6 files |
 | Phase 05 P04 | 4min | 2 tasks | 6 files |
+| Phase 06 P01 | 4min | 2 tasks | 6 files |
+| Phase 06 P02 | 3min | 1 tasks | 6 files |
+| Phase 06 P03 | 4min | 2 tasks | 4 files |
+| Phase 06 P04 | 4min | 2 tasks | 4 files |
+| Phase 06 P05 | 9min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -119,6 +124,21 @@ Recent decisions affecting current work:
 - [Phase 05]: Frontmatter extraction via regex for plan metadata parsing in PlanReviewCog
 - [Phase 05]: PlanReviewCog on_plan_detected preferred over AlertsCog with fallback
 - [Phase 05]: File-based IPC: atomic tmp+rename for hook<->bot answer delivery
+- [Phase 06]: Stopword filtering + Jaccard similarity for deterministic confidence scoring per D-08
+- [Phase 06]: 60% coverage + 40% prior match weighting per Research Pattern 4
+- [Phase 06]: decisions.jsonl (JSON lines) for decision log storage with last-50 truncation
+- [Phase 06]: Token check uses rough char/4 estimate first, only calls count_tokens API when estimate exceeds 700K
+- [Phase 06]: KT document captures decisions, personality calibration, open threads, and original system prompt
+- [Phase 06]: asyncio.Lock on StrategistConversation.send() ensures sequential message processing
+- [Phase 06]: PMTier._get_scorer() factory method for testable confidence scoring injection
+- [Phase 06]: PlanReviewer uses >70% Jaccard overlap for duplicate detection across file lists and objectives
+- [Phase 06]: Dependency check allows incomplete deps when plan body mentions stubs/mocks
+- [Phase 06]: Escalation resolution via message.reference.message_id matching in on_message listener
+- [Phase 06]: Rate-limited Discord streaming edits at 1/sec via time.monotonic() gating
+- [Phase 06]: Pending async resolution via dict[message_id, Future] pattern for owner escalation across events
+- [Phase 06]: PM injection via set_pm/set_plan_reviewer for testability and optional initialization
+- [Phase 06]: LOW confidence exhausting PM+Strategist routes to Owner via indefinite-wait post_owner_escalation per D-07
+- [Phase 06]: Bot gracefully degrades without ANTHROPIC_API_KEY -- standard Phase 5 flow preserved
 
 ### Pending Todos
 
@@ -132,6 +152,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T20:20:40.074Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-pm-strategist-and-milestones/06-CONTEXT.md
+Last session: 2026-03-25T21:15:48.398Z
+Stopped at: Completed 06-05-PLAN.md
+Resume file: None

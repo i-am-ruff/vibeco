@@ -118,10 +118,10 @@ Plans:
   5. Running `vco new-milestone` updates milestone scope, resets agent states, and re-dispatches agents for the new milestone
 **Plans**: 5 plans
 Plans:
-- [ ] 06-01-PLAN.md -- PM data models, heuristic confidence scorer, PM-CONTEXT.md builder
-- [ ] 06-02-PLAN.md -- Strategist persistent conversation manager + Knowledge Transfer handoff
-- [ ] 06-03-PLAN.md -- PM tier (question evaluation + plan reviewer with three-check system)
-- [ ] 06-04-PLAN.md -- StrategistCog expansion + decision logging to #decisions
+- [x] 06-01-PLAN.md -- PM data models, heuristic confidence scorer, PM-CONTEXT.md builder
+- [x] 06-02-PLAN.md -- Strategist persistent conversation manager + Knowledge Transfer handoff
+- [x] 06-03-PLAN.md -- PM tier (question evaluation + plan reviewer with three-check system)
+- [x] 06-04-PLAN.md -- StrategistCog expansion + decision logging to #decisions
 - [ ] 06-05-PLAN.md -- Wiring (PM intercepts, bot startup, status digests, milestone CLI, sync-context update)
 
 ### Phase 7: Integration Pipeline and Communications
@@ -148,5 +148,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 3. Monitor Loop and Coordination | 0/4 | Planning complete | - |
 | 4. Discord Bot Core | 0/4 | Planning complete | - |
 | 5. Hooks and Plan Gate | 3/4 | In Progress|  |
-| 6. PM/Strategist and Milestones | 0/5 | Planning complete | - |
+| 6. PM/Strategist and Milestones | 2/5 | In Progress|  |
 | 7. Integration Pipeline and Communications | 0/TBD | Not started | - |
