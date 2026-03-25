@@ -127,6 +127,38 @@ class TestCircuitBreaker:
         """MAX_CRASHES_PER_HOUR = 3."""
         assert MAX_CRASHES_PER_HOUR == 3
 
+    def test_on_circuit_open_callback_invoked(self, crash_log_path: Path) -> None:
+        """on_circuit_open callback fires when circuit breaker trips."""
+        calls: list[tuple[str, int]] = []
+        tracker = CrashTracker(
+            crash_log_path, on_circuit_open=lambda aid, cnt: calls.append((aid, cnt))
+        )
+        now = datetime.now(timezone.utc)
+        for i in range(4):
+            tracker.record_crash(
+                "BACKEND", 1, CrashClassification.TRANSIENT_RUNTIME_ERROR, [],
+                now=now + timedelta(seconds=i),
+            )
+        tracker.should_retry("BACKEND", now=now + timedelta(seconds=4))
+        assert len(calls) == 1
+        assert calls[0][0] == "BACKEND"
+        assert calls[0][1] >= 4
+
+    def test_no_callback_when_circuit_not_open(self, crash_log_path: Path) -> None:
+        """on_circuit_open callback does not fire under threshold."""
+        calls: list[tuple[str, int]] = []
+        tracker = CrashTracker(
+            crash_log_path, on_circuit_open=lambda aid, cnt: calls.append((aid, cnt))
+        )
+        now = datetime.now(timezone.utc)
+        for i in range(3):
+            tracker.record_crash(
+                "BACKEND", 1, CrashClassification.TRANSIENT_RUNTIME_ERROR, [],
+                now=now + timedelta(seconds=i),
+            )
+        tracker.should_retry("BACKEND", now=now + timedelta(seconds=3))
+        assert len(calls) == 0
+
 
 class TestClassification:
     """Tests for crash classification logic."""

@@ -4,12 +4,16 @@ Prevents runaway relaunches and API token waste by tracking crash history,
 enforcing backoff delays, and opening the circuit after repeated failures.
 """
 
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 
 from vcompany.models.agent_state import CrashLog, CrashRecord
 from vcompany.shared.file_ops import write_atomic
+
+# Type for circuit breaker callback: receives agent_id and crash_count
+CircuitOpenCallback = Callable[[str, int], None]
 
 # Backoff delays in seconds: 30s, 2min, 10min (per D-11)
 BACKOFF_SCHEDULE: list[int] = [30, 120, 600]
@@ -41,9 +45,22 @@ class CrashTracker:
     - Persistent state via crash_log.json
     """
 
-    def __init__(self, crash_log_path: Path) -> None:
-        """Initialize tracker, loading existing crash log if present."""
+    def __init__(
+        self,
+        crash_log_path: Path,
+        *,
+        on_circuit_open: CircuitOpenCallback | None = None,
+    ) -> None:
+        """Initialize tracker, loading existing crash log if present.
+
+        Args:
+            crash_log_path: Path to crash_log.json.
+            on_circuit_open: Optional callback invoked when the circuit breaker
+                trips (agent_id, crash_count). Phase 4 Discord bot injects this
+                to alert #alerts when an agent exceeds MAX_CRASHES_PER_HOUR.
+        """
         self._path = Path(crash_log_path)
+        self._on_circuit_open = on_circuit_open
         if self._path.exists():
             self.crash_log = CrashLog.model_validate_json(self._path.read_text())
         else:
@@ -92,8 +109,17 @@ class CrashTracker:
         )
 
     def should_retry(self, agent_id: str, *, now: datetime | None = None) -> bool:
-        """Return True if agent has not exceeded crash threshold in current window."""
-        return self.recent_crash_count(agent_id, now=now) < MAX_CRASHES_PER_HOUR + 1
+        """Return True if agent has not exceeded crash threshold in current window.
+
+        When the circuit opens (returns False), invokes on_circuit_open callback
+        if one was provided at init time.
+        """
+        count = self.recent_crash_count(agent_id, now=now)
+        if count >= MAX_CRASHES_PER_HOUR + 1:
+            if self._on_circuit_open is not None:
+                self._on_circuit_open(agent_id, count)
+            return False
+        return True
 
     def get_retry_delay(self, agent_id: str, *, now: datetime | None = None) -> int:
         """Return backoff delay in seconds based on recent crash count.
