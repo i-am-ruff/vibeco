@@ -16,6 +16,9 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - vco init + clone — project scaffolding and per-agent clone deployment with all artifacts — Phase 1
 - Agent isolation model — each agent gets its own repo clone with non-overlapping directory ownership — Phase 1
 - GSD configuration injection per agent clone (yolo mode, system prompt, hook config) — Phase 1
+- vco dispatch/kill/relaunch — agent lifecycle management with crash recovery — Phase 2
+- Crash recovery — classification, exponential backoff, circuit breaker with callback hook — Phase 2
+- Pre-flight test suite — validates Claude Code headless behavior, determines monitor strategy — Phase 2
 
 ### Active
 
@@ -99,4 +102,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after Phase 1 completion*
+*Last updated: 2026-03-25 after Phase 2 completion*
