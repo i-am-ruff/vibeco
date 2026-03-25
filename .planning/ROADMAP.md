@@ -134,7 +134,14 @@ Plans:
   3. Merge conflicts are detected and reported to Discord with file details, and small conflicts are attempted automatically before escalating
   4. Running /vco:checkin posts phase completion status to the agent's #agent-{id} channel with commit count, summary, gaps, and next phase
   5. Running /vco:standup triggers a group standup in #standup with per-agent threads where the owner can reprioritize or ask questions
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+- [ ] 07-01-PLAN.md -- Git ops extensions + integration pipeline core + test attribution
+- [ ] 07-02-PLAN.md -- Conflict resolver (AI-assisted) + fix dispatch + Discord embeds
+- [ ] 07-03-PLAN.md -- Checkin data gathering + checkin embed builder
+- [ ] 07-04-PLAN.md -- Monitor integration interlock + !integrate command wiring
+- [ ] 07-05-PLAN.md -- Standup session + ReleaseView + !standup command
+- [ ] 07-06-PLAN.md -- Interaction regression tests (SAFE-04)
 
 ## Progress
 
@@ -149,4 +156,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Discord Bot Core | 0/4 | Planning complete | - |
 | 5. Hooks and Plan Gate | 3/4 | In Progress|  |
 | 6. PM/Strategist and Milestones | 2/5 | In Progress|  |
-| 7. Integration Pipeline and Communications | 0/TBD | Not started | - |
+| 7. Integration Pipeline and Communications | 0/6 | Planning complete | - |
