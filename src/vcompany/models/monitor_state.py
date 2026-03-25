@@ -28,3 +28,7 @@ class AgentMonitorState(BaseModel):
     last_plan_mtimes: dict[str, float] = {}
     current_phase: str = "unknown"
     phase_status: str = "unknown"
+    # Phase 5: Plan gate tracking (D-13, D-14)
+    plan_gate_status: Literal["idle", "awaiting_review", "approved", "rejected"] = "idle"
+    pending_plans: list[str] = []    # plan paths awaiting review
+    approved_plans: list[str] = []   # plan paths approved this phase
