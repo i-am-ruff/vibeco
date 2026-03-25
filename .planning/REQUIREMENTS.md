@@ -23,9 +23,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **LIFE-02**: `vco dispatch all` creates tmux session with one pane per agent plus monitor pane
 - [ ] **LIFE-03**: `vco kill` terminates a specific agent session (graceful signal then forced kill)
 - [ ] **LIFE-04**: `vco relaunch` restarts an agent with `/gsd:resume-work` to continue from last phase
-- [ ] **LIFE-05**: Crash recovery auto-relaunches failed agents with exponential backoff (30s, 2min, 10min)
-- [ ] **LIFE-06**: Circuit breaker stops relaunch after 3 crashes/hour and alerts via Discord
-- [ ] **LIFE-07**: Crash classification distinguishes transient failures (context exhaustion, API timeout) from persistent failures (corrupt git state, bad clone) before retrying
+- [x] **LIFE-05**: Crash recovery auto-relaunches failed agents with exponential backoff (30s, 2min, 10min)
+- [x] **LIFE-06**: Circuit breaker stops relaunch after 3 crashes/hour and alerts via Discord
+- [x] **LIFE-07**: Crash classification distinguishes transient failures (context exhaustion, API timeout) from persistent failures (corrupt git state, bad clone) before retrying
 
 ### Monitor Loop
 
@@ -183,9 +183,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | LIFE-02 | Phase 2 | Pending |
 | LIFE-03 | Phase 2 | Pending |
 | LIFE-04 | Phase 2 | Pending |
-| LIFE-05 | Phase 2 | Pending |
-| LIFE-06 | Phase 2 | Pending |
-| LIFE-07 | Phase 2 | Pending |
+| LIFE-05 | Phase 2 | Complete |
+| LIFE-06 | Phase 2 | Complete |
+| LIFE-07 | Phase 2 | Complete |
 | PRE-01 | Phase 2 | Pending |
 | PRE-02 | Phase 2 | Pending |
 | PRE-03 | Phase 2 | Pending |

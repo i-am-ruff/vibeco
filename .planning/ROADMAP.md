@@ -51,7 +51,7 @@ Plans:
   5. Pre-flight tests validate Claude Code headless behaviors (stream-json heartbeat, permission hang, --max-turns exit, --resume recovery) and their results determine the monitor strategy
 **Plans**: 3 plans
 Plans:
-- [ ] 02-01-PLAN.md -- State models + crash tracker (backoff, circuit breaker, classification)
+- [x] 02-01-PLAN.md -- State models + crash tracker (backoff, circuit breaker, classification)
 - [ ] 02-02-PLAN.md -- Agent manager + dispatch/kill/relaunch CLI commands
 - [ ] 02-03-PLAN.md -- Pre-flight test suite + CLI command
 
