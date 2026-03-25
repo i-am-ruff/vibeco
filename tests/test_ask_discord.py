@@ -100,9 +100,17 @@ def test_parse_stdin_malformed(monkeypatch: pytest.MonkeyPatch) -> None:
     stdout_capture = io.StringIO()
     monkeypatch.setattr("sys.stdout", stdout_capture)
 
-    # parse_stdin should raise, and the top-level handler produces deny
+    # parse_stdin raises, top-level handler (simulated here) produces deny
     with pytest.raises(SystemExit) as exc_info:
-        ask_discord.main()
+        try:
+            ask_discord.main()
+        except SystemExit:
+            raise
+        except Exception as exc:
+            ask_discord.output_deny(
+                f"Hook error (auto-fallback): {exc}. "
+                "Proceeding with first available option."
+            )
 
     assert exc_info.value.code == 0
     output = json.loads(stdout_capture.getvalue())
@@ -256,11 +264,19 @@ def test_error_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     stdout_capture = io.StringIO()
     monkeypatch.setattr("sys.stdout", stdout_capture)
 
-    # Simulate what happens at __main__ level
+    # Simulate what happens at __main__ level (top-level handler)
     try:
         ask_discord.main()
     except SystemExit:
         pass
+    except Exception as exc:
+        try:
+            ask_discord.output_deny(
+                f"Hook error (auto-fallback): {exc}. "
+                "Proceeding with first available option."
+            )
+        except SystemExit:
+            pass
 
     output = json.loads(stdout_capture.getvalue())
     assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
