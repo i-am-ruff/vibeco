@@ -247,6 +247,66 @@ class AgentManager:
         self.kill(agent_id)
         return self.dispatch(agent_id, resume=True)
 
+    # ── Fix Dispatch ─────────────────────────────────────────────────
+
+    def dispatch_fix(
+        self, agent_id: str, failing_tests: list[str], error_output: str = ""
+    ) -> DispatchResult:
+        """Dispatch a /gsd:quick fix task to the responsible agent per D-07/INTG-05.
+
+        Sends the failing test info as a prompt to the agent's tmux pane.
+        The agent receives: /gsd:quick Fix failing tests: {test_names}. Error: {error_output}
+        Owner is notified separately via #alerts (handled by caller).
+
+        Args:
+            agent_id: Agent to send the fix task to.
+            failing_tests: List of failing test names/paths.
+            error_output: Truncated error output from the test run.
+
+        Returns:
+            DispatchResult with success status.
+        """
+        agent_cfg = self._find_agent(agent_id)
+        if agent_cfg is None:
+            return DispatchResult(
+                success=False,
+                agent_id=agent_id,
+                error=f"Agent '{agent_id}' not found in config",
+            )
+
+        # Check agent has a pane
+        pane = self._panes.get(agent_id)
+        if pane is None:
+            return DispatchResult(
+                success=False,
+                agent_id=agent_id,
+                error=f"No tmux pane found for agent '{agent_id}'",
+            )
+
+        # Build fix prompt with test names and error output
+        test_list = ", ".join(failing_tests)
+        prompt = f"/gsd:quick Fix these failing integration tests: {test_list}."
+        if error_output:
+            prompt += f" Error output: {error_output[:500]}"
+
+        # Use tmux send_command to deliver
+        try:
+            self._tmux.send_command(pane, prompt)
+        except Exception:
+            logger.exception("Failed to send fix command to %s", agent_id)
+            return DispatchResult(
+                success=False,
+                agent_id=agent_id,
+                error=f"Failed to send command to tmux pane for '{agent_id}'",
+            )
+
+        logger.info("Dispatched fix to %s: %s", agent_id, test_list)
+        return DispatchResult(
+            success=True,
+            agent_id=agent_id,
+            pane_id=str(getattr(pane, "pane_id", "")),
+        )
+
     # ── Private helpers ───────────────────────────────────────────────
 
     def _find_agent(self, agent_id: str):
