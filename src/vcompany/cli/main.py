@@ -2,6 +2,7 @@
 
 import click
 
+from vcompany.cli.clone_cmd import clone
 from vcompany.cli.init_cmd import init
 
 
@@ -12,4 +13,5 @@ def cli():
     pass
 
 
+cli.add_command(clone)
 cli.add_command(init)
