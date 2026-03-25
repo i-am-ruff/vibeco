@@ -8,6 +8,7 @@ from vcompany.cli.init_cmd import init
 from vcompany.cli.kill_cmd import kill
 from vcompany.cli.preflight_cmd import preflight
 from vcompany.cli.relaunch_cmd import relaunch
+from vcompany.cli.sync_context_cmd import sync_context
 
 
 @click.group()
@@ -23,3 +24,4 @@ cli.add_command(init)
 cli.add_command(kill)
 cli.add_command(preflight)
 cli.add_command(relaunch)
+cli.add_command(sync_context)
