@@ -117,9 +117,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Pre-flight
 
-- [ ] **PRE-01**: Pre-flight test suite validates Claude Code headless behavior before first project
-- [ ] **PRE-02**: Tests cover: stream-json heartbeat, permission hang behavior, --max-turns exit, --resume recovery
-- [ ] **PRE-03**: Results determine monitor strategy (stream-json liveness vs git-commit fallback)
+- [x] **PRE-01**: Pre-flight test suite validates Claude Code headless behavior before first project
+- [x] **PRE-02**: Tests cover: stream-json heartbeat, permission hang behavior, --max-turns exit, --resume recovery
+- [x] **PRE-03**: Results determine monitor strategy (stream-json liveness vs git-commit fallback)
 
 ### Interaction Safety
 
@@ -186,9 +186,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | LIFE-05 | Phase 2 | Complete |
 | LIFE-06 | Phase 2 | Complete |
 | LIFE-07 | Phase 2 | Complete |
-| PRE-01 | Phase 2 | Pending |
-| PRE-02 | Phase 2 | Pending |
-| PRE-03 | Phase 2 | Pending |
+| PRE-01 | Phase 2 | Complete |
+| PRE-02 | Phase 2 | Complete |
+| PRE-03 | Phase 2 | Complete |
 | MON-01 | Phase 3 | Pending |
 | MON-02 | Phase 3 | Pending |
 | MON-03 | Phase 3 | Pending |

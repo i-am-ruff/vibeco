@@ -53,7 +53,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md -- State models + crash tracker (backoff, circuit breaker, classification)
 - [x] 02-02-PLAN.md -- Agent manager + dispatch/kill/relaunch CLI commands
-- [ ] 02-03-PLAN.md -- Pre-flight test suite + CLI command
+- [x] 02-03-PLAN.md -- Pre-flight test suite + CLI command
 
 ### Phase 3: Monitor Loop and Coordination
 **Goal**: Agents are continuously supervised with liveness checks, stuck detection, and cross-agent status awareness distributed to all clones
