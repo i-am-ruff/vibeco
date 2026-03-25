@@ -19,6 +19,10 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - vco dispatch/kill/relaunch — agent lifecycle management with crash recovery — Phase 2
 - Crash recovery — classification, exponential backoff, circuit breaker with callback hook — Phase 2
 - Pre-flight test suite — validates Claude Code headless behavior, determines monitor strategy — Phase 2
+- Monitor loop — 60s async cycle with liveness, stuck detection, plan gate, status generation — Phase 3
+- PROJECT-STATUS.md — auto-generated cross-agent status, distributed to all clones every cycle — Phase 3
+- INTERFACES.md contract system — change request logging, sync-context distribution — Phase 3
+- INTERACTIONS.md — 8 documented concurrent interaction patterns with safety analysis — Phase 3
 
 ### Active
 
@@ -102,4 +106,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after Phase 2 completion*
+*Last updated: 2026-03-25 after Phase 3 completion*
