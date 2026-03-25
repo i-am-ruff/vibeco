@@ -30,6 +30,7 @@ _COG_EXTENSIONS: list[str] = [
     "vcompany.bot.cogs.alerts",
     "vcompany.bot.cogs.plan_review",
     "vcompany.bot.cogs.strategist",
+    "vcompany.bot.cogs.question_handler",
 ]
 
 
@@ -119,14 +120,25 @@ class VcoBot(commands.Bot):
                 on_circuit_open=callbacks.get("on_circuit_open"),
             )
 
-            # Initialize MonitorLoop with alert callbacks
+            # Get PlanReviewCog for plan gate callback (Phase 5: D-07 through D-12)
+            plan_review_cog = self.get_cog("PlanReviewCog")
+            plan_review_callbacks = plan_review_cog.make_sync_callback() if plan_review_cog else {}
+
+            # Use PlanReviewCog's on_plan_detected instead of AlertsCog's
+            # PlanReviewCog handles the full plan gate workflow;
+            # AlertsCog still gets alert-only notification via separate method
+            plan_detected_callback = plan_review_callbacks.get(
+                "on_plan_detected"
+            ) or callbacks.get("on_plan_detected")
+
+            # Initialize MonitorLoop with alert callbacks + plan review callback
             self.monitor_loop = MonitorLoop(
                 project_dir=self.project_dir,
                 config=self.project_config,
                 tmux=tmux,
                 on_agent_dead=callbacks.get("on_agent_dead"),
                 on_agent_stuck=callbacks.get("on_agent_stuck"),
-                on_plan_detected=callbacks.get("on_plan_detected"),
+                on_plan_detected=plan_detected_callback,
             )
 
             # Start monitor loop as background task per D-13

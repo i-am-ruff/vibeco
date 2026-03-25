@@ -106,6 +106,18 @@ class AlertsCog(commands.Cog):
         )
         await self._send_or_buffer(embed)
 
+    async def alert_hook_timeout(self, agent_id: str, request_id: str, fallback: str) -> None:
+        """Post alert when a hook question times out with auto-fallback per HOOK-04."""
+        embed = build_alert_embed(
+            title="Hook Timeout: Auto-fallback",
+            description=(
+                f"Agent **{agent_id}** question (request `{request_id}`) timed out.\n"
+                f"Fallback answer: {fallback}"
+            ),
+            alert_type="warning",
+        )
+        await self._send_or_buffer(embed)
+
     async def alert_plan_detected(self, agent_id: str, plan_path: Path) -> None:
         """Post plan detection notice to #plan-review channel."""
         embed = build_alert_embed(

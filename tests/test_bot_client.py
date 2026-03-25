@@ -56,23 +56,24 @@ class TestVcoBotSetupHook:
 
     @pytest.mark.asyncio
     async def test_loads_all_cog_extensions(self):
-        """setup_hook calls load_extension for all 4 cog paths."""
+        """setup_hook calls load_extension for all 5 cog paths."""
         bot = VcoBot(Path("/tmp/test"), _make_config())
         bot.load_extension = AsyncMock()
 
         await bot.setup_hook()
 
-        assert bot.load_extension.call_count == 4
+        assert bot.load_extension.call_count == 5
         loaded = [call.args[0] for call in bot.load_extension.call_args_list]
         assert loaded == _COG_EXTENSIONS
 
     @pytest.mark.asyncio
     async def test_cog_extension_paths(self):
-        """All 4 expected cog extension paths are defined."""
+        """All 5 expected cog extension paths are defined."""
         assert "vcompany.bot.cogs.commands" in _COG_EXTENSIONS
         assert "vcompany.bot.cogs.alerts" in _COG_EXTENSIONS
         assert "vcompany.bot.cogs.plan_review" in _COG_EXTENSIONS
         assert "vcompany.bot.cogs.strategist" in _COG_EXTENSIONS
+        assert "vcompany.bot.cogs.question_handler" in _COG_EXTENSIONS
 
 
 class TestVcoBotOnReady:

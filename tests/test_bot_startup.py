@@ -86,7 +86,7 @@ class TestOnReadyInitializesComponents:
     async def test_on_ready_injects_callbacks(
         self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls, monkeypatch
     ):
-        """Verify MonitorLoop receives callbacks from AlertsCog.make_sync_callbacks."""
+        """Verify MonitorLoop receives callbacks from AlertsCog and PlanReviewCog."""
         bot = _make_bot(monkeypatch)
         guild = _mock_guild()
         bot.get_guild = MagicMock(return_value=guild)
@@ -100,7 +100,22 @@ class TestOnReadyInitializesComponents:
             "on_circuit_open": MagicMock(),
         }
         mock_alerts_cog.make_sync_callbacks.return_value = fake_callbacks
-        bot.get_cog = MagicMock(return_value=mock_alerts_cog)
+
+        # Mock PlanReviewCog with plan detected callback
+        mock_plan_review_cog = MagicMock()
+        plan_review_on_plan_detected = MagicMock()
+        mock_plan_review_cog.make_sync_callback.return_value = {
+            "on_plan_detected": plan_review_on_plan_detected,
+        }
+
+        def get_cog_side_effect(name):
+            if name == "AlertsCog":
+                return mock_alerts_cog
+            if name == "PlanReviewCog":
+                return mock_plan_review_cog
+            return None
+
+        bot.get_cog = MagicMock(side_effect=get_cog_side_effect)
 
         mock_ml_instance = MagicMock()
         mock_ml_instance.run = AsyncMock()
@@ -109,15 +124,59 @@ class TestOnReadyInitializesComponents:
         with patch("vcompany.bot.client.asyncio.create_task"):
             await bot.on_ready()
 
-        # Check MonitorLoop received the right callbacks
+        # Check MonitorLoop received alert callbacks
         ml_call_kwargs = mock_ml_cls.call_args
         assert ml_call_kwargs.kwargs["on_agent_dead"] == fake_callbacks["on_agent_dead"]
         assert ml_call_kwargs.kwargs["on_agent_stuck"] == fake_callbacks["on_agent_stuck"]
-        assert ml_call_kwargs.kwargs["on_plan_detected"] == fake_callbacks["on_plan_detected"]
+
+        # PlanReviewCog's on_plan_detected should be preferred over AlertsCog's
+        assert ml_call_kwargs.kwargs["on_plan_detected"] == plan_review_on_plan_detected
 
         # Check CrashTracker received circuit_open callback
         ct_call_kwargs = mock_ct_cls.call_args
         assert ct_call_kwargs.kwargs["on_circuit_open"] == fake_callbacks["on_circuit_open"]
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.client.MonitorLoop")
+    @patch("vcompany.bot.client.CrashTracker")
+    @patch("vcompany.bot.client.AgentManager")
+    @patch("vcompany.bot.client.TmuxManager", create=True)
+    async def test_on_ready_falls_back_to_alerts_plan_detected(
+        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls, monkeypatch
+    ):
+        """When PlanReviewCog not available, falls back to AlertsCog on_plan_detected."""
+        bot = _make_bot(monkeypatch)
+        guild = _mock_guild()
+        bot.get_guild = MagicMock(return_value=guild)
+
+        # Mock AlertsCog with callbacks
+        mock_alerts_cog = MagicMock()
+        alerts_plan_detected = MagicMock()
+        fake_callbacks = {
+            "on_agent_dead": MagicMock(),
+            "on_agent_stuck": MagicMock(),
+            "on_plan_detected": alerts_plan_detected,
+            "on_circuit_open": MagicMock(),
+        }
+        mock_alerts_cog.make_sync_callbacks.return_value = fake_callbacks
+
+        def get_cog_side_effect(name):
+            if name == "AlertsCog":
+                return mock_alerts_cog
+            return None  # PlanReviewCog not available
+
+        bot.get_cog = MagicMock(side_effect=get_cog_side_effect)
+
+        mock_ml_instance = MagicMock()
+        mock_ml_instance.run = AsyncMock()
+        mock_ml_cls.return_value = mock_ml_instance
+
+        with patch("vcompany.bot.client.asyncio.create_task"):
+            await bot.on_ready()
+
+        # Should fall back to AlertsCog's on_plan_detected
+        ml_call_kwargs = mock_ml_cls.call_args
+        assert ml_call_kwargs.kwargs["on_plan_detected"] == alerts_plan_detected
 
     @pytest.mark.asyncio
     @patch("vcompany.bot.client.MonitorLoop")
