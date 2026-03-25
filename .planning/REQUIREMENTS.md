@@ -91,12 +91,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Integration Pipeline
 
-- [ ] **INTG-01**: Each agent commits to its own branch (branch-per-agent)
-- [ ] **INTG-02**: `vco integrate` creates integration branch from main, merges all agent branches
-- [ ] **INTG-03**: Integration runs full test suite after merge
-- [ ] **INTG-04**: Test failures attributed to specific agent branches
+- [x] **INTG-01**: Each agent commits to its own branch (branch-per-agent)
+- [x] **INTG-02**: `vco integrate` creates integration branch from main, merges all agent branches
+- [x] **INTG-03**: Integration runs full test suite after merge
+- [x] **INTG-04**: Test failures attributed to specific agent branches
 - [x] **INTG-05**: On test failure, orchestrator dispatches /gsd:quick fix to responsible agent
-- [ ] **INTG-06**: On success, creates PR to main
+- [x] **INTG-06**: On success, creates PR to main
 - [x] **INTG-07**: Merge conflict detection reports conflicts to Discord with file list and details
 - [x] **INTG-08**: Conflict resolver agent attempts automatic resolution of small conflicts before escalating
 
@@ -104,10 +104,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **COMM-01**: /vco:checkin posts phase completion status to agent's own #agent-{id} channel
 - [x] **COMM-02**: Checkin includes: commits count, summary, gaps/notes, next phase, dependency status
-- [ ] **COMM-03**: /vco:standup posts structured status to #standup, creates thread per agent
-- [ ] **COMM-04**: Standup sessions listen for owner replies in threads (poll every 5s, 5-min timeout)
-- [ ] **COMM-05**: Owner can reprioritize agents, change scope, or ask questions via standup threads
-- [ ] **COMM-06**: Agent updates ROADMAP.md or STATE.md based on owner feedback during standup
+- [x] **COMM-03**: /vco:standup posts structured status to #standup, creates thread per agent
+- [x] **COMM-04**: Standup sessions listen for owner replies in threads (poll every 5s, 5-min timeout)
+- [x] **COMM-05**: Owner can reprioritize agents, change scope, or ask questions via standup threads
+- [x] **COMM-06**: Agent updates ROADMAP.md or STATE.md based on owner feedback during standup
 
 ### Milestone Management
 
@@ -126,7 +126,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **SAFE-01**: Every phase plan includes an Interaction Safety Table analyzing concurrent scenarios (Agent/Component × Circumstance × Action × Concurrent With × Safe? × Mitigation)
 - [x] **SAFE-02**: Plan checker agent validates interaction safety table completeness — rejects plans missing concurrency analysis
 - [x] **SAFE-03**: Known interaction patterns documented in a central INTERACTIONS.md reference (e.g., monitor reads during agent writes, simultaneous git pushes, hook timeout during context compression)
-- [ ] **SAFE-04**: Integration phase includes interaction regression tests for critical concurrent scenarios identified across all phases
+- [x] **SAFE-04**: Integration phase includes interaction regression tests for critical concurrent scenarios identified across all phases
 
 ## v2 Requirements
 
@@ -238,21 +238,21 @@ Deferred to future release. Tracked but not in current roadmap.
 | MILE-01 | Phase 6 | Complete |
 | MILE-02 | Phase 6 | Complete |
 | MILE-03 | Phase 6 | Complete |
-| INTG-01 | Phase 7 | Pending |
-| INTG-02 | Phase 7 | Pending |
-| INTG-03 | Phase 7 | Pending |
-| INTG-04 | Phase 7 | Pending |
+| INTG-01 | Phase 7 | Complete |
+| INTG-02 | Phase 7 | Complete |
+| INTG-03 | Phase 7 | Complete |
+| INTG-04 | Phase 7 | Complete |
 | INTG-05 | Phase 7 | Complete |
-| INTG-06 | Phase 7 | Pending |
+| INTG-06 | Phase 7 | Complete |
 | INTG-07 | Phase 7 | Complete |
 | INTG-08 | Phase 7 | Complete |
 | COMM-01 | Phase 7 | Complete |
 | COMM-02 | Phase 7 | Complete |
-| COMM-03 | Phase 7 | Pending |
-| COMM-04 | Phase 7 | Pending |
-| COMM-05 | Phase 7 | Pending |
-| COMM-06 | Phase 7 | Pending |
-| SAFE-04 | Phase 7 | Pending |
+| COMM-03 | Phase 7 | Complete |
+| COMM-04 | Phase 7 | Complete |
+| COMM-05 | Phase 7 | Complete |
+| COMM-06 | Phase 7 | Complete |
+| SAFE-04 | Phase 7 | Complete |
 
 **Coverage:**
 - v1 requirements: 85 total
