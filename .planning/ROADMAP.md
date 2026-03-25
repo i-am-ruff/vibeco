@@ -32,7 +32,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. An invalid agents.yaml is rejected with clear validation errors before any filesystem changes occur
   4. Git and tmux operations work through wrapper abstractions that handle errors and log output
   5. All coordination file writes use atomic tmp-then-rename pattern (verified by test)
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 01-01-PLAN.md -- Project bootstrap + Pydantic config models
+- [ ] 01-02-PLAN.md -- Git wrapper, tmux wrapper, atomic file ops
+- [ ] 01-03-PLAN.md -- Jinja2 templates + vco init command
+- [ ] 01-04-PLAN.md -- vco clone command + artifact deployment
 
 ### Phase 2: Agent Lifecycle and Pre-flight
 **Goal**: Agents can be launched, terminated, and automatically recovered from crashes, with validated understanding of Claude Code headless behavior
@@ -113,7 +118,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation and Configuration | 0/TBD | Not started | - |
+| 1. Foundation and Configuration | 0/4 | Planning complete | - |
 | 2. Agent Lifecycle and Pre-flight | 0/TBD | Not started | - |
 | 3. Monitor Loop and Coordination | 0/TBD | Not started | - |
 | 4. Discord Bot Core | 0/TBD | Not started | - |
