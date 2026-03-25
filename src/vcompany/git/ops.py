@@ -128,3 +128,72 @@ def branch(cwd: Path) -> GitResult:
         cwd: Repository working directory.
     """
     return _run_git("branch", cwd=cwd)
+
+
+def merge(branch: str, cwd: Path, no_ff: bool = False) -> GitResult:
+    """Merge a branch into the current branch.
+
+    Args:
+        branch: Branch name to merge.
+        cwd: Repository working directory.
+        no_ff: If True, create a merge commit even for fast-forward merges.
+    """
+    args: list[str] = ["merge"]
+    if no_ff:
+        args.append("--no-ff")
+    args.append(branch)
+    return _run_git(*args, cwd=cwd, timeout=120)
+
+
+def fetch(cwd: Path, remote: str = "origin") -> GitResult:
+    """Fetch from a remote.
+
+    Args:
+        cwd: Repository working directory.
+        remote: Remote name (default "origin").
+    """
+    return _run_git("fetch", remote, cwd=cwd, timeout=120)
+
+
+def push(cwd: Path, remote: str = "origin", branch: str | None = None) -> GitResult:
+    """Push to a remote.
+
+    Args:
+        cwd: Repository working directory.
+        remote: Remote name (default "origin").
+        branch: Optional branch to push.
+    """
+    args: list[str] = ["push", remote]
+    if branch:
+        args.append(branch)
+    return _run_git(*args, cwd=cwd, timeout=120)
+
+
+def diff(cwd: Path, args: list[str] | None = None) -> GitResult:
+    """Show diff output.
+
+    Args:
+        cwd: Repository working directory.
+        args: Additional arguments for git diff.
+    """
+    extra = args or []
+    return _run_git("diff", *extra, cwd=cwd)
+
+
+def merge_abort(cwd: Path) -> GitResult:
+    """Abort a merge in progress.
+
+    Args:
+        cwd: Repository working directory.
+    """
+    return _run_git("merge", "--abort", cwd=cwd)
+
+
+def checkout(branch: str, cwd: Path) -> GitResult:
+    """Checkout an existing branch.
+
+    Args:
+        branch: Branch name to checkout.
+        cwd: Repository working directory.
+    """
+    return _run_git("checkout", branch, cwd=cwd)

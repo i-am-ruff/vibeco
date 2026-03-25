@@ -1,29 +1,39 @@
-"""Data models for the integration pipeline."""
+"""Data models for integration pipeline results.
+
+IntegrationResult captures the outcome of a full integration run.
+TestRunResult captures the outcome of a test suite execution.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from typing import Literal
+
+from pydantic import BaseModel
 
 
-@dataclass
-class TestResults:
-    """Test run results from integration testing."""
+class TestRunResult(BaseModel):
+    """Result of running the test suite."""
 
-    passed: int = 0
+    passed: bool
+    total: int = 0
     failed: int = 0
-    errors: int = 0
-    failing_tests: list[str] = field(default_factory=list)
+    failed_tests: list[str] = []
+    output: str = ""
 
 
-@dataclass
-class IntegrationResult:
+# Alias for backward compatibility with conflict_resolver
+TestResults = TestRunResult
+
+
+class IntegrationResult(BaseModel):
     """Result of an integration pipeline run."""
 
-    status: str  # "success", "test_failure", "merge_conflict", "error"
-    branch_name: str = ""
-    merged_agents: list[str] = field(default_factory=list)
-    test_results: TestResults | None = None
-    pr_url: str = ""
-    conflict_files: list[str] = field(default_factory=list)
-    attribution: dict[str, list[str]] = field(default_factory=dict)
-    error_message: str = ""
+    status: Literal["success", "test_failure", "merge_conflict", "error"]
+    branch_name: str
+    merged_agents: list[str] = []
+    test_results: TestRunResult | None = None
+    attribution: dict[str, list[str]] = {}  # agent_id -> [failing_test_names]
+    pr_url: str | None = None
+    conflict_files: list[str] = []
+    error: str = ""
+    failing_tests: list[str] = []  # top-level convenience field
