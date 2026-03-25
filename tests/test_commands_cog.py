@@ -1,0 +1,539 @@
+"""Tests for CommandsCog operator commands (DISC-03 through DISC-11)."""
+
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import discord
+import pytest
+
+from vcompany.bot.cogs.commands import CommandsCog
+from vcompany.models.config import AgentConfig, ProjectConfig
+from vcompany.orchestrator.agent_manager import DispatchResult
+
+
+def _make_config() -> ProjectConfig:
+    """Create a minimal ProjectConfig for testing."""
+    return ProjectConfig(
+        project="testproject",
+        repo="https://github.com/test/repo",
+        agents=[
+            AgentConfig(
+                id="agent-1",
+                role="backend",
+                owns=["src/backend/"],
+                consumes="INTERFACES.md",
+                gsd_mode="full",
+                system_prompt="You are a backend agent.",
+            ),
+            AgentConfig(
+                id="agent-2",
+                role="frontend",
+                owns=["src/frontend/"],
+                consumes="INTERFACES.md",
+                gsd_mode="full",
+                system_prompt="You are a frontend agent.",
+            ),
+        ],
+    )
+
+
+def _make_bot(*, ready: bool = True) -> MagicMock:
+    """Create a mock VcoBot with standard attributes."""
+    bot = MagicMock()
+    bot.project_dir = Path("/tmp/testproject")
+    bot.project_config = _make_config()
+    bot._ready_flag = ready
+    bot.is_bot_ready = ready
+    bot.agent_manager = MagicMock()
+    return bot
+
+
+def _make_ctx(*, guild: bool = True) -> MagicMock:
+    """Create a mock commands.Context."""
+    ctx = MagicMock()
+    ctx.send = AsyncMock()
+    ctx.author = MagicMock(spec=discord.Member)
+    ctx.author.id = 12345
+    ctx.message = MagicMock()
+    ctx.channel = MagicMock()
+    ctx.channel.create_thread = AsyncMock()
+
+    if guild:
+        mock_role = MagicMock(spec=discord.Role)
+        mock_role.name = "vco-owner"
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.roles = [mock_role]
+        ctx.guild = mock_guild
+    else:
+        ctx.guild = None
+
+    return ctx
+
+
+class TestCogCheck:
+    """cog_check rejects commands when bot is not ready (Pitfall 6)."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_not_ready(self):
+        """cog_check returns False and sends message when bot not ready."""
+        bot = _make_bot(ready=False)
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        result = await cog.cog_check(ctx)
+
+        assert result is False
+        ctx.send.assert_called_once_with("Bot is starting up, please wait...")
+
+    @pytest.mark.asyncio
+    async def test_allows_when_ready(self):
+        """cog_check returns True when bot is ready."""
+        bot = _make_bot(ready=True)
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        result = await cog.cog_check(ctx)
+
+        assert result is True
+
+
+class TestNewProject:
+    """!new-project creates channels and discussion thread (DISC-03)."""
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.setup_project_channels", new_callable=AsyncMock)
+    async def test_new_project(self, mock_setup_channels):
+        """Creates project channels and thread on success."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_setup_channels.return_value = MagicMock(spec=discord.CategoryChannel)
+
+        await cog.new_project.callback(cog, ctx, name="myapp")
+
+        # Verify setup_project_channels called
+        mock_setup_channels.assert_called_once()
+        call_args = mock_setup_channels.call_args
+        assert call_args[0][1] == "myapp"  # project_name
+
+        # Verify thread created
+        ctx.channel.create_thread.assert_called_once_with(
+            name="Project: myapp",
+            message=ctx.message,
+        )
+
+        # Verify confirmation sent
+        sent_text = ctx.send.call_args[0][0]
+        assert "myapp" in sent_text
+        assert "created" in sent_text
+
+    @pytest.mark.asyncio
+    async def test_new_project_no_name(self):
+        """Asks for project name when none provided."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        await cog.new_project.callback(cog, ctx, name=None)
+
+        ctx.send.assert_called_once()
+        assert "project name" in ctx.send.call_args[0][0].lower()
+
+    @pytest.mark.asyncio
+    async def test_new_project_no_guild(self):
+        """Rejects when used outside a server."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx(guild=False)
+
+        await cog.new_project.callback(cog, ctx, name="myapp")
+
+        ctx.send.assert_called_once()
+        assert "server" in ctx.send.call_args[0][0].lower()
+
+
+class TestDispatch:
+    """!dispatch dispatches agents via asyncio.to_thread (DISC-04)."""
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
+    async def test_dispatch_single(self, mock_to_thread):
+        """Dispatches a single agent via to_thread."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_to_thread.return_value = DispatchResult(
+            success=True, agent_id="agent-1", pane_id="%0"
+        )
+
+        await cog.dispatch_cmd.callback(cog, ctx, agent_id="agent-1")
+
+        mock_to_thread.assert_called_once_with(
+            bot.agent_manager.dispatch, "agent-1"
+        )
+        assert "dispatched" in ctx.send.call_args[0][0].lower()
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
+    async def test_dispatch_all(self, mock_to_thread):
+        """Dispatches all agents via to_thread."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_to_thread.return_value = [
+            DispatchResult(success=True, agent_id="agent-1"),
+            DispatchResult(success=True, agent_id="agent-2"),
+        ]
+
+        await cog.dispatch_cmd.callback(cog, ctx, agent_id="all")
+
+        mock_to_thread.assert_called_once_with(
+            bot.agent_manager.dispatch_all
+        )
+        assert "2 succeeded" in ctx.send.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_dispatch_no_agent_manager(self):
+        """Reports error when agent_manager is None."""
+        bot = _make_bot()
+        bot.agent_manager = None
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        await cog.dispatch_cmd.callback(cog, ctx, agent_id="agent-1")
+
+        assert "not initialized" in ctx.send.call_args[0][0].lower()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_unknown_agent(self):
+        """Reports error for unknown agent ID."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        await cog.dispatch_cmd.callback(cog, ctx, agent_id="nonexistent")
+
+        assert "unknown agent" in ctx.send.call_args[0][0].lower()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_no_agent_id(self):
+        """Asks for agent ID when none provided."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        await cog.dispatch_cmd.callback(cog, ctx, agent_id=None)
+
+        assert "specify" in ctx.send.call_args[0][0].lower()
+
+
+class TestStatus:
+    """!status shows project status embed (DISC-05)."""
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
+    @patch("vcompany.bot.cogs.commands.build_status_embed")
+    async def test_status(self, mock_build_embed, mock_to_thread):
+        """Generates status via to_thread and sends embed."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_to_thread.return_value = "## Agent 1\nRunning"
+        mock_embed = MagicMock(spec=discord.Embed)
+        mock_build_embed.return_value = mock_embed
+
+        await cog.status_cmd.callback(cog, ctx)
+
+        mock_to_thread.assert_called_once()
+        # Verify to_thread called with generate_project_status
+        call_args = mock_to_thread.call_args[0]
+        assert call_args[0].__name__ == "generate_project_status"
+
+        mock_build_embed.assert_called_once_with("## Agent 1\nRunning")
+        ctx.send.assert_called_once_with(embed=mock_embed)
+
+
+class TestKill:
+    """!kill requires confirmation before executing (DISC-07)."""
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
+    @patch("vcompany.bot.cogs.commands.ConfirmView")
+    async def test_kill_confirmed(self, MockConfirmView, mock_to_thread):
+        """Kills agent after confirmation."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_view = MagicMock()
+        mock_view.wait = AsyncMock()
+        mock_view.value = True
+        MockConfirmView.return_value = mock_view
+
+        mock_to_thread.return_value = True
+
+        await cog.kill_cmd.callback(cog, ctx, agent_id="agent-1")
+
+        # Verify confirmation was sent
+        first_send = ctx.send.call_args_list[0]
+        assert "kill agent" in first_send[0][0].lower()
+        assert first_send[1]["view"] is mock_view
+
+        # Verify kill was called via to_thread
+        mock_to_thread.assert_called_once_with(
+            bot.agent_manager.kill, "agent-1"
+        )
+
+        # Verify success message
+        last_send = ctx.send.call_args_list[-1]
+        assert "killed" in last_send[0][0].lower()
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.ConfirmView")
+    async def test_kill_cancelled(self, MockConfirmView):
+        """Does not kill agent when cancelled."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_view = MagicMock()
+        mock_view.wait = AsyncMock()
+        mock_view.value = False
+        MockConfirmView.return_value = mock_view
+
+        await cog.kill_cmd.callback(cog, ctx, agent_id="agent-1")
+
+        # Verify "cancelled" message
+        last_send = ctx.send.call_args_list[-1]
+        assert "cancelled" in last_send[0][0].lower()
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.ConfirmView")
+    async def test_kill_timeout(self, MockConfirmView):
+        """Treats timeout as cancellation."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_view = MagicMock()
+        mock_view.wait = AsyncMock()
+        mock_view.value = None  # timeout
+        MockConfirmView.return_value = mock_view
+
+        await cog.kill_cmd.callback(cog, ctx, agent_id="agent-1")
+
+        last_send = ctx.send.call_args_list[-1]
+        assert "cancelled" in last_send[0][0].lower()
+
+    @pytest.mark.asyncio
+    async def test_kill_no_agent_id(self):
+        """Asks for agent ID when none provided."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        await cog.kill_cmd.callback(cog, ctx, agent_id=None)
+
+        assert "specify" in ctx.send.call_args[0][0].lower()
+
+
+class TestRelaunch:
+    """!relaunch restarts an agent via asyncio.to_thread (DISC-08)."""
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
+    async def test_relaunch(self, mock_to_thread):
+        """Relaunches agent via to_thread."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_to_thread.return_value = DispatchResult(
+            success=True, agent_id="agent-1"
+        )
+
+        await cog.relaunch_cmd.callback(cog, ctx, agent_id="agent-1")
+
+        mock_to_thread.assert_called_once_with(
+            bot.agent_manager.relaunch, "agent-1"
+        )
+        assert "relaunched" in ctx.send.call_args[0][0].lower()
+
+    @pytest.mark.asyncio
+    async def test_relaunch_unknown_agent(self):
+        """Reports error for unknown agent ID."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        await cog.relaunch_cmd.callback(cog, ctx, agent_id="nonexistent")
+
+        assert "unknown agent" in ctx.send.call_args[0][0].lower()
+
+    @pytest.mark.asyncio
+    async def test_relaunch_no_agent_manager(self):
+        """Reports error when agent_manager is None."""
+        bot = _make_bot()
+        bot.agent_manager = None
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        await cog.relaunch_cmd.callback(cog, ctx, agent_id="agent-1")
+
+        assert "not initialized" in ctx.send.call_args[0][0].lower()
+
+
+class TestStandup:
+    """!standup returns scaffold message (DISC-06)."""
+
+    @pytest.mark.asyncio
+    async def test_standup_scaffold(self):
+        """Returns Phase 7 placeholder message."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        await cog.standup_cmd.callback(cog, ctx)
+
+        msg = ctx.send.call_args[0][0]
+        assert "phase 7" in msg.lower()
+        assert "standup" in msg.lower()
+
+
+class TestIntegrate:
+    """!integrate is scaffolded with confirmation (DISC-09)."""
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.ConfirmView")
+    async def test_integrate_scaffold(self, MockConfirmView):
+        """Returns Phase 7 placeholder after confirmation."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_view = MagicMock()
+        mock_view.wait = AsyncMock()
+        mock_view.value = True
+        MockConfirmView.return_value = mock_view
+
+        await cog.integrate_cmd.callback(cog, ctx)
+
+        # Verify confirmation prompt sent
+        first_send = ctx.send.call_args_list[0]
+        assert "integration" in first_send[0][0].lower()
+
+        # Verify scaffold message
+        last_send = ctx.send.call_args_list[-1]
+        assert "phase 7" in last_send[0][0].lower()
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.ConfirmView")
+    async def test_integrate_cancelled(self, MockConfirmView):
+        """Returns cancellation message when cancelled."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_view = MagicMock()
+        mock_view.wait = AsyncMock()
+        mock_view.value = False
+        MockConfirmView.return_value = mock_view
+
+        await cog.integrate_cmd.callback(cog, ctx)
+
+        last_send = ctx.send.call_args_list[-1]
+        assert "cancelled" in last_send[0][0].lower()
+
+
+class TestAsyncThreadUsage:
+    """Verify asyncio.to_thread is used for blocking calls (DISC-11)."""
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
+    async def test_dispatch_uses_to_thread(self, mock_to_thread):
+        """!dispatch uses asyncio.to_thread."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_to_thread.return_value = DispatchResult(success=True, agent_id="agent-1")
+
+        await cog.dispatch_cmd.callback(cog, ctx, agent_id="agent-1")
+
+        mock_to_thread.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
+    async def test_status_uses_to_thread(self, mock_to_thread):
+        """!status uses asyncio.to_thread."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_to_thread.return_value = "## Status"
+
+        await cog.status_cmd.callback(cog, ctx)
+
+        mock_to_thread.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
+    @patch("vcompany.bot.cogs.commands.ConfirmView")
+    async def test_kill_uses_to_thread(self, MockConfirmView, mock_to_thread):
+        """!kill uses asyncio.to_thread after confirmation."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_view = MagicMock()
+        mock_view.wait = AsyncMock()
+        mock_view.value = True
+        MockConfirmView.return_value = mock_view
+
+        mock_to_thread.return_value = True
+
+        await cog.kill_cmd.callback(cog, ctx, agent_id="agent-1")
+
+        mock_to_thread.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
+    async def test_relaunch_uses_to_thread(self, mock_to_thread):
+        """!relaunch uses asyncio.to_thread."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+        ctx = _make_ctx()
+
+        mock_to_thread.return_value = DispatchResult(success=True, agent_id="agent-1")
+
+        await cog.relaunch_cmd.callback(cog, ctx, agent_id="agent-1")
+
+        mock_to_thread.assert_called_once()
+
+
+class TestRoleCheckUnauthorized:
+    """Verify is_owner decorator is applied to all commands."""
+
+    def test_all_commands_have_is_owner_check(self):
+        """Every command has at least one check (is_owner)."""
+        bot = _make_bot()
+        cog = CommandsCog(bot)
+
+        command_names = [
+            "new-project", "dispatch", "status", "kill",
+            "relaunch", "standup", "integrate",
+        ]
+
+        for cmd_name in command_names:
+            cmd = None
+            # Find the command by iterating cog commands
+            for c in cog.get_commands():
+                if c.name == cmd_name:
+                    cmd = c
+                    break
+            assert cmd is not None, f"Command {cmd_name} not found"
+            assert len(cmd.checks) > 0, f"Command {cmd_name} has no checks (missing @is_owner)"
