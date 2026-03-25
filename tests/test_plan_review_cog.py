@@ -111,7 +111,9 @@ class TestRejectFeedbackModal:
     async def test_reject_modal_submit(self):
         """Modal on_submit captures feedback text from TextInput."""
         modal = RejectFeedbackModal()
-        modal.feedback.value = "The plan lacks error handling"
+
+        # TextInput.value is a property -- mock it via _value attribute
+        modal.feedback._value = "The plan lacks error handling"
 
         interaction = MagicMock()
         interaction.response = AsyncMock()

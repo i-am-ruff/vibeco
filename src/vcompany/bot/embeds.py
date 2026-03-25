@@ -80,3 +80,51 @@ def build_alert_embed(
         color=color,
         timestamp=datetime.now(timezone.utc),
     )
+
+
+def build_plan_review_embed(
+    agent_id: str,
+    phase: str,
+    plan_number: str,
+    task_count: int,
+    goal: str,
+    plan_path: str,
+    *,
+    safety_valid: bool = True,
+    safety_message: str = "",
+) -> discord.Embed:
+    """Build a rich embed for plan review posting per D-07.
+
+    Args:
+        agent_id: Agent that created the plan.
+        phase: Phase name/number.
+        plan_number: Plan number within phase.
+        task_count: Number of tasks in the plan.
+        goal: Plan objective/goal text.
+        plan_path: Path to the PLAN.md file.
+        safety_valid: Whether safety table validation passed.
+        safety_message: Validation message from safety_validator.
+
+    Returns:
+        discord.Embed with plan summary fields.
+    """
+    color = discord.Color.green() if safety_valid else discord.Color.orange()
+    embed = discord.Embed(
+        title=f"Plan Review: {agent_id}",
+        description=goal[:4096] if goal else "No objective found",
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="Phase", value=phase, inline=True)
+    embed.add_field(name="Plan", value=plan_number, inline=True)
+    embed.add_field(name="Tasks", value=str(task_count), inline=True)
+
+    if not safety_valid:
+        embed.add_field(
+            name="Safety Warning",
+            value=f"Missing or incomplete interaction safety table: {safety_message}",
+            inline=False,
+        )
+
+    embed.set_footer(text=f"Path: {plan_path}")
+    return embed
