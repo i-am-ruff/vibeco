@@ -1,0 +1,128 @@
+"""Tests for sync-context file distribution."""
+
+from pathlib import Path
+from unittest.mock import patch
+
+from vcompany.coordination.sync_context import SyncResult, sync_context_files
+from vcompany.models.config import AgentConfig, ProjectConfig
+
+
+def _make_config(*agent_ids: str) -> ProjectConfig:
+    """Create a minimal ProjectConfig with given agent IDs."""
+    agents = [
+        AgentConfig(
+            id=aid,
+            role="test",
+            owns=[f"src/{aid}/"],
+            consumes="none",
+            gsd_mode="full",
+            system_prompt="test",
+        )
+        for aid in agent_ids
+    ]
+    return ProjectConfig(project="test", repo="test-repo", agents=agents)
+
+
+def _setup_project(tmp_path: Path, agent_ids: list[str], files: dict[str, str]) -> Path:
+    """Create mock project structure with context/ and clones/."""
+    context_dir = tmp_path / "context"
+    context_dir.mkdir()
+    for name, content in files.items():
+        (context_dir / name).write_text(content)
+    for aid in agent_ids:
+        (tmp_path / "clones" / aid).mkdir(parents=True)
+    return tmp_path
+
+
+class TestSyncContextFiles:
+    def test_sync_copies_existing_files(self, tmp_path: Path) -> None:
+        """sync_context_files copies INTERFACES.md, MILESTONE-SCOPE.md, STRATEGIST-PROMPT.md from context/ to each clone."""
+        project_dir = _setup_project(
+            tmp_path,
+            ["agent-a", "agent-b"],
+            {
+                "INTERFACES.md": "# Interfaces\nAPI contract v1",
+                "MILESTONE-SCOPE.md": "# Milestone\nScope details",
+                "STRATEGIST-PROMPT.md": "# Strategist\nPrompt content",
+            },
+        )
+        config = _make_config("agent-a", "agent-b")
+        result = sync_context_files(project_dir, config)
+
+        for aid in ["agent-a", "agent-b"]:
+            clone_dir = project_dir / "clones" / aid
+            assert (clone_dir / "INTERFACES.md").read_text() == "# Interfaces\nAPI contract v1"
+            assert (clone_dir / "MILESTONE-SCOPE.md").read_text() == "# Milestone\nScope details"
+            assert (clone_dir / "STRATEGIST-PROMPT.md").read_text() == "# Strategist\nPrompt content"
+
+        assert result.clones_updated == 2
+        assert result.files_synced == 6  # 3 files * 2 clones
+        assert result.errors == []
+
+    def test_sync_skips_missing_files(self, tmp_path: Path) -> None:
+        """If MILESTONE-SCOPE.md doesn't exist in context/, it's skipped (not an error)."""
+        project_dir = _setup_project(
+            tmp_path,
+            ["agent-a"],
+            {"INTERFACES.md": "# Interfaces"},
+        )
+        config = _make_config("agent-a")
+        result = sync_context_files(project_dir, config)
+
+        clone_dir = project_dir / "clones" / "agent-a"
+        assert (clone_dir / "INTERFACES.md").read_text() == "# Interfaces"
+        assert not (clone_dir / "MILESTONE-SCOPE.md").exists()
+        assert not (clone_dir / "STRATEGIST-PROMPT.md").exists()
+
+        assert result.clones_updated == 1
+        assert result.files_synced == 1
+        assert result.errors == []
+
+    def test_sync_uses_write_atomic(self, tmp_path: Path) -> None:
+        """All writes use write_atomic (not raw open)."""
+        project_dir = _setup_project(
+            tmp_path,
+            ["agent-a"],
+            {"INTERFACES.md": "# Interfaces"},
+        )
+        config = _make_config("agent-a")
+
+        with patch("vcompany.coordination.sync_context.write_atomic") as mock_write:
+            sync_context_files(project_dir, config)
+            assert mock_write.call_count == 1
+            call_args = mock_write.call_args
+            assert call_args[0][0] == project_dir / "clones" / "agent-a" / "INTERFACES.md"
+            assert call_args[0][1] == "# Interfaces"
+
+    def test_sync_returns_result(self, tmp_path: Path) -> None:
+        """SyncResult has clones_updated count, files_synced count, errors list."""
+        project_dir = _setup_project(
+            tmp_path,
+            ["agent-a"],
+            {"INTERFACES.md": "content"},
+        )
+        config = _make_config("agent-a")
+        result = sync_context_files(project_dir, config)
+
+        assert isinstance(result, SyncResult)
+        assert isinstance(result.clones_updated, int)
+        assert isinstance(result.files_synced, int)
+        assert isinstance(result.errors, list)
+
+    def test_sync_handles_missing_clone_dir(self, tmp_path: Path) -> None:
+        """Clone dir that doesn't exist is logged as error, other clones still synced."""
+        project_dir = _setup_project(
+            tmp_path,
+            ["agent-a"],  # only create agent-a dir
+            {"INTERFACES.md": "content"},
+        )
+        # Config has both agents but only agent-a clone dir exists
+        config = _make_config("agent-a", "agent-b")
+        result = sync_context_files(project_dir, config)
+
+        # agent-a should succeed
+        assert (project_dir / "clones" / "agent-a" / "INTERFACES.md").read_text() == "content"
+        # agent-b should be in errors
+        assert result.clones_updated == 1
+        assert len(result.errors) >= 1
+        assert any("agent-b" in e for e in result.errors)
