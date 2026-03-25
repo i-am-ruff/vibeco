@@ -1,11 +1,19 @@
 """Embed builders for Discord bot messages.
 
-Provides build_status_embed (for !status) and build_alert_embed (for #alerts).
+Provides build_status_embed (for !status), build_alert_embed (for #alerts),
+build_conflict_embed (for merge conflicts), and build_integration_embed
+(for integration pipeline results).
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import discord
+
+if TYPE_CHECKING:
+    from vcompany.integration.models import IntegrationResult
 
 
 def build_status_embed(status_text: str) -> discord.Embed:
@@ -127,4 +135,121 @@ def build_plan_review_embed(
         )
 
     embed.set_footer(text=f"Path: {plan_path}")
+    return embed
+
+
+def build_conflict_embed(
+    agent_branches: list[str],
+    conflict_files: list[str],
+    resolved: list[str],
+    unresolved: list[str],
+) -> discord.Embed:
+    """Build an embed for merge conflict reporting per INTG-07.
+
+    Args:
+        agent_branches: Branch names involved in the conflict.
+        conflict_files: All files with conflicts.
+        resolved: Files that were auto-resolved by PM.
+        unresolved: Files that need manual resolution.
+
+    Returns:
+        discord.Embed with conflict details.
+    """
+    embed = discord.Embed(
+        title="Merge Conflict Detected",
+        color=discord.Color.red(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(
+        name="Branches Involved",
+        value=", ".join(agent_branches) if agent_branches else "None",
+        inline=False,
+    )
+    embed.add_field(
+        name="Conflict Files",
+        value="\n".join(conflict_files) if conflict_files else "None",
+        inline=False,
+    )
+    embed.add_field(
+        name="Auto-Resolved",
+        value="\n".join(resolved) if resolved else "None",
+        inline=True,
+    )
+    embed.add_field(
+        name="Needs Manual Resolution",
+        value="\n".join(unresolved) if unresolved else "None",
+        inline=True,
+    )
+    return embed
+
+
+_INTEGRATION_COLORS: dict[str, discord.Color] = {
+    "success": discord.Color.green(),
+    "test_failure": discord.Color.red(),
+    "merge_conflict": discord.Color.orange(),
+    "error": discord.Color.greyple(),
+}
+
+
+def build_integration_embed(result: IntegrationResult) -> discord.Embed:
+    """Build an embed for integration pipeline results.
+
+    Args:
+        result: IntegrationResult from the integration pipeline.
+
+    Returns:
+        discord.Embed with integration details, test counts, PR URL, and attribution.
+    """
+    color = _INTEGRATION_COLORS.get(result.status, discord.Color.greyple())
+    embed = discord.Embed(
+        title=f"Integration: {result.status.upper()}",
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(
+        name="Branch",
+        value=result.branch_name or "N/A",
+        inline=True,
+    )
+    embed.add_field(
+        name="Merged Agents",
+        value=", ".join(result.merged_agents) if result.merged_agents else "None",
+        inline=True,
+    )
+
+    # Test results
+    if result.test_results is not None:
+        tr = result.test_results
+        embed.add_field(
+            name="Tests",
+            value=f"Passed: {tr.passed}, Failed: {tr.failed}, Errors: {tr.errors}",
+            inline=False,
+        )
+
+    # PR URL
+    embed.add_field(
+        name="PR",
+        value=result.pr_url if result.pr_url else "N/A",
+        inline=True,
+    )
+
+    # Attribution (agent -> failing tests)
+    if result.attribution:
+        attr_lines = []
+        for agent, tests in result.attribution.items():
+            attr_lines.append(f"**{agent}**: {', '.join(tests)}")
+        embed.add_field(
+            name="Attributed Failures",
+            value="\n".join(attr_lines)[:1024],
+            inline=False,
+        )
+
+    # Conflict files
+    if result.conflict_files:
+        embed.add_field(
+            name="Conflicts",
+            value="\n".join(result.conflict_files)[:1024],
+            inline=False,
+        )
+
     return embed
