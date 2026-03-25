@@ -1,8 +1,8 @@
 """Embed builders for Discord bot messages.
 
 Provides build_status_embed (for !status), build_alert_embed (for #alerts),
-build_conflict_embed (for merge conflicts), and build_integration_embed
-(for integration pipeline results).
+build_plan_review_embed (for plan review), build_conflict_embed (for merge conflicts),
+build_integration_embed (for integration results), and build_checkin_embed (for checkins).
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import discord
 
 if TYPE_CHECKING:
+    from vcompany.communication.checkin import CheckinData
     from vcompany.integration.models import IntegrationResult
 
 
@@ -222,7 +223,7 @@ def build_integration_embed(result: IntegrationResult) -> discord.Embed:
         tr = result.test_results
         embed.add_field(
             name="Tests",
-            value=f"Passed: {tr.passed}, Failed: {tr.failed}, Errors: {tr.errors}",
+            value=f"Total: {tr.total}, Failed: {tr.failed}",
             inline=False,
         )
 
@@ -252,4 +253,41 @@ def build_integration_embed(result: IntegrationResult) -> discord.Embed:
             inline=False,
         )
 
+    return embed
+
+
+def build_checkin_embed(checkin: CheckinData) -> discord.Embed:
+    """Build checkin embed per COMM-01/COMM-02.
+
+    Displays: commit count, summary, gaps/notes, next phase, dependency status.
+
+    Args:
+        checkin: CheckinData from gather_checkin_data.
+
+    Returns:
+        discord.Embed with all checkin fields.
+    """
+    embed = discord.Embed(
+        title=f"Phase Complete: {checkin.agent_id}",
+        color=discord.Color.green(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="Commits", value=str(checkin.commit_count), inline=True)
+    embed.add_field(name="Next Phase", value=checkin.next_phase, inline=True)
+    embed.add_field(
+        name="Summary",
+        value=checkin.summary[:1024] or "No commits",
+        inline=False,
+    )
+    if checkin.gaps:
+        embed.add_field(
+            name="Gaps / Notes",
+            value=checkin.gaps[:1024],
+            inline=False,
+        )
+    embed.add_field(
+        name="Dependencies",
+        value=checkin.dependency_status[:1024] or "None",
+        inline=False,
+    )
     return embed
