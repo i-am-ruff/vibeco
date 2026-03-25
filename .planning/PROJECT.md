@@ -23,6 +23,11 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - PROJECT-STATUS.md — auto-generated cross-agent status, distributed to all clones every cycle — Phase 3
 - INTERFACES.md contract system — change request logging, sync-context distribution — Phase 3
 - INTERACTIONS.md — 8 documented concurrent interaction patterns with safety analysis — Phase 3
+- Discord bot with Cog architecture — VcoBot client, 4 Cogs loaded, auto-reconnect — Phase 4
+- Discord commands — !new-project, !dispatch, !status, !kill, !relaunch, !standup, !integrate — Phase 4
+- Role-based access — Owner (vco-owner) + Viewer tiers with is_owner decorator — Phase 4
+- Channel auto-setup — category per project with standard + per-agent channels — Phase 4
+- Alert system — AlertsCog with buffer/flush, sync-to-async callback bridge to monitor — Phase 4
 
 ### Active
 
@@ -106,4 +111,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after Phase 3 completion*
+*Last updated: 2026-03-25 after Phase 4 completion*
