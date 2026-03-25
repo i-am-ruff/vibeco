@@ -121,6 +121,13 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **PRE-02**: Tests cover: stream-json heartbeat, permission hang behavior, --max-turns exit, --resume recovery
 - [ ] **PRE-03**: Results determine monitor strategy (stream-json liveness vs git-commit fallback)
 
+### Interaction Safety
+
+- [ ] **SAFE-01**: Every phase plan includes an Interaction Safety Table analyzing concurrent scenarios (Agent/Component × Circumstance × Action × Concurrent With × Safe? × Mitigation)
+- [ ] **SAFE-02**: Plan checker agent validates interaction safety table completeness — rejects plans missing concurrency analysis
+- [ ] **SAFE-03**: Known interaction patterns documented in a central INTERACTIONS.md reference (e.g., monitor reads during agent writes, simultaneous git pushes, hook timeout during context compression)
+- [ ] **SAFE-04**: Integration phase includes interaction regression tests for critical concurrent scenarios identified across all phases
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -164,9 +171,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | (populated during roadmap creation) | | |
 
 **Coverage:**
-- v1 requirements: 68 total
+- v1 requirements: 72 total
 - Mapped to phases: 0
-- Unmapped: 68 (pending roadmap)
+- Unmapped: 72 (pending roadmap)
 
 ---
 *Requirements defined: 2026-03-25*

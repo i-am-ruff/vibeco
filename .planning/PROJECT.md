@@ -76,6 +76,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 | Strategist context summarization | Large projects will exceed context limits without management | — Pending |
 | AskUserQuestion hook returns deny + reason | Prevents terminal hang, carries answer back to Claude | — Pending |
 | Plan gate is filesystem-level, not hook | Monitor detects PLAN.md, pauses externally, more reliable than in-session gating | — Pending |
+| Interaction Safety Tables required per phase | Multi-agent systems have emergent timing/concurrency bugs — systematic analysis at design time catches what testing misses | — Pending |
 
 ## Evolution
 
