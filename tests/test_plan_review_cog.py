@@ -12,6 +12,12 @@ import pytest
 from vcompany.bot.views.plan_review import PlanReviewView
 from vcompany.bot.views.reject_modal import RejectFeedbackModal
 from vcompany.bot.embeds import build_plan_review_embed
+from vcompany.bot.cogs.plan_review import (
+    PlanReviewCog,
+    _extract_frontmatter_field,
+    _extract_objective,
+)
+from vcompany.models.monitor_state import AgentMonitorState
 
 
 # ---------------------------------------------------------------------------
@@ -196,3 +202,294 @@ class TestBuildPlanReviewEmbed:
 
         field_names = [f.name for f in embed.fields]
         assert "Safety Warning" not in field_names
+
+
+# ---------------------------------------------------------------------------
+# Helper function tests
+# ---------------------------------------------------------------------------
+
+
+class TestHelperFunctions:
+    """Tests for _extract_frontmatter_field and _extract_objective."""
+
+    def test_extract_frontmatter_field(self):
+        """Extracts phase and plan fields from frontmatter."""
+        content = "---\nphase: 05-hooks\nplan: 03\ntype: execute\n---\n"
+        assert _extract_frontmatter_field(content, "phase") == "05-hooks"
+        assert _extract_frontmatter_field(content, "plan") == "03"
+        assert _extract_frontmatter_field(content, "type") == "execute"
+
+    def test_extract_frontmatter_field_missing(self):
+        """Returns None for missing fields."""
+        content = "---\nphase: 01\n---\n"
+        assert _extract_frontmatter_field(content, "plan") is None
+
+    def test_extract_objective(self):
+        """Extracts text from <objective> tags."""
+        content = "<objective>\nBuild the plan review UI.\n</objective>"
+        assert _extract_objective(content) == "Build the plan review UI."
+
+    def test_extract_objective_missing(self):
+        """Returns default when no objective tags."""
+        assert _extract_objective("no objective here") == "No objective found"
+
+    def test_extract_objective_truncates(self):
+        """Objective text is truncated to 500 characters."""
+        long_text = "A" * 600
+        content = f"<objective>{long_text}</objective>"
+        result = _extract_objective(content)
+        assert len(result) == 500
+
+
+# ---------------------------------------------------------------------------
+# PlanReviewCog tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_bot():
+    """Create a mock VcoBot with required attributes."""
+    bot = MagicMock()
+    bot.is_closed.return_value = False
+    bot._ready_flag = True
+    bot.is_bot_ready = True
+    bot._guild_id = 123456
+    bot.loop = asyncio.new_event_loop()
+    bot.project_dir = Path("/tmp/test-project")
+    bot.agent_manager = None
+    bot.monitor_loop = None
+    yield bot
+    bot.loop.close()
+
+
+@pytest.fixture
+def cog(mock_bot):
+    """Create a PlanReviewCog with mock bot."""
+    return PlanReviewCog(mock_bot)
+
+
+@pytest.fixture
+def mock_plan_review_channel():
+    """Create a mock #plan-review text channel."""
+    channel = AsyncMock(spec=discord.TextChannel)
+    channel.name = "plan-review"
+    return channel
+
+
+@pytest.fixture
+def mock_alerts_channel():
+    """Create a mock #alerts text channel."""
+    channel = AsyncMock(spec=discord.TextChannel)
+    channel.name = "alerts"
+    return channel
+
+
+class TestGateStateTransitions:
+    """Tests for _update_gate_state state machine."""
+
+    def test_idle_to_awaiting_review(self, cog, mock_bot):
+        """Setting awaiting_review adds plan to pending and updates status."""
+        state = AgentMonitorState(agent_id="agent-1")
+        mock_bot.monitor_loop = MagicMock()
+        mock_bot.monitor_loop._agent_states = {"agent-1": state}
+
+        cog._update_gate_state("agent-1", "/plans/01-01-PLAN.md", status="awaiting_review")
+
+        assert state.plan_gate_status == "awaiting_review"
+        assert "/plans/01-01-PLAN.md" in state.pending_plans
+
+    def test_awaiting_to_approved(self, cog, mock_bot):
+        """Approving moves plan from pending to approved."""
+        state = AgentMonitorState(
+            agent_id="agent-1",
+            plan_gate_status="awaiting_review",
+            pending_plans=["/plans/01-01-PLAN.md"],
+        )
+        mock_bot.monitor_loop = MagicMock()
+        mock_bot.monitor_loop._agent_states = {"agent-1": state}
+
+        cog._update_gate_state("agent-1", "/plans/01-01-PLAN.md", status="approved")
+
+        assert state.plan_gate_status == "approved"
+        assert "/plans/01-01-PLAN.md" not in state.pending_plans
+        assert "/plans/01-01-PLAN.md" in state.approved_plans
+
+    def test_awaiting_to_rejected(self, cog, mock_bot):
+        """Rejecting removes plan from pending."""
+        state = AgentMonitorState(
+            agent_id="agent-1",
+            plan_gate_status="awaiting_review",
+            pending_plans=["/plans/01-01-PLAN.md"],
+        )
+        mock_bot.monitor_loop = MagicMock()
+        mock_bot.monitor_loop._agent_states = {"agent-1": state}
+
+        cog._update_gate_state("agent-1", "/plans/01-01-PLAN.md", status="rejected")
+
+        assert state.plan_gate_status == "rejected"
+        assert "/plans/01-01-PLAN.md" not in state.pending_plans
+        assert "/plans/01-01-PLAN.md" not in state.approved_plans
+
+    def test_no_state_does_not_raise(self, cog, mock_bot):
+        """When no monitor_loop or unknown agent, update is a no-op."""
+        mock_bot.monitor_loop = None
+        cog._update_gate_state("unknown", "/plans/PLAN.md", status="approved")
+        # Should not raise
+
+
+class TestPlanReviewCogHandlers:
+    """Tests for handle_new_plan, _handle_approval, _handle_rejection."""
+
+    @pytest.mark.asyncio
+    async def test_handle_new_plan_posts_embed(self, cog, mock_bot, mock_plan_review_channel, tmp_path):
+        """handle_new_plan reads plan, validates safety, posts embed with file."""
+        plan_file = tmp_path / "05-03-PLAN.md"
+        plan_content = (
+            "---\nphase: 05\nplan: 03\n---\n"
+            "<objective>Test plan goal</objective>\n"
+            '<task type="auto">\n</task>\n'
+            "## Interaction Safety\n"
+            "| Agent/Component | Circumstance | Action | Concurrent With | Safe? | Mitigation |\n"
+            "|---|---|---|---|---|---|\n"
+            "| A | B | C | D | Yes | None |\n"
+        )
+        plan_file.write_text(plan_content)
+
+        cog._plan_review_channel = mock_plan_review_channel
+
+        # Mock the view wait to return immediately (approved)
+        with patch("vcompany.bot.cogs.plan_review.PlanReviewView") as MockView:
+            mock_view = MagicMock()
+            mock_view.wait = AsyncMock(return_value=False)
+            mock_view.result = "approved"
+            mock_view.feedback = ""
+            MockView.return_value = mock_view
+
+            # Mock _handle_approval
+            cog._handle_approval = AsyncMock()
+
+            await cog.handle_new_plan("agent-1", plan_file)
+
+        mock_plan_review_channel.send.assert_awaited_once()
+        call_kwargs = mock_plan_review_channel.send.call_args.kwargs
+        assert "embed" in call_kwargs
+        assert "view" in call_kwargs
+        assert "file" in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_handle_approval_updates_state(self, cog, mock_bot, mock_plan_review_channel):
+        """Approval updates gate state and posts confirmation."""
+        state = AgentMonitorState(
+            agent_id="agent-1",
+            plan_gate_status="awaiting_review",
+            pending_plans=["/plans/01-01-PLAN.md"],
+        )
+        mock_bot.monitor_loop = MagicMock()
+        mock_bot.monitor_loop._agent_states = {"agent-1": state}
+        cog._plan_review_channel = mock_plan_review_channel
+
+        await cog._handle_approval("agent-1", "/plans/01-01-PLAN.md")
+
+        assert state.plan_gate_status == "approved"
+        assert "/plans/01-01-PLAN.md" in state.approved_plans
+        mock_plan_review_channel.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_rejection_sends_feedback(self, cog, mock_bot, mock_plan_review_channel, tmp_path):
+        """Rejection calls tmux.send_command with feedback text."""
+        state = AgentMonitorState(
+            agent_id="agent-1",
+            plan_gate_status="awaiting_review",
+            pending_plans=["/plans/01-01-PLAN.md"],
+        )
+        mock_bot.monitor_loop = MagicMock()
+        mock_bot.monitor_loop._agent_states = {"agent-1": state}
+        cog._plan_review_channel = mock_plan_review_channel
+
+        # No agent_manager -> feedback still posted to channel
+        mock_bot.agent_manager = None
+
+        await cog._handle_rejection("agent-1", "/plans/01-01-PLAN.md", "Needs more tests")
+
+        assert state.plan_gate_status == "rejected"
+        mock_plan_review_channel.send.assert_awaited_once()
+        sent_text = mock_plan_review_channel.send.call_args[0][0]
+        assert "rejected" in sent_text
+        assert "Needs more tests" in sent_text
+
+    @pytest.mark.asyncio
+    async def test_all_plans_approved_triggers_execution(self, cog, mock_bot, mock_plan_review_channel, mock_alerts_channel):
+        """When pending_plans empties, _trigger_execution is called."""
+        state = AgentMonitorState(
+            agent_id="agent-1",
+            plan_gate_status="awaiting_review",
+            pending_plans=["/plans/01-01-PLAN.md"],
+        )
+        mock_bot.monitor_loop = MagicMock()
+        mock_bot.monitor_loop._agent_states = {"agent-1": state}
+        cog._plan_review_channel = mock_plan_review_channel
+        cog._alerts_channel = mock_alerts_channel
+
+        # Mock _trigger_execution to verify it's called
+        cog._trigger_execution = AsyncMock()
+
+        await cog._handle_approval("agent-1", "/plans/01-01-PLAN.md")
+
+        # pending_plans should be empty after approval -> trigger called
+        cog._trigger_execution.assert_awaited_once_with("agent-1", state)
+
+    @pytest.mark.asyncio
+    async def test_handle_new_plan_no_channel_returns(self, cog, mock_bot):
+        """handle_new_plan returns early when no #plan-review channel."""
+        cog._plan_review_channel = None
+        cog._resolve_channels = AsyncMock()  # still returns None
+
+        await cog.handle_new_plan("agent-1", Path("/fake/PLAN.md"))
+        # Should not raise, just return
+
+
+class TestMakeSyncCallback:
+    """Tests for make_sync_callback."""
+
+    def test_returns_on_plan_detected_callback(self, cog):
+        """make_sync_callback returns dict with on_plan_detected key."""
+        callbacks = cog.make_sync_callback()
+        assert "on_plan_detected" in callbacks
+        assert callable(callbacks["on_plan_detected"])
+
+    def test_callback_schedules_coroutine(self, cog):
+        """Sync callback should call run_coroutine_threadsafe."""
+        callbacks = cog.make_sync_callback()
+
+        with patch("asyncio.run_coroutine_threadsafe") as mock_rct:
+            callbacks["on_plan_detected"]("test-agent", Path("/plans/PLAN.md"))
+            mock_rct.assert_called_once()
+            assert mock_rct.call_args[0][1] is cog.bot.loop
+
+
+@pytest.mark.asyncio
+async def test_on_ready_resolves_channels(cog):
+    """on_ready calls _resolve_channels."""
+    cog._resolve_channels = AsyncMock()
+    await cog.on_ready()
+    cog._resolve_channels.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resolve_channels(cog):
+    """_resolve_channels finds #plan-review and #alerts channels."""
+    plan_ch = MagicMock(spec=discord.TextChannel)
+    plan_ch.name = "plan-review"
+    alerts_ch = MagicMock(spec=discord.TextChannel)
+    alerts_ch.name = "alerts"
+    other_ch = MagicMock(spec=discord.TextChannel)
+    other_ch.name = "general"
+
+    guild = MagicMock()
+    guild.text_channels = [other_ch, plan_ch, alerts_ch]
+    cog.bot.get_guild.return_value = guild
+
+    await cog._resolve_channels()
+
+    assert cog._plan_review_channel is plan_ch
+    assert cog._alerts_channel is alerts_ch
