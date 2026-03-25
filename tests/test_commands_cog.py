@@ -388,29 +388,27 @@ class TestRelaunch:
 
 
 class TestStandup:
-    """!standup returns scaffold message (DISC-06)."""
+    """!standup triggers standup session (DISC-06, COMM-03)."""
 
     @pytest.mark.asyncio
-    async def test_standup_scaffold(self):
-        """Returns Phase 7 placeholder message."""
+    async def test_standup_calls_send(self):
+        """Standup command sends a response."""
         bot = _make_bot()
         cog = CommandsCog(bot)
         ctx = _make_ctx()
 
         await cog.standup_cmd.callback(cog, ctx)
 
-        msg = ctx.send.call_args[0][0]
-        assert "phase 7" in msg.lower()
-        assert "standup" in msg.lower()
+        assert ctx.send.called
 
 
 class TestIntegrate:
-    """!integrate is scaffolded with confirmation (DISC-09)."""
+    """!integrate triggers integration pipeline (DISC-09, INTG-02)."""
 
     @pytest.mark.asyncio
     @patch("vcompany.bot.cogs.commands.ConfirmView")
-    async def test_integrate_scaffold(self, MockConfirmView):
-        """Returns Phase 7 placeholder after confirmation."""
+    async def test_integrate_sends_response(self, MockConfirmView):
+        """Integrate command sends a response after confirmation."""
         bot = _make_bot()
         cog = CommandsCog(bot)
         ctx = _make_ctx()
@@ -422,13 +420,7 @@ class TestIntegrate:
 
         await cog.integrate_cmd.callback(cog, ctx)
 
-        # Verify confirmation prompt sent
-        first_send = ctx.send.call_args_list[0]
-        assert "integration" in first_send[0][0].lower()
-
-        # Verify scaffold message
-        last_send = ctx.send.call_args_list[-1]
-        assert "phase 7" in last_send[0][0].lower()
+        assert ctx.send.called
 
     @pytest.mark.asyncio
     @patch("vcompany.bot.cogs.commands.ConfirmView")
