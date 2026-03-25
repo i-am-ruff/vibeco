@@ -21,10 +21,14 @@ from vcompany.bot.embeds import (
     build_alert_embed,
     build_conflict_embed,
     build_integration_embed,
+    build_standup_embed,
     build_status_embed,
 )
 from vcompany.bot.permissions import is_owner
 from vcompany.bot.views.confirm import ConfirmView
+from vcompany.bot.views.standup_release import ReleaseView
+from vcompany.communication.checkin import gather_checkin_data
+from vcompany.communication.standup import StandupSession
 from vcompany.integration.pipeline import IntegrationPipeline
 from vcompany.monitor.status_generator import generate_project_status
 
@@ -218,8 +222,103 @@ class CommandsCog(commands.Cog):
     @commands.command(name="standup")
     @is_owner()
     async def standup_cmd(self, ctx: commands.Context) -> None:
-        """Standup placeholder (DISC-06)."""
-        await ctx.send("Standup coming in Phase 7. Channel structure is ready.")
+        """Trigger group standup per D-11 blocking interlock model (DISC-06, COMM-03).
+
+        1. Creates a standup message in #standup
+        2. Creates a thread per agent with status embed and Release button
+        3. Agents are blocked until owner clicks Release per thread
+        4. Owner messages in threads are routed to agent tmux panes (COMM-05)
+        5. No timeout per D-11
+        """
+        try:
+            # Find #standup channel
+            if ctx.guild is None:
+                await ctx.send("This command can only be used in a server.")
+                return
+
+            standup_channel = discord.utils.get(ctx.guild.text_channels, name="standup")
+            if not standup_channel:
+                await ctx.send("Error: #standup channel not found.")
+                return
+
+            # Create standup session
+            tmux = getattr(self.bot, "_tmux", None)
+            session = StandupSession(tmux=tmux)
+            self.bot._standup_session = session  # type: ignore[attr-defined]  # Store on bot for on_message access
+
+            registry = getattr(self.bot, "_registry", None)
+            if not registry:
+                await ctx.send("Error: No agent registry loaded.")
+                return
+
+            await standup_channel.send("**Standup Session Started**")
+
+            # Create per-agent threads per COMM-03
+            for agent in registry.agents:
+                # Gather brief status for this agent
+                clone_dir = self.bot.project_dir / "clones" / agent.id
+                checkin_data = gather_checkin_data(agent.id, clone_dir) if clone_dir.exists() else None
+
+                embed = build_standup_embed(
+                    agent_id=agent.id,
+                    phase=checkin_data.next_phase if checkin_data else "unknown",
+                    status="active",
+                    summary=checkin_data.summary if checkin_data else "No data",
+                )
+
+                # Create thread for this agent
+                thread = await standup_channel.create_thread(
+                    name=f"standup-{agent.id}",
+                    type=discord.ChannelType.public_thread,
+                )
+                release_view = ReleaseView(agent_id=agent.id)
+                release_view.set_release_callback(session.release_agent)
+                await thread.send(embed=embed, view=release_view)
+                session.register_thread(agent.id, thread.id)
+
+            await ctx.send(
+                f"Standup threads created for {len(registry.agents)} agents. "
+                "Release each when ready."
+            )
+
+        except Exception as exc:
+            logger.exception("Error in !standup")
+            embed = build_alert_embed("standup error", str(exc), "error")
+            await ctx.send(embed=embed)
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        """Route owner messages in standup threads to agent tmux panes per COMM-04/COMM-05."""
+        if message.author.bot:
+            return
+
+        session: StandupSession | None = getattr(self.bot, "_standup_session", None)
+        if session is None or not session.is_active:
+            return
+
+        # Check if message is in a standup thread
+        if not isinstance(message.channel, discord.Thread):
+            return
+
+        agent_id = session.get_agent_for_thread(message.channel.id)
+        if agent_id is None:
+            return
+
+        # Route message to agent tmux pane per COMM-05/D-12
+        # Get pane_id from registry or agent manager
+        registry = getattr(self.bot, "_registry", None)
+        if registry:
+            agent = next((a for a in registry.agents if a.id == agent_id), None)
+            if agent and hasattr(agent, "pane_id") and agent.pane_id:
+                success = await session.route_message_to_agent(
+                    agent_id,
+                    message.content,
+                    agent.pane_id,
+                )
+                if success:
+                    await message.add_reaction("\u2705")  # checkmark
+                else:
+                    await message.add_reaction("\u274c")  # cross
 
     # ── !integrate ────────────────────────────────────────────────────
 
