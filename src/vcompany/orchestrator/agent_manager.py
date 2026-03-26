@@ -96,7 +96,8 @@ class AgentManager:
         clone_dir = self._project_dir / "clones" / agent_id
         chained_cmd = (
             f"cd {clone_dir} "
-            f"&& export DISCORD_AGENT_WEBHOOK_URL='{os.environ.get('DISCORD_AGENT_WEBHOOK_URL', '')}' "
+            f"&& export DISCORD_BOT_TOKEN='{os.environ.get('DISCORD_BOT_TOKEN', '')}' "
+            f"&& export DISCORD_GUILD_ID='{os.environ.get('DISCORD_GUILD_ID', '')}' "
             f"&& export PROJECT_NAME='{self._config.project}' "
             f"&& export AGENT_ID='{agent_id}' "
             f"&& export AGENT_ROLE='{agent_cfg.role}' "
@@ -154,7 +155,8 @@ class AgentManager:
             )
             chained_cmd = (
                 f"cd {clone_dir} "
-                f"&& export DISCORD_AGENT_WEBHOOK_URL='{os.environ.get('DISCORD_AGENT_WEBHOOK_URL', '')}' "
+                f"&& export DISCORD_BOT_TOKEN='{os.environ.get('DISCORD_BOT_TOKEN', '')}' "
+                f"&& export DISCORD_GUILD_ID='{os.environ.get('DISCORD_GUILD_ID', '')}' "
                 f"&& export PROJECT_NAME='{self._config.project}' "
                 f"&& export AGENT_ID='{agent_cfg.id}' "
                 f"&& export AGENT_ROLE='{agent_cfg.role}' "
