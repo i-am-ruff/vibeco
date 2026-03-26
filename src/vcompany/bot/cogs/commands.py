@@ -212,13 +212,13 @@ class CommandsCog(commands.Cog):
             await interaction.channel.send("Waiting for Claude Code to be ready in each agent...")
             sent = await asyncio.to_thread(
                 self.bot.agent_manager.send_work_command_all,
-                "/gsd:plan-phase 1 --auto",
+                "/gsd:plan-phase 1",
                 wait_for_ready=True,
             )
             ok_sent = sum(1 for v in sent.values() if v)
             await interaction.channel.send(
                 f"Sent work command to {ok_sent} agents. They're planning Phase 1 now.\n"
-                f"Check /status for progress. Plans will appear in #plan-review when ready."
+                f"PM will review plans before execution starts."
             )
 
         except Exception as exc:

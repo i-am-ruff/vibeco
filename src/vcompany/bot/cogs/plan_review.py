@@ -61,6 +61,133 @@ class PlanReviewCog(commands.Cog):
         """Resolve channels on ready."""
         await self._resolve_channels()
 
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        """Watch agent channels for @PM mentions to trigger plan review.
+
+        When an agent posts "@PM plan ready" in #agent-{id}, this triggers
+        the PM review flow. Discord is the bus — no file watching needed.
+        """
+        # Only respond to messages in agent-* channels
+        if not message.channel.name.startswith("agent-"):
+            return
+        # Only process messages containing @PM
+        if "@PM" not in message.content:
+            return
+        # Skip bot's own messages (PM responses)
+        if message.author.id == self.bot.user.id:
+            return
+
+        agent_id = message.channel.name.removeprefix("agent-")
+        content_lower = message.content.lower()
+
+        # Detect plan completion
+        if "plan" in content_lower and ("complete" in content_lower or "ready" in content_lower or "review" in content_lower):
+            await message.channel.send(f"[PM] Reviewing {agent_id}'s plan...")
+            await self._review_agent_plans(agent_id, message.channel)
+
+        # Detect phase/execution completion
+        elif "execute" in content_lower and "complete" in content_lower:
+            await message.channel.send(f"[PM] Verifying {agent_id}'s execution...")
+            await self._verify_agent_execution(agent_id, message.channel)
+
+    async def _review_agent_plans(self, agent_id: str, channel: discord.TextChannel) -> None:
+        """PM reviews all plans for an agent, checking for conflicts with other agents."""
+        if not self.bot.project_dir or not self.bot.project_config:
+            await channel.send("[PM] No project loaded, cannot review.")
+            return
+
+        clone_dir = self.bot.project_dir / "clones" / agent_id
+        phases_dir = clone_dir / ".planning" / "phases"
+
+        # Find latest plan files
+        plan_files = sorted(phases_dir.rglob("*-PLAN.md")) if phases_dir.exists() else []
+        if not plan_files:
+            await channel.send(f"[PM] No PLAN.md files found for {agent_id}.")
+            return
+
+        latest_plan = plan_files[-1]
+
+        # Gather all other agents' plans for conflict detection
+        other_plans: dict[str, str] = {}
+        for agent in self.bot.project_config.agents:
+            if agent.id == agent_id:
+                continue
+            other_clone = self.bot.project_dir / "clones" / agent.id / ".planning" / "phases"
+            if other_clone.exists():
+                for pf in other_clone.rglob("*-PLAN.md"):
+                    try:
+                        other_plans[f"{agent.id}/{pf.name}"] = pf.read_text()[:2000]
+                    except Exception:
+                        pass
+
+        # Use PlanReviewer (PM) if available
+        if self._plan_reviewer:
+            try:
+                plan_content = await asyncio.to_thread(latest_plan.read_text)
+
+                # Build context with other agents' plans for conflict check
+                context = plan_content
+                if other_plans:
+                    context += "\n\n--- OTHER AGENTS' PLANS (check for conflicts) ---\n"
+                    for name, content in other_plans.items():
+                        context += f"\n### {name}\n{content[:1000]}\n"
+
+                review = await asyncio.to_thread(
+                    self._plan_reviewer.review_plan, agent_id, context
+                )
+
+                if review.confidence.level == "HIGH":
+                    await channel.send(
+                        f"[PM] Plan approved for {agent_id}. {review.note}\n"
+                        f"Sending execute command."
+                    )
+                    # Send execute command to agent
+                    if self.bot.agent_manager:
+                        pane = self.bot.agent_manager._panes.get(agent_id)
+                        if pane:
+                            self.bot.agent_manager._tmux.send_command(
+                                pane, "/gsd:execute-phase 1"
+                            )
+                else:
+                    await channel.send(
+                        f"[PM] Plan needs revision for {agent_id}: {review.note}"
+                    )
+                return
+            except Exception:
+                logger.exception("PM review failed for %s", agent_id)
+
+        # Fallback: auto-approve if no PM configured
+        await channel.send(
+            f"[PM] Auto-approving plan for {agent_id} (no PM tier configured). Sending execute command."
+        )
+        if self.bot.agent_manager:
+            pane = self.bot.agent_manager._panes.get(agent_id)
+            if pane:
+                self.bot.agent_manager._tmux.send_command(pane, "/gsd:execute-phase 1")
+
+    async def _verify_agent_execution(self, agent_id: str, channel: discord.TextChannel) -> None:
+        """PM verifies that execution completed successfully."""
+        if not self.bot.project_dir:
+            await channel.send("[PM] No project loaded.")
+            return
+
+        clone_dir = self.bot.project_dir / "clones" / agent_id
+
+        # Check git log for recent commits
+        from vcompany.git import ops as git_ops
+        result = await asyncio.to_thread(
+            git_ops.log, clone_dir, args=["--oneline", "-5"]
+        )
+
+        if result.success and result.stdout.strip():
+            await channel.send(
+                f"[PM] Execution verified for {agent_id}. Recent commits:\n"
+                f"```\n{result.stdout.strip()}\n```"
+            )
+        else:
+            await channel.send(f"[PM] Warning: No commits found for {agent_id} after execution.")
+
     async def handle_new_plan(self, agent_id: str, plan_path: Path) -> None:
         """Process a newly detected plan file per D-07 through D-12.
 
