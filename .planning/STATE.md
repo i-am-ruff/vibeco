@@ -156,6 +156,7 @@ Recent decisions affecting current work:
 - [Phase 07]: route_message_to_agent sends /gsd:quick for owner-to-agent standup communication
 - [Phase 07]: Threading barriers for deterministic concurrent test synchronization
 - [Phase quick]: VcoBot guild_id as explicit constructor arg; slash command tree sync in setup_hook not on_ready; on_ready split into always-run and project-only sections
+- [Phase quick]: StrategistConversation reuse with allowed_tools parameter for workflow-master (custom session_id + expanded tool set)
 
 ### Pending Todos
 
@@ -173,9 +174,10 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260326-2rg | Refactor Strategist and PM tier to use Claude Code CLI instead of Anthropic API | 2026-03-26 | 7069df5 | [260326-2rg-refactor-strategist-and-pm-tier-to-use-c](./quick/260326-2rg-refactor-strategist-and-pm-tier-to-use-c/) |
 | 260326-4p2 | Implement vco up and Strategist-first architecture (slash commands, project-optional bot) | 2026-03-26 | 03fed10 | [260326-4p2-implement-vco-up-and-strategist-first-ar](./quick/260326-4p2-implement-vco-up-and-strategist-first-ar/) |
+| 260326-km4 | Add workflow-master persistent dev agent with full tools in git worktree | 2026-03-26 | 644da66 | [260326-km4-add-workflow-master-persistent-dev-agent](./quick/260326-km4-add-workflow-master-persistent-dev-agent/) |
 
 ## Session Continuity
 
-Last session: 2026-03-26T01:34:38.101Z
-Stopped at: Completed quick/260326-4p2
+Last session: 2026-03-26T13:00:55Z
+Stopped at: Completed quick/260326-km4
 Resume file: None
