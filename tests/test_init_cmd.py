@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from vcompany.cli.init_cmd import PROJECTS_BASE, init
+from vcompany.cli.init_cmd import init
 
 
 @pytest.fixture()

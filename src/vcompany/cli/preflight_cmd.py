@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 
-from vcompany.cli.init_cmd import PROJECTS_BASE
+from vcompany.shared.paths import PROJECTS_BASE
 from vcompany.orchestrator.preflight import run_preflight
 
 

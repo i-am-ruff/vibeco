@@ -9,9 +9,8 @@ from pydantic import ValidationError
 
 from vcompany.models.config import load_config
 from vcompany.shared.file_ops import write_atomic
+from vcompany.shared.paths import PROJECTS_BASE
 from vcompany.shared.templates import render_template
-
-PROJECTS_BASE = Path.home() / "vcompany" / "projects"
 
 
 @click.command()

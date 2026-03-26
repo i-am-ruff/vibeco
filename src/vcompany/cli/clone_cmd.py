@@ -9,9 +9,8 @@ import click
 from vcompany.git import ops as git
 from vcompany.models.config import load_config
 from vcompany.shared.file_ops import write_atomic
+from vcompany.shared.paths import PROJECTS_BASE
 from vcompany.shared.templates import render_template
-
-PROJECTS_BASE = Path.home() / "vcompany" / "projects"
 
 # Source directory for vco command files (project root / commands / vco)
 _COMMANDS_SOURCE = Path(__file__).parent.parent.parent.parent / "commands" / "vco"
