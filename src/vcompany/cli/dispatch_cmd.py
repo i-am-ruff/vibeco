@@ -11,7 +11,7 @@ from vcompany.models.config import load_config
 from vcompany.orchestrator.agent_manager import AgentManager
 
 # Time to wait for Claude Code to start before sending work command
-_CLAUDE_STARTUP_DELAY = 5
+_CLAUDE_STARTUP_DELAY = 15
 
 
 @click.command()

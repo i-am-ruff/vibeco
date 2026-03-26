@@ -28,47 +28,68 @@ def _make_config() -> ProjectConfig:
     )
 
 
+def _make_bot(**kwargs) -> VcoBot:
+    """Create VcoBot with new constructor signature."""
+    return VcoBot(
+        guild_id=kwargs.get("guild_id", 12345),
+        project_dir=kwargs.get("project_dir", Path("/tmp/test")),
+        config=kwargs.get("config", _make_config()),
+    )
+
+
 class TestVcoBotInit:
     """VcoBot constructor sets expected defaults."""
 
     def test_command_prefix(self):
         """Bot uses '!' command prefix."""
-        bot = VcoBot(Path("/tmp/test"), _make_config())
+        bot = _make_bot()
         assert bot.command_prefix == "!"
 
     def test_message_content_intent(self):
         """Bot enables message_content privileged intent."""
-        bot = VcoBot(Path("/tmp/test"), _make_config())
+        bot = _make_bot()
         assert bot.intents.message_content is True
 
     def test_initial_state(self):
         """Bot starts with initialized=False, ready_flag=False."""
-        bot = VcoBot(Path("/tmp/test"), _make_config())
+        bot = _make_bot()
         assert bot._initialized is False
         assert bot._ready_flag is False
         assert bot.agent_manager is None
         assert bot.monitor_loop is None
         assert bot.crash_tracker is None
 
+    def test_project_optional(self):
+        """Bot can be created without project."""
+        bot = VcoBot(guild_id=12345)
+        assert bot.project_dir is None
+        assert bot.project_config is None
+        assert bot._guild_id == 12345
+
 
 class TestVcoBotSetupHook:
-    """setup_hook loads all 4 Cog extensions (DISC-01)."""
+    """setup_hook loads all Cog extensions (DISC-01)."""
 
     @pytest.mark.asyncio
     async def test_loads_all_cog_extensions(self):
-        """setup_hook calls load_extension for all 5 cog paths."""
-        bot = VcoBot(Path("/tmp/test"), _make_config())
+        """setup_hook calls load_extension for all cog paths."""
+        bot = _make_bot()
         bot.load_extension = AsyncMock()
 
-        await bot.setup_hook()
+        mock_tree = MagicMock()
+        mock_tree.copy_global_to = MagicMock()
+        mock_tree.sync = AsyncMock()
 
-        assert bot.load_extension.call_count == 5
+        with patch.object(type(bot), "tree", new_callable=lambda: property(lambda self: mock_tree)):
+            await bot.setup_hook()
+
+        assert bot.load_extension.call_count == len(_COG_EXTENSIONS)
         loaded = [call.args[0] for call in bot.load_extension.call_args_list]
         assert loaded == _COG_EXTENSIONS
 
     @pytest.mark.asyncio
     async def test_cog_extension_paths(self):
-        """All 5 expected cog extension paths are defined."""
+        """All expected cog extension paths are defined."""
         assert "vcompany.bot.cogs.commands" in _COG_EXTENSIONS
         assert "vcompany.bot.cogs.alerts" in _COG_EXTENSIONS
         assert "vcompany.bot.cogs.plan_review" in _COG_EXTENSIONS
@@ -80,15 +101,13 @@ class TestVcoBotOnReady:
     """on_ready creates vco-owner role and guards against repeated init."""
 
     @pytest.mark.asyncio
-    async def test_creates_vco_owner_role_when_missing(self, monkeypatch):
+    async def test_creates_vco_owner_role_when_missing(self):
         """on_ready creates vco-owner role when it doesn't exist (D-10)."""
-        monkeypatch.setenv("DISCORD_GUILD_ID", "12345")
-        bot = VcoBot(Path("/tmp/test"), _make_config())
+        bot = _make_bot()
 
-        # Mock guild with no vco-owner role
         mock_guild = MagicMock(spec=discord.Guild)
         mock_guild.name = "TestGuild"
-        mock_guild.roles = []  # No roles exist
+        mock_guild.roles = []
         mock_guild.create_role = AsyncMock()
 
         bot.get_guild = MagicMock(return_value=mock_guild)
@@ -103,12 +122,10 @@ class TestVcoBotOnReady:
         assert bot._ready_flag is True
 
     @pytest.mark.asyncio
-    async def test_skips_role_creation_when_exists(self, monkeypatch):
+    async def test_skips_role_creation_when_exists(self):
         """on_ready skips role creation when vco-owner already exists."""
-        monkeypatch.setenv("DISCORD_GUILD_ID", "12345")
-        bot = VcoBot(Path("/tmp/test"), _make_config())
+        bot = _make_bot()
 
-        # Mock guild with existing vco-owner role
         mock_role = MagicMock(spec=discord.Role)
         mock_role.name = "vco-owner"
 
@@ -125,10 +142,9 @@ class TestVcoBotOnReady:
         assert bot._initialized is True
 
     @pytest.mark.asyncio
-    async def test_guards_against_repeated_init(self, monkeypatch):
+    async def test_guards_against_repeated_init(self):
         """on_ready skips initialization on second call (Pitfall 7)."""
-        monkeypatch.setenv("DISCORD_GUILD_ID", "12345")
-        bot = VcoBot(Path("/tmp/test"), _make_config())
+        bot = _make_bot()
 
         mock_guild = MagicMock(spec=discord.Guild)
         mock_guild.name = "TestGuild"
@@ -136,19 +152,16 @@ class TestVcoBotOnReady:
         mock_guild.create_role = AsyncMock()
         bot.get_guild = MagicMock(return_value=mock_guild)
 
-        # First call: should create role
         await bot.on_ready()
         assert mock_guild.create_role.call_count == 1
 
-        # Second call: should skip entirely
         await bot.on_ready()
-        assert mock_guild.create_role.call_count == 1  # Still 1, not 2
+        assert mock_guild.create_role.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_handles_missing_guild(self, monkeypatch):
+    async def test_handles_missing_guild(self):
         """on_ready handles guild not found gracefully."""
-        monkeypatch.setenv("DISCORD_GUILD_ID", "99999")
-        bot = VcoBot(Path("/tmp/test"), _make_config())
+        bot = _make_bot()
         bot.get_guild = MagicMock(return_value=None)
 
         await bot.on_ready()
@@ -158,7 +171,28 @@ class TestVcoBotOnReady:
 
     def test_is_bot_ready_property(self):
         """is_bot_ready returns _ready_flag value."""
-        bot = VcoBot(Path("/tmp/test"), _make_config())
+        bot = _make_bot()
         assert bot.is_bot_ready is False
         bot._ready_flag = True
         assert bot.is_bot_ready is True
+
+
+class TestVcoBotProjectless:
+    """VcoBot works without a project loaded."""
+
+    @pytest.mark.asyncio
+    async def test_on_ready_without_project(self):
+        """on_ready succeeds without project_config."""
+        bot = VcoBot(guild_id=12345)
+
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.name = "TestGuild"
+        mock_guild.roles = []
+        mock_guild.create_role = AsyncMock()
+        bot.get_guild = MagicMock(return_value=mock_guild)
+
+        await bot.on_ready()
+
+        assert bot._initialized is True
+        assert bot._ready_flag is True
+        assert bot.agent_manager is None

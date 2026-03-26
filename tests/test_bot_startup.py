@@ -28,10 +28,19 @@ def _make_config() -> ProjectConfig:
     )
 
 
-def _make_bot(monkeypatch, guild_id: int = 12345) -> VcoBot:
-    """Create a VcoBot with mocked guild."""
-    monkeypatch.setenv("DISCORD_GUILD_ID", str(guild_id))
-    return VcoBot(Path("/tmp/test"), _make_config())
+def _make_bot(guild_id: int = 12345, *, with_project: bool = True) -> VcoBot:
+    """Create a VcoBot with explicit guild_id.
+
+    When with_project=True, passes project_dir and config. Otherwise creates
+    a project-less bot (Strategist-only mode).
+    """
+    if with_project:
+        return VcoBot(
+            guild_id=guild_id,
+            project_dir=Path("/tmp/test"),
+            config=_make_config(),
+        )
+    return VcoBot(guild_id=guild_id)
 
 
 def _mock_guild() -> MagicMock:
@@ -55,10 +64,10 @@ class TestOnReadyInitializesComponents:
     @patch("vcompany.bot.client.AgentManager")
     @patch("vcompany.bot.client.TmuxManager", create=True)
     async def test_on_ready_initializes_components(
-        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls, monkeypatch
+        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls
     ):
         """Verify AgentManager, CrashTracker, MonitorLoop all instantiated."""
-        bot = _make_bot(monkeypatch)
+        bot = _make_bot()
         guild = _mock_guild()
         bot.get_guild = MagicMock(return_value=guild)
         bot.get_cog = MagicMock(return_value=None)
@@ -84,10 +93,10 @@ class TestOnReadyInitializesComponents:
     @patch("vcompany.bot.client.AgentManager")
     @patch("vcompany.bot.client.TmuxManager", create=True)
     async def test_on_ready_injects_callbacks(
-        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls, monkeypatch
+        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls
     ):
         """Verify MonitorLoop receives callbacks from AlertsCog and PlanReviewCog."""
-        bot = _make_bot(monkeypatch)
+        bot = _make_bot()
         guild = _mock_guild()
         bot.get_guild = MagicMock(return_value=guild)
 
@@ -142,10 +151,10 @@ class TestOnReadyInitializesComponents:
     @patch("vcompany.bot.client.AgentManager")
     @patch("vcompany.bot.client.TmuxManager", create=True)
     async def test_on_ready_falls_back_to_alerts_plan_detected(
-        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls, monkeypatch
+        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls
     ):
         """When PlanReviewCog not available, falls back to AlertsCog on_plan_detected."""
-        bot = _make_bot(monkeypatch)
+        bot = _make_bot()
         guild = _mock_guild()
         bot.get_guild = MagicMock(return_value=guild)
 
@@ -184,10 +193,10 @@ class TestOnReadyInitializesComponents:
     @patch("vcompany.bot.client.AgentManager")
     @patch("vcompany.bot.client.TmuxManager", create=True)
     async def test_on_ready_starts_monitor_task(
-        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls, monkeypatch
+        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls
     ):
         """Verify asyncio.create_task called with monitor_loop.run()."""
-        bot = _make_bot(monkeypatch)
+        bot = _make_bot()
         guild = _mock_guild()
         bot.get_guild = MagicMock(return_value=guild)
         bot.get_cog = MagicMock(return_value=None)
@@ -211,10 +220,10 @@ class TestOnReadyInitializesComponents:
     @patch("vcompany.bot.client.AgentManager")
     @patch("vcompany.bot.client.TmuxManager", create=True)
     async def test_on_ready_idempotent(
-        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls, monkeypatch
+        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls
     ):
         """Call on_ready twice, verify components initialized only once (Pitfall 7)."""
-        bot = _make_bot(monkeypatch)
+        bot = _make_bot()
         guild = _mock_guild()
         bot.get_guild = MagicMock(return_value=guild)
         bot.get_cog = MagicMock(return_value=None)
@@ -236,10 +245,10 @@ class TestOnReadyInitializesComponents:
     @patch("vcompany.bot.client.AgentManager")
     @patch("vcompany.bot.client.TmuxManager", create=True)
     async def test_on_ready_survives_init_failure(
-        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls, monkeypatch
+        self, mock_tmux_cls, mock_am_cls, mock_ct_cls, mock_ml_cls
     ):
         """If AgentManager raises, _ready_flag still set, bot still functional."""
-        bot = _make_bot(monkeypatch)
+        bot = _make_bot()
         guild = _mock_guild()
         bot.get_guild = MagicMock(return_value=guild)
         bot.get_cog = MagicMock(return_value=None)
@@ -255,15 +264,35 @@ class TestOnReadyInitializesComponents:
         assert bot.agent_manager is None
 
 
+class TestOnReadyProjectless:
+    """on_ready in project-less mode skips orchestration components."""
+
+    @pytest.mark.asyncio
+    async def test_on_ready_no_project_skips_orchestration(self):
+        """Without project_config, AgentManager/MonitorLoop/CrashTracker are not created."""
+        bot = _make_bot(with_project=False)
+        guild = _mock_guild()
+        bot.get_guild = MagicMock(return_value=guild)
+        bot.get_cog = MagicMock(return_value=None)
+
+        await bot.on_ready()
+
+        assert bot._initialized is True
+        assert bot._ready_flag is True
+        assert bot.agent_manager is None
+        assert bot.monitor_loop is None
+        assert bot.crash_tracker is None
+
+
 class TestClose:
     """Graceful shutdown stops monitor loop and cancels task."""
 
     @pytest.mark.asyncio
-    async def test_close_stops_monitor(self, monkeypatch):
+    async def test_close_stops_monitor(self):
         """Verify monitor_loop.stop() called and task cancelled."""
         import asyncio
 
-        bot = _make_bot(monkeypatch)
+        bot = _make_bot()
 
         mock_loop = MagicMock()
         mock_loop.stop = MagicMock()
@@ -283,9 +312,9 @@ class TestClose:
         assert task.cancelled()
 
     @pytest.mark.asyncio
-    async def test_close_without_monitor(self, monkeypatch):
+    async def test_close_without_monitor(self):
         """close() works even if monitor was never initialized."""
-        bot = _make_bot(monkeypatch)
+        bot = _make_bot()
 
         with patch.object(type(bot).__bases__[0], "close", new_callable=AsyncMock):
             await bot.close()
@@ -293,17 +322,27 @@ class TestClose:
         # Should not raise
 
 
-class TestGuildIdFromConfig:
-    """Verify _guild_id read from env correctly."""
+class TestGuildIdFromConstructor:
+    """Verify _guild_id set from constructor arg."""
 
-    def test_guild_id_from_env(self, monkeypatch):
-        """_guild_id is set from DISCORD_GUILD_ID env var."""
-        monkeypatch.setenv("DISCORD_GUILD_ID", "98765")
-        bot = VcoBot(Path("/tmp/test"), _make_config())
+    def test_guild_id_from_arg(self):
+        """_guild_id is set from constructor argument."""
+        bot = VcoBot(guild_id=98765)
         assert bot._guild_id == 98765
 
-    def test_guild_id_default(self, monkeypatch):
-        """_guild_id defaults to 0 when env var not set."""
-        monkeypatch.delenv("DISCORD_GUILD_ID", raising=False)
-        bot = VcoBot(Path("/tmp/test"), _make_config())
-        assert bot._guild_id == 0
+    def test_guild_id_with_project(self):
+        """_guild_id works alongside project args."""
+        bot = VcoBot(
+            guild_id=11111,
+            project_dir=Path("/tmp/test"),
+            config=_make_config(),
+        )
+        assert bot._guild_id == 11111
+        assert bot.project_dir == Path("/tmp/test")
+        assert bot.project_config is not None
+
+    def test_project_optional(self):
+        """project_dir and config default to None."""
+        bot = VcoBot(guild_id=99999)
+        assert bot.project_dir is None
+        assert bot.project_config is None

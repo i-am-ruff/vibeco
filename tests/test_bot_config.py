@@ -44,7 +44,7 @@ class TestBotConfig:
 
         config = BotConfig()
 
-        assert config.project_dir == "."
+        assert config.project_dir == ""
 
     def test_custom_project_dir(self, monkeypatch):
         """project_dir can be overridden via env var."""
