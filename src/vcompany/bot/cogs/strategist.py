@@ -104,9 +104,10 @@ class StrategistCog(commands.Cog):
         if message.webhook_id is not None:
             return
 
-        # Filter: skip bot's own messages
+        # Filter: skip bot's own messages UNLESS it's a [system] notification
         if message.author.id == self.bot.user.id:
-            return
+            if not message.content.startswith("[system]"):
+                return
 
         # Filter: skip non-strategist channels
         if (
@@ -121,8 +122,12 @@ class StrategistCog(commands.Cog):
             ):
                 return
 
-        # Filter: skip non-owners
-        if not self._has_owner_role(message.author):
+        # Filter: skip non-owners (but allow [system] messages from bot)
+        is_system = (
+            message.author.id == self.bot.user.id
+            and message.content.startswith("[system]")
+        )
+        if not is_system and not self._has_owner_role(message.author):
             return
 
         # Check for pending escalation replies first (D-07)

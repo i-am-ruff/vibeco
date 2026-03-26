@@ -263,6 +263,45 @@ class VcoBot(commands.Bot):
         self._ready_flag = True
         logger.info("VcoBot ready in guild %s", guild.name)
 
+        # ── Boot notifications ──────────────────────────────────────────
+        await self._send_boot_notifications(guild)
+
+    async def _send_boot_notifications(self, guild: discord.Guild) -> None:
+        """Ping owner in #alerts and notify Strategist that system is online."""
+        restart_signal = Path.home() / ".vco-restart-requested"
+        is_restart = restart_signal.exists()
+        if is_restart:
+            restart_signal.unlink(missing_ok=True)
+
+        try:
+            # Ping owner in #alerts
+            alerts_channel = self._system_channels.get("alerts")
+            if alerts_channel:
+                owner_role = discord.utils.get(guild.roles, name="vco-owner")
+                mention = owner_role.mention if owner_role else "@owner"
+                if is_restart:
+                    await alerts_channel.send(
+                        f"{mention} vCompany restarted successfully. All systems online."
+                    )
+                else:
+                    await alerts_channel.send(
+                        f"{mention} vCompany is online."
+                    )
+
+            # Send system message to Strategist so it knows to greet
+            strategist_channel = self._system_channels.get("strategist")
+            if strategist_channel:
+                if is_restart:
+                    await strategist_channel.send(
+                        "[system] `vco restart` complete - vCompany is back online."
+                    )
+                else:
+                    await strategist_channel.send(
+                        "[system] `vco up` - vCompany is online."
+                    )
+        except Exception:
+            logger.exception("Failed to send boot notifications")
+
     async def close(self) -> None:
         """Graceful shutdown: stop monitor loop, then close bot."""
         if self.monitor_loop:
