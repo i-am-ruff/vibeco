@@ -168,6 +168,13 @@ class VcoBot(commands.Bot):
         except Exception:
             logger.exception("Failed to initialize WorkflowMasterCog")
 
+        # ── Auto-detect active project on restart ─────────────────────
+        if self.project_config is None and self.project_dir is None:
+            detected = self._detect_active_project()
+            if detected:
+                self.project_dir, self.project_config = detected
+                logger.info("Auto-detected active project: %s", self.project_config.project)
+
         # ── Project-only initialization ────────────────────────────────
 
         if self.project_config is not None and self.project_dir is not None:
@@ -265,6 +272,39 @@ class VcoBot(commands.Bot):
 
         # ── Boot notifications ──────────────────────────────────────────
         await self._send_boot_notifications(guild)
+
+    def _detect_active_project(self) -> tuple[Path, ProjectConfig] | None:
+        """Scan ~/vco-projects/ for the most recently active project.
+
+        Looks for projects with state/agents.json (meaning they were dispatched).
+        Returns the one with the newest agents.json mtime.
+        """
+        from vcompany.shared.paths import PROJECTS_BASE
+
+        if not PROJECTS_BASE.exists():
+            return None
+
+        best: tuple[Path, float] | None = None
+        for project_dir in PROJECTS_BASE.iterdir():
+            if not project_dir.is_dir():
+                continue
+            agents_json = project_dir / "state" / "agents.json"
+            agents_yaml = project_dir / "agents.yaml"
+            if agents_json.exists() and agents_yaml.exists():
+                mtime = agents_json.stat().st_mtime
+                if best is None or mtime > best[1]:
+                    best = (project_dir, mtime)
+
+        if best is None:
+            return None
+
+        try:
+            from vcompany.models.config import load_config
+            config = load_config(best[0] / "agents.yaml")
+            return (best[0], config)
+        except Exception:
+            logger.warning("Failed to load config for detected project %s", best[0])
+            return None
 
     async def _send_boot_notifications(self, guild: discord.Guild) -> None:
         """Ping owner in #alerts and notify Strategist that system is online."""
