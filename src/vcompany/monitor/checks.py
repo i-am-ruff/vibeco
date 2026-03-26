@@ -13,6 +13,7 @@ from pathlib import Path
 
 from vcompany.git import ops as git_ops
 from vcompany.models.monitor_state import CheckResult
+from vcompany.monitor.status_generator import parse_roadmap
 from vcompany.tmux.session import TmuxManager
 
 logger = logging.getLogger("vcompany.monitor.checks")
@@ -248,3 +249,59 @@ def check_plan_gate(
             ),
             {},
         )
+
+
+def check_phase_completion(
+    agent_id: str,
+    clone_dir: Path,
+    previous_phase_status: str,
+) -> tuple[str, str]:
+    """Check if the agent's current phase has been completed.
+
+    Parses ROADMAP.md to determine the current executing phase and its status.
+    Returns the current phase identifier and status so the monitor can detect
+    transitions to "completed" and trigger auto-checkin.
+
+    Args:
+        agent_id: Agent identifier.
+        clone_dir: Path to agent's git clone.
+        previous_phase_status: The phase_status from the previous cycle.
+
+    Returns:
+        Tuple of (current_phase, phase_status) where phase_status is one of:
+        "executing", "completed", "unknown".
+    """
+    try:
+        roadmap_path = clone_dir / ".planning" / "ROADMAP.md"
+        if not roadmap_path.exists():
+            return ("unknown", "unknown")
+
+        phases = parse_roadmap(roadmap_path)
+        if not phases or phases[0]["status"] == "unknown":
+            return ("unknown", "unknown")
+
+        # Find the currently executing phase
+        executing = [p for p in phases if p["status"] == "executing"]
+        completed = [p for p in phases if p["status"] == "complete"]
+
+        if executing:
+            phase_id = f"Phase {executing[0]['number']}"
+            return (phase_id, "executing")
+
+        # No executing phase — all phases either complete or pending.
+        # If we were previously executing, that means the phase just completed.
+        if completed and previous_phase_status == "executing":
+            last_done = completed[-1]
+            phase_id = f"Phase {last_done['number']}"
+            return (phase_id, "completed")
+
+        # All done or nothing started
+        if completed and not executing:
+            last_done = completed[-1]
+            return (f"Phase {last_done['number']}", "completed")
+
+        return ("unknown", "unknown")
+
+    except Exception:
+        logger.exception("Phase completion check error for %s", agent_id)
+        return ("unknown", "unknown")

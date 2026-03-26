@@ -22,6 +22,22 @@ _CLAUDE_STARTUP_DELAY = 15
 @click.option("--resume", is_flag=True, help="Send /gsd:resume-work after launch")
 def dispatch(project_name: str, agent_id: str | None, dispatch_all: bool, command: str | None, resume: bool) -> None:
     """Launch Claude Code sessions for agents in a project."""
+    # Warn if vco up is not running (no monitor watching agents)
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "vco up"], capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            click.echo(
+                "WARNING: 'vco up' is not running. Agents will launch but no monitor "
+                "will supervise them (no liveness checks, no auto-checkin, no plan gate).\n"
+                "Run 'vco up' first for full orchestration.",
+                err=True,
+            )
+    except Exception:
+        pass  # pgrep not available, skip check
+
     project_dir = PROJECTS_BASE / project_name
     if not project_dir.is_dir():
         click.echo(f"Error: Project '{project_name}' not found at {project_dir}", err=True)

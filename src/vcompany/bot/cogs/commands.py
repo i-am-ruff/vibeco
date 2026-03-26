@@ -95,10 +95,36 @@ class CommandsCog(commands.Cog):
                 )
                 return
 
-            # Step 1: Load config
+            # Step 1: Load config and initialize project structure
             from vcompany.models.config import load_config
+            from vcompany.shared.file_ops import write_atomic
+            from vcompany.shared.templates import render_template
+
             config = load_config(project_dir / "agents.yaml")
-            await interaction.followup.send(f"Setting up **{name}**... loaded {len(config.agents)} agents.")
+
+            # Create project directory structure (same as vco init)
+            context_dir = project_dir / "context"
+            agents_dir = context_dir / "agents"
+            context_dir.mkdir(parents=True, exist_ok=True)
+            agents_dir.mkdir(parents=True, exist_ok=True)
+
+            # Generate agent system prompts
+            for agent in config.agents:
+                prompt_content = render_template(
+                    "agent_prompt.md.j2",
+                    agent_id=agent.id,
+                    role=agent.role,
+                    project_name=config.project,
+                    owned_dirs=agent.owns,
+                    consumes=agent.consumes,
+                    milestone_name="TBD",
+                    milestone_scope="See MILESTONE-SCOPE.md",
+                )
+                write_atomic(agents_dir / f"{agent.id}.md", prompt_content)
+
+            await interaction.followup.send(
+                f"Setting up **{name}**... loaded {len(config.agents)} agents, project structure initialized."
+            )
 
             # Step 2: Clone repos (if not already cloned)
             clones_dir = project_dir / "clones"
@@ -140,7 +166,15 @@ class CommandsCog(commands.Cog):
             self.bot.project_dir = project_dir
             self.bot.project_config = config
             self.bot.agent_manager = AgentManager(project_dir, config, TmuxManager())
-            await interaction.channel.send("Project loaded into bot.")
+
+            # Start monitor loop for the project
+            from vcompany.monitor.loop import MonitorLoop
+            self.bot.monitor_loop = MonitorLoop(project_dir, config, self.bot.agent_manager)
+            self.wire_monitor_callbacks()
+            self.bot._monitor_task = asyncio.create_task(
+                self.bot.monitor_loop.run(), name="monitor-loop"
+            )
+            await interaction.channel.send("Project loaded into bot. Monitor started.")
 
             # Step 5: Dispatch agents
             import time

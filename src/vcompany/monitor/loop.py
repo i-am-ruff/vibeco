@@ -22,7 +22,7 @@ from pathlib import Path
 from vcompany.models.agent_state import AgentsRegistry
 from vcompany.models.config import ProjectConfig
 from vcompany.models.monitor_state import AgentMonitorState
-from vcompany.monitor.checks import check_liveness, check_plan_gate, check_stuck
+from vcompany.monitor.checks import check_liveness, check_phase_completion, check_plan_gate, check_stuck
 from vcompany.monitor.heartbeat import write_heartbeat
 from vcompany.monitor.status_generator import (
     distribute_project_status,
@@ -198,6 +198,17 @@ class MonitorLoop:
             if plan_result.new_plans and self._on_plan_detected:
                 for plan_path in plan_result.new_plans:
                     self._on_plan_detected(agent_id, Path(plan_path))
+
+            # Phase completion detection
+            if state:
+                current_phase, phase_status = await asyncio.to_thread(
+                    check_phase_completion,
+                    agent_id,
+                    clone_dir,
+                    state.phase_status,
+                )
+                state.current_phase = current_phase
+                state.phase_status = phase_status
 
             # Checkin auto-trigger per D-09
             if state and state.phase_status == "completed" and not state.checkin_sent:
