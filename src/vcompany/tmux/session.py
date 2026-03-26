@@ -69,6 +69,22 @@ class TmuxManager:
         """Send a command string to a tmux pane."""
         pane.send_keys(command)
 
+    def get_pane_by_id(self, pane_id: str) -> libtmux.Pane | None:
+        """Look up a libtmux Pane object by its pane_id string (e.g., '%5').
+
+        Searches all sessions/windows for the matching pane. Returns None if
+        the pane no longer exists (session killed, pane closed, etc.).
+        """
+        try:
+            for session in self._server.sessions:
+                for window in session.windows:
+                    for pane in window.panes:
+                        if pane.pane_id == pane_id:
+                            return pane
+        except Exception:
+            logger.debug("Failed to look up pane %s", pane_id)
+        return None
+
     def is_alive(self, pane: libtmux.Pane) -> bool:
         """Check if the pane's shell process is still running via PID check."""
         try:

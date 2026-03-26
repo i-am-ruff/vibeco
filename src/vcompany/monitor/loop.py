@@ -174,7 +174,9 @@ class MonitorLoop:
         try:
             # Get pane and PID info from registry
             entry = registry.agents.get(agent_id)
-            pane = entry.pane_id if entry else None
+            # Resolve string pane_id to actual libtmux Pane object
+            pane_id_str = entry.pane_id if entry else None
+            pane = self._tmux.get_pane_by_id(pane_id_str) if pane_id_str else None
             agent_pid = entry.pid if entry else None
             clone_dir = self._project_dir / "clones" / agent_id
 

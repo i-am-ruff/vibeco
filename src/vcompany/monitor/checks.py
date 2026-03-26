@@ -123,11 +123,13 @@ def check_stuck(
         result = git_ops.log(clone_dir, args=["--format=%aI", "-1"])
 
         if not result.success or not result.stdout.strip():
+            # No commits yet (fresh clone or empty repo) — cannot determine
+            # stuck-ness without a baseline commit, so treat as not-stuck.
             return CheckResult(
                 check_type="stuck",
                 agent_id=agent_id,
-                passed=False,
-                detail="No commits found in repository",
+                passed=True,
+                detail="No commits found yet — skipping stuck check",
             )
 
         # Parse ISO timestamp from git log

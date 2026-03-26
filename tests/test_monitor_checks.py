@@ -79,12 +79,12 @@ class TestStuck:
     """Tests for check_stuck function."""
 
     def test_stuck_no_commits(self) -> None:
-        """No commits in repo -> stuck=True (passed=False)."""
+        """No commits in repo -> not stuck (passed=True), can't measure without baseline."""
         with patch("vcompany.monitor.checks.git_ops") as mock_git:
             mock_git.log.return_value = MagicMock(success=True, stdout="")
             result = check_stuck("agent-1", Path("/fake/clone"))
 
-        assert result.passed is False  # stuck means check fails
+        assert result.passed is True  # no commits = no baseline, skip stuck check
         assert result.check_type == "stuck"
 
     def test_stuck_old_commits(self) -> None:
