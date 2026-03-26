@@ -69,9 +69,11 @@ class StrategistConversation:
         self,
         persona_path: Path | None = None,
         session_id: str = _SESSION_UUID,
+        allowed_tools: str = "Bash Read Write",
     ) -> None:
         self._system_prompt = self._load_persona(persona_path)
         self._session_id = session_id
+        self._allowed_tools = allowed_tools
         self._initialized = False
         self._lock = asyncio.Lock()
 
@@ -192,7 +194,7 @@ class StrategistConversation:
         return [
             "claude", "-p",
             "--output-format", "text",
-            "--allowedTools", "Bash Read Write",
+            "--allowedTools", self._allowed_tools,
             "--resume", self._session_id,
         ]
 
@@ -207,7 +209,7 @@ class StrategistConversation:
         return [
             "claude", "-p",
             "--output-format", "text",
-            "--allowedTools", "Bash Read Write",
+            "--allowedTools", self._allowed_tools,
             "--session-id", self._session_id,
         ]
 
