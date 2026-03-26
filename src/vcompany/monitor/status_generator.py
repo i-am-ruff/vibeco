@@ -25,31 +25,23 @@ _EMOJI_COMPLETE = "\u2705"  # checkmark
 _EMOJI_EXECUTING = "\U0001f504"  # cycle arrows
 _EMOJI_PENDING = "\u231b"  # hourglass
 
-# Regex for ROADMAP.md phase lines: - [x] **Phase N: Description**
-_PHASE_RE = re.compile(r"- \[(x| )\] \*\*Phase (\d+): (.+?)\*\*")
+# Regex for checklist-style: - [x] **Phase N: Description**
+_PHASE_CHECKLIST_RE = re.compile(r"- \[(x| )\] \*\*Phase (\d+): (.+?)\*\*")
+
+# Regex for GSD heading-style: ### Phase N: Description
+_PHASE_HEADING_RE = re.compile(r"^###\s+Phase\s+(\d+):\s+(.+)")
+
+# Regex for plan/UAT checklist items under a phase heading
+_CHECKLIST_ITEM_RE = re.compile(r"^- \[(x| )\]")
 
 
-def parse_roadmap(roadmap_path: Path) -> list[dict]:
-    """Parse ROADMAP.md to extract phase status information.
-
-    Args:
-        roadmap_path: Path to a ROADMAP.md file.
-
-    Returns:
-        List of dicts with keys: number, description, status.
-        Status is one of: complete, executing, pending, unknown.
-        On any failure returns a single-element list with status "unknown".
-    """
-    try:
-        content = roadmap_path.read_text()
-    except Exception:
-        return [{"number": 0, "description": "Status unknown", "status": "unknown"}]
-
+def _parse_checklist_format(content: str) -> list[dict]:
+    """Parse checklist-style roadmap: - [x] **Phase N: Description**."""
     phases: list[dict] = []
     found_first_unchecked = False
 
     for line in content.splitlines():
-        match = _PHASE_RE.search(line)
+        match = _PHASE_CHECKLIST_RE.search(line)
         if not match:
             continue
 
@@ -66,6 +58,94 @@ def parse_roadmap(roadmap_path: Path) -> list[dict]:
             status = "pending"
 
         phases.append({"number": number, "description": description, "status": status})
+
+    return phases
+
+
+def _parse_heading_format(content: str) -> list[dict]:
+    """Parse GSD heading-style roadmap: ### Phase N: Description.
+
+    Determines phase status by inspecting plan/UAT checklist items under each
+    phase heading. A phase is "complete" when all items are checked, "executing"
+    if it's the first phase with unchecked items, and "pending" otherwise.
+    """
+    phases: list[dict] = []
+    current_phase: dict | None = None
+    current_total = 0
+    current_checked = 0
+
+    def _finalize_phase(phase: dict, total: int, checked: int) -> None:
+        if total > 0 and checked == total:
+            phase["_done"] = True
+        else:
+            phase["_done"] = False
+
+    for line in content.splitlines():
+        heading_match = _PHASE_HEADING_RE.match(line)
+        if heading_match:
+            # Finalize previous phase
+            if current_phase is not None:
+                _finalize_phase(current_phase, current_total, current_checked)
+
+            number = int(heading_match.group(1))
+            description = heading_match.group(2).strip()
+            current_phase = {"number": number, "description": description}
+            phases.append(current_phase)
+            current_total = 0
+            current_checked = 0
+            continue
+
+        if current_phase is not None:
+            item_match = _CHECKLIST_ITEM_RE.match(line)
+            if item_match:
+                current_total += 1
+                if item_match.group(1) == "x":
+                    current_checked += 1
+
+    # Finalize last phase
+    if current_phase is not None:
+        _finalize_phase(current_phase, current_total, current_checked)
+
+    # Assign statuses: complete, executing (first incomplete), pending
+    found_first_incomplete = False
+    for phase in phases:
+        if phase.pop("_done", False):
+            phase["status"] = "complete"
+        elif not found_first_incomplete:
+            phase["status"] = "executing"
+            found_first_incomplete = True
+        else:
+            phase["status"] = "pending"
+
+    return phases
+
+
+def parse_roadmap(roadmap_path: Path) -> list[dict]:
+    """Parse ROADMAP.md to extract phase status information.
+
+    Supports two formats:
+    1. Checklist-style: ``- [x] **Phase N: Description**``
+    2. GSD heading-style: ``### Phase N: Description`` with plan/UAT checklists
+
+    Args:
+        roadmap_path: Path to a ROADMAP.md file.
+
+    Returns:
+        List of dicts with keys: number, description, status.
+        Status is one of: complete, executing, pending, unknown.
+        On any failure returns a single-element list with status "unknown".
+    """
+    try:
+        content = roadmap_path.read_text()
+    except Exception:
+        return [{"number": 0, "description": "Status unknown", "status": "unknown"}]
+
+    # Try checklist format first (original format)
+    phases = _parse_checklist_format(content)
+
+    # Fall back to GSD heading format
+    if not phases:
+        phases = _parse_heading_format(content)
 
     if not phases:
         return [{"number": 0, "description": "Status unknown", "status": "unknown"}]

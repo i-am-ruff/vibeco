@@ -1,5 +1,6 @@
 """vco clone command -- creates per-agent repository clones with artifact deployment."""
 
+import logging
 import shutil
 import sys
 from pathlib import Path
@@ -11,6 +12,8 @@ from vcompany.models.config import load_config
 from vcompany.shared.file_ops import write_atomic
 from vcompany.shared.paths import PROJECTS_BASE
 from vcompany.shared.templates import render_template
+
+logger = logging.getLogger("vcompany.cli.clone")
 
 # Source directory for vco command files (project root / commands / vco)
 _COMMANDS_SOURCE = Path(__file__).parent.parent.parent.parent / "commands" / "vco"
@@ -58,14 +61,37 @@ def _deploy_artifacts(clone_dir: Path, agent, config, project_dir: Path) -> None
         if src.exists():
             shutil.copy2(src, commands_dir / cmd_file)
 
-    # 5. Deploy planning artifacts if they exist in project context.
+    # 5. Add .planning/ to .gitignore so per-agent planning state doesn't
+    #    cause merge conflicts when integrating agent branches.
+    gitignore_path = clone_dir / ".gitignore"
+    gitignore_entry = ".planning/"
+    if gitignore_path.exists():
+        existing = gitignore_path.read_text()
+        if gitignore_entry not in existing.splitlines():
+            write_atomic(gitignore_path, existing.rstrip("\n") + f"\n{gitignore_entry}\n")
+    else:
+        write_atomic(gitignore_path, f"{gitignore_entry}\n")
+
+    # 6. Deploy planning artifacts if they exist in project context.
     #    These are pre-built by the Strategist or owner so agents don't
     #    need to run /gsd:new-project (which requires interactive input).
+    #    Required files: ROADMAP.md, REQUIREMENTS.md, STATE.md
+    #    Create these at ~/vco-projects/<name>/planning/ before running vco clone.
     planning_source = project_dir / "planning"
     if planning_source.is_dir():
+        deployed = []
         for artifact in planning_source.iterdir():
             if artifact.is_file() and artifact.suffix == ".md":
                 shutil.copy2(artifact, planning_dir / artifact.name)
+                deployed.append(artifact.name)
+        if deployed:
+            logger.info("Deployed planning artifacts to %s: %s", agent.id, ", ".join(deployed))
+    else:
+        logger.warning(
+            "No planning/ dir found at %s — agents may fail without ROADMAP.md. "
+            "Create %s with ROADMAP.md, REQUIREMENTS.md, STATE.md before cloning.",
+            planning_source, planning_source,
+        )
 
 
 @click.command()

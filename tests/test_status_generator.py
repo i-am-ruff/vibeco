@@ -66,6 +66,72 @@ This line is not a phase
 - [ ] **Phase 4: Valid again**
 """
 
+ROADMAP_GSD_FORMAT = """\
+# test-project — Roadmap
+
+## Milestone 1: Build the thing
+
+### Phase 1: Foundation setup
+**Goal:** Set up the project structure.
+
+**Plans:** 1 plan
+
+Plans:
+- [x] 01-01-PLAN.md — Project scaffolding
+
+**UAT:**
+- [x] Project structure exists
+- [x] Tests pass
+
+### Phase 2: Core API
+**Goal:** Build the API endpoints.
+
+**Plans:** 1 plan
+
+Plans:
+- [x] 02-01-PLAN.md — API endpoints
+
+**UAT:**
+- [x] GET /items works
+- [x] CORS enabled
+
+### Phase 3: Integration layer
+**Goal:** Connect frontend to backend.
+
+**Plans:** 1 plan
+
+Plans:
+- [ ] 03-01-PLAN.md — Wire up frontend
+
+**UAT:**
+- [ ] Frontend displays items
+- [ ] Error handling works
+
+### Phase 4: Polish and deploy
+**Goal:** Final touches.
+
+**Plans:** 0 plans
+
+**UAT:**
+- [ ] All tests pass
+- [ ] Deployed
+"""
+
+ROADMAP_GSD_ALL_COMPLETE = """\
+# test-project — Roadmap
+
+## Milestone 1: Done
+
+### Phase 1: Only phase
+**Goal:** Do it.
+
+Plans:
+- [x] 01-01-PLAN.md — The plan
+
+**UAT:**
+- [x] It works
+"""
+
 
 class TestParseRoadmap:
     def test_parse_roadmap_with_phases(self, tmp_path: Path) -> None:
@@ -88,6 +154,28 @@ class TestParseRoadmap:
         assert len(result) == 1
         assert result[0]["status"] == "unknown"
         assert "unknown" in result[0]["description"].lower() or "Status unknown" in result[0]["description"]
+
+    def test_parse_roadmap_gsd_format(self, tmp_path: Path) -> None:
+        roadmap = tmp_path / "ROADMAP.md"
+        _write_roadmap(roadmap, ROADMAP_GSD_FORMAT)
+
+        result = parse_roadmap(roadmap)
+
+        assert len(result) == 4
+        assert result[0] == {"number": 1, "description": "Foundation setup", "status": "complete"}
+        assert result[1] == {"number": 2, "description": "Core API", "status": "complete"}
+        assert result[2] == {"number": 3, "description": "Integration layer", "status": "executing"}
+        assert result[3] == {"number": 4, "description": "Polish and deploy", "status": "pending"}
+
+    def test_parse_roadmap_gsd_all_complete(self, tmp_path: Path) -> None:
+        roadmap = tmp_path / "ROADMAP.md"
+        _write_roadmap(roadmap, ROADMAP_GSD_ALL_COMPLETE)
+
+        result = parse_roadmap(roadmap)
+
+        assert len(result) == 1
+        assert result[0]["status"] == "complete"
+        assert result[0]["number"] == 1
 
     def test_parse_roadmap_malformed(self, tmp_path: Path) -> None:
         roadmap = tmp_path / "ROADMAP.md"
