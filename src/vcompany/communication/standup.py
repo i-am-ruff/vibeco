@@ -81,4 +81,9 @@ class StandupSession:
             f"/gsd:quick Owner standup message: {message}. "
             "Update ROADMAP.md or STATE.md if this changes your priorities or scope."
         )
-        return self._tmux.send_command(pane_id, prompt)
+        sent = self._tmux.send_command(pane_id, prompt)
+        if sent:
+            logger.info("Routed standup message to %s (pane %s)", agent_id, pane_id)
+        else:
+            logger.error("Failed to route standup message to %s (pane %s)", agent_id, pane_id)
+        return sent

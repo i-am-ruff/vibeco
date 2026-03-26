@@ -383,9 +383,13 @@ class PlanReviewCog(commands.Cog):
                             f"Your plan {Path(plan_path).name} was rejected. "
                             f"Feedback: {feedback}. Please revise the plan."
                         )
-                        await asyncio.to_thread(
+                        sent = await asyncio.to_thread(
                             tmux.send_command, entry.pane_id, feedback_cmd
                         )
+                        if sent:
+                            logger.info("Sent rejection feedback to %s (pane %s)", agent_id, entry.pane_id)
+                        else:
+                            logger.error("Failed to send rejection feedback to %s (pane %s)", agent_id, entry.pane_id)
             except Exception:
                 logger.exception("Failed to send rejection feedback to %s", agent_id)
 
@@ -417,10 +421,13 @@ class PlanReviewCog(commands.Cog):
                     # Extract phase number from state
                     phase = getattr(state, 'current_phase', 'unknown')
                     execute_cmd = f"/gsd:execute-phase {phase}"
-                    await asyncio.to_thread(
+                    sent = await asyncio.to_thread(
                         tmux.send_command, entry.pane_id, execute_cmd
                     )
-                    logger.info("Triggered execution for %s: %s", agent_id, execute_cmd)
+                    if sent:
+                        logger.info("Triggered execution for %s: %s (pane %s)", agent_id, execute_cmd, entry.pane_id)
+                    else:
+                        logger.error("Failed to trigger execution for %s: %s (pane %s)", agent_id, execute_cmd, entry.pane_id)
 
                     # Reset gate state to idle after triggering
                     if hasattr(state, 'plan_gate_status'):
