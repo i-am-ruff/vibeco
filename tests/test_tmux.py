@@ -74,11 +74,56 @@ class TestSendCommand:
         created.append(name)
         session = manager.create_session(name)
         pane = session.active_window.active_pane
-        manager.send_command(pane, "echo hello-vco-test")
+        result = manager.send_command(pane, "echo hello-vco-test")
+        assert result is True
         # Give tmux a moment to process
         time.sleep(0.5)
         output = manager.get_output(pane)
         assert any("hello-vco-test" in line for line in output)
+
+
+class TestSendCommandStringPaneId:
+    def test_send_command_with_string_pane_id(self, tmux_manager):
+        """send_command(pane_id_string, cmd) resolves pane and sends command."""
+        manager, created = tmux_manager
+        name = "test-vco-str-pane"
+        created.append(name)
+        session = manager.create_session(name)
+        pane = session.active_window.active_pane
+        pane_id = pane.pane_id  # e.g., '%5'
+        result = manager.send_command(pane_id, "echo string-pane-test")
+        assert result is True
+        time.sleep(0.5)
+        output = manager.get_output(pane)
+        assert any("string-pane-test" in line for line in output)
+
+    def test_send_command_nonexistent_pane_id_returns_false(self, tmux_manager):
+        """send_command with nonexistent pane_id returns False without raising."""
+        manager, created = tmux_manager
+        result = manager.send_command("%99999", "echo should-fail")
+        assert result is False
+
+    def test_send_command_pane_object_returns_bool_true(self, tmux_manager):
+        """send_command with valid Pane object returns True (bool)."""
+        manager, created = tmux_manager
+        name = "test-vco-bool-ret"
+        created.append(name)
+        session = manager.create_session(name)
+        pane = session.active_window.active_pane
+        result = manager.send_command(pane, "echo bool-test")
+        assert isinstance(result, bool)
+        assert result is True
+
+    def test_send_command_exception_returns_false(self, tmux_manager):
+        """send_command returns False when send_keys raises (e.g., dead pane)."""
+        from unittest.mock import MagicMock
+
+        manager, created = tmux_manager
+        mock_pane = MagicMock()
+        mock_pane.send_keys.side_effect = Exception("pane is dead")
+        mock_pane.pane_id = "%dead"
+        result = manager.send_command(mock_pane, "echo should-fail")
+        assert result is False
 
 
 class TestIsAlive:

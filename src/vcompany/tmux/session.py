@@ -65,9 +65,25 @@ class TmuxManager:
             window = session.active_window
         return window.active_pane
 
-    def send_command(self, pane: libtmux.Pane, command: str) -> None:
-        """Send a command string to a tmux pane."""
-        pane.send_keys(command)
+    def send_command(self, pane: libtmux.Pane | str, command: str) -> bool:
+        """Send a command string to a tmux pane.
+
+        Accepts either a libtmux Pane object or a pane_id string (e.g., '%5').
+        Returns True if command was sent successfully, False on any error.
+        """
+        try:
+            if isinstance(pane, str):
+                resolved = self.get_pane_by_id(pane)
+                if resolved is None:
+                    logger.error("Cannot resolve pane_id '%s' — pane not found", pane)
+                    return False
+                pane = resolved
+            pane.send_keys(command)
+            logger.debug("Sent command to pane %s: %s", getattr(pane, 'pane_id', '?'), command[:80])
+            return True
+        except Exception:
+            logger.exception("Failed to send command to pane %s", getattr(pane, 'pane_id', '?'))
+            return False
 
     def get_pane_by_id(self, pane_id: str) -> libtmux.Pane | None:
         """Look up a libtmux Pane object by its pane_id string (e.g., '%5').
