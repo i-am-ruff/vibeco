@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Stable UUID for the Strategist session — deterministic from a fixed seed
 # so it survives restarts. uuid5 with DNS namespace + version string.
 # Bump the version string to force a new session (e.g., after persona changes).
-_SESSION_VERSION = "vco-strategist-v1"
+_SESSION_VERSION = "vco-strategist-v1-operational"
 _SESSION_UUID = str(uuid.uuid5(uuid.NAMESPACE_DNS, _SESSION_VERSION))
 
 DEFAULT_PERSONA = """You are the Strategist for vCompany — an autonomous multi-agent development system.
@@ -156,10 +156,10 @@ class StrategistConversation:
 
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(input=content.encode()),
-                timeout=300,
+                timeout=600,
             )
         except asyncio.TimeoutError:
-            logger.error("Strategist timed out after 300s")
+            logger.error("Strategist timed out after 600s")
             if allow_failure:
                 return None
             return "I need more time to think about that. Could you rephrase or simplify the question?"
@@ -184,11 +184,13 @@ class StrategistConversation:
 
         Always includes --system-prompt so the persona persists across
         every call, not just the first one.
+        Allows operational tools (Bash, Read, Write) so Strategist can
+        check status, generate files, and run vco commands.
         """
         return [
             "claude", "-p",
             "--output-format", "text",
-            "--allowedTools", "",
+            "--allowedTools", "Bash Read Write",
             "--system-prompt", self._system_prompt,
             "--resume", self._session_id,
         ]
@@ -198,7 +200,7 @@ class StrategistConversation:
         return [
             "claude", "-p",
             "--output-format", "text",
-            "--allowedTools", "",
+            "--allowedTools", "Bash Read Write",
             "--system-prompt", self._system_prompt,
             "--session-id", self._session_id,
         ]

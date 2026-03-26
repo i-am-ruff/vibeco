@@ -115,10 +115,9 @@ async def test_first_send_includes_system_prompt():
         await conv.send("first")
         await conv.send("second")
 
-    # First call has --system-prompt
+    # Both calls include --system-prompt (persona persists on every call)
     assert "--system-prompt" in call_args_list[0]
-    # Second call does not have --system-prompt
-    assert "--system-prompt" not in call_args_list[1]
+    assert "--system-prompt" in call_args_list[1]
 
 
 @pytest.mark.asyncio

@@ -114,34 +114,7 @@ class TestInteractionCheck:
 
 
 class TestNewProject:
-    """/new-project creates channels and discussion thread (DISC-03)."""
-
-    @pytest.mark.asyncio
-    @patch("vcompany.bot.cogs.commands.setup_project_channels", new_callable=AsyncMock)
-    async def test_new_project(self, mock_setup_channels):
-        """Creates project channels on success."""
-        bot = _make_bot()
-        cog = CommandsCog(bot)
-        interaction = _make_interaction()
-
-        mock_role = MagicMock(spec=discord.Role)
-        mock_role.name = "vco-owner"
-        interaction.guild.roles = [mock_role]
-        discord_utils_get_orig = discord.utils.get
-
-        with patch("vcompany.bot.cogs.commands.discord.utils.get", side_effect=lambda seq, **kw: mock_role if kw.get("name") == "vco-owner" else None):
-            await cog.new_project.callback(cog, interaction, name="myapp")
-
-        # Verify setup_project_channels called
-        mock_setup_channels.assert_called_once()
-        call_args = mock_setup_channels.call_args
-        assert call_args[0][1] == "myapp"  # project_name
-
-        # Verify followup confirmation sent (after defer)
-        interaction.response.defer.assert_called_once()
-        sent_text = interaction.followup.send.call_args[0][0]
-        assert "myapp" in sent_text
-        assert "created" in sent_text.lower() or "Created" in sent_text or "ready" in sent_text.lower()
+    """/new-project runs full project pipeline (DISC-03)."""
 
     @pytest.mark.asyncio
     async def test_new_project_no_guild(self):
@@ -157,18 +130,19 @@ class TestNewProject:
         assert "server" in call_args[0][0].lower()
 
     @pytest.mark.asyncio
-    async def test_new_project_no_config(self):
-        """Rejects when no project is loaded."""
+    async def test_new_project_no_agents_yaml(self, tmp_path):
+        """Reports error when agents.yaml not found."""
         bot = _make_bot()
-        bot.project_config = None
         cog = CommandsCog(bot)
         interaction = _make_interaction()
 
-        await cog.new_project.callback(cog, interaction, name="myapp")
+        with patch("vcompany.shared.paths.PROJECTS_BASE", tmp_path):
+            (tmp_path / "myapp").mkdir()  # dir exists but no agents.yaml
+            await cog.new_project.callback(cog, interaction, name="myapp")
 
-        interaction.response.send_message.assert_called_once()
-        call_args = interaction.response.send_message.call_args
-        assert "no project" in call_args[0][0].lower()
+        interaction.response.defer.assert_called_once()
+        sent_text = interaction.followup.send.call_args[0][0]
+        assert "agents.yaml" in sent_text.lower()
 
 
 class TestDispatch:

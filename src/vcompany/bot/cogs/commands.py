@@ -65,15 +65,15 @@ class CommandsCog(commands.Cog):
 
     # ── /new-project ──────────────────────────────────────────────────
 
-    @app_commands.command(name="new-project", description="Create project channels and discussion thread")
+    @app_commands.command(name="new-project", description="Set up a new project (channels + agents + dispatch)")
     @app_commands.describe(name="Project name")
     @is_owner_app_check()
     async def new_project(self, interaction: discord.Interaction, name: str) -> None:
-        """Create project channels and discussion thread (DISC-03)."""
-        if self.bot.project_config is None:
-            await interaction.response.send_message(_no_project_msg(), ephemeral=True)
-            return
+        """Full project setup: channels + init + clone + dispatch (DISC-03).
 
+        Expects the Strategist to have already generated project files at
+        ~/vco-projects/<name>/ (agents.yaml, planning/ artifacts).
+        """
         try:
             guild = interaction.guild
             if guild is None:
@@ -82,24 +82,86 @@ class CommandsCog(commands.Cog):
                 )
                 return
 
-            # Defer since channel setup may be slow
             await interaction.response.defer()
 
-            owner_role = discord.utils.get(guild.roles, name="vco-owner")
-            if owner_role is None:
+            # Check project files exist
+            from vcompany.shared.paths import PROJECTS_BASE
+            project_dir = PROJECTS_BASE / name
+
+            if not (project_dir / "agents.yaml").exists():
                 await interaction.followup.send(
-                    "Error: vco-owner role not found. Bot may not have initialized properly."
+                    f"No agents.yaml found at `{project_dir}/agents.yaml`.\n"
+                    "Ask the Strategist to set up the project files first, then run this command."
                 )
                 return
 
-            await setup_project_channels(
-                guild, name, owner_role, self.bot.project_config.agents
+            # Step 1: Load config
+            from vcompany.models.config import load_config
+            config = load_config(project_dir / "agents.yaml")
+            await interaction.followup.send(f"Setting up **{name}**... loaded {len(config.agents)} agents.")
+
+            # Step 2: Clone repos (if not already cloned)
+            clones_dir = project_dir / "clones"
+            needs_clone = not clones_dir.exists() or not any(clones_dir.iterdir())
+            if needs_clone:
+                from vcompany.cli.clone_cmd import _deploy_artifacts
+                from vcompany.git import ops as git
+                import shutil
+
+                clones_dir.mkdir(exist_ok=True)
+                for agent in config.agents:
+                    clone_dir = clones_dir / agent.id
+                    if clone_dir.exists():
+                        continue
+                    result = await asyncio.to_thread(git.clone, config.repo, clone_dir)
+                    if not result.success:
+                        await interaction.channel.send(f"Error cloning for {agent.id}: {result.stderr}")
+                        continue
+                    await asyncio.to_thread(
+                        git.checkout_new_branch, f"agent/{agent.id.lower()}", clone_dir
+                    )
+                    await asyncio.to_thread(_deploy_artifacts, clone_dir, agent, config, project_dir)
+
+                await interaction.channel.send(f"Cloned {len(config.agents)} agent repos.")
+            else:
+                await interaction.channel.send("Agent clones already exist, skipping clone step.")
+
+            # Step 3: Create Discord channels
+            owner_role = discord.utils.get(guild.roles, name="vco-owner")
+            if owner_role:
+                await setup_project_channels(guild, name, owner_role, config.agents)
+                await interaction.channel.send(f"Discord channels created for **{name}**.")
+
+            # Step 4: Wire bot to project
+            from pathlib import Path
+            from vcompany.orchestrator.agent_manager import AgentManager
+            from vcompany.tmux.session import TmuxManager
+
+            self.bot.project_dir = project_dir
+            self.bot.project_config = config
+            self.bot.agent_manager = AgentManager(project_dir, config, TmuxManager())
+            await interaction.channel.send("Project loaded into bot.")
+
+            # Step 5: Dispatch agents
+            import time
+            results = await asyncio.to_thread(self.bot.agent_manager.dispatch_all)
+            ok = sum(1 for r in results if r.success)
+            await interaction.channel.send(
+                f"Dispatched {ok}/{len(results)} agents. Waiting for Claude to start..."
             )
 
-            await interaction.followup.send(
-                f"Project **{name}** created! Category and channels ready. "
-                "Describe your product in #strategist."
+            # Wait for Claude to boot, then send work command
+            await asyncio.sleep(15)
+            sent = await asyncio.to_thread(
+                self.bot.agent_manager.send_work_command_all,
+                "/gsd:plan-phase 1 --auto"
             )
+            ok_sent = sum(1 for v in sent.values() if v)
+            await interaction.channel.send(
+                f"Sent work command to {ok_sent} agents. They're planning Phase 1 now.\n"
+                f"Check /status for progress. Plans will appear in #plan-review when ready."
+            )
+
         except Exception as exc:
             logger.exception("Error in /new-project")
             embed = build_alert_embed("new-project error", str(exc), "error")

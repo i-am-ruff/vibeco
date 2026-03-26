@@ -333,6 +333,7 @@ def test_bot_config_has_anthropic_fields():
     config = BotConfig(
         discord_bot_token="test-token",
         discord_guild_id=12345,
+        _env_file=None,
     )
     assert config.anthropic_api_key == ""
     assert config.strategist_persona_path == ""
