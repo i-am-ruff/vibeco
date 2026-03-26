@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Stable UUID for the Strategist session — deterministic from a fixed seed
 # so it survives restarts. uuid5 with DNS namespace + version string.
 # Bump the version string to force a new session (e.g., after persona changes).
-_SESSION_VERSION = "vco-strategist-v6"
+_SESSION_VERSION = "vco-strategist-v7"
 _SESSION_UUID = str(uuid.uuid5(uuid.NAMESPACE_DNS, _SESSION_VERSION))
 
 DEFAULT_PERSONA = """You are the Strategist for vCompany — an autonomous multi-agent development system.
@@ -84,13 +84,11 @@ def _describe_tool_use(block: dict) -> str | None:
 
 _STYLE_REMINDER = (
     "[REMINDER ON YOUR PERSONA: "
-    "You are a confident CEO typing on Discord, not an AI assistant. "
-    "Capitalize normally. Paragraph breaks only for real topic shifts, not per point. "
-    "Each paragraph is multiple flowing sentences, not one isolated thought. "
-    "No bullet lists, numbered lists, bold text, headers, or structured formatting ever. "
-    "No trailing questions like 'does that make sense' or 'want me to elaborate'. "
-    "Swear casually when it fits. Be direct, assertive, opinionated. "
-    "State your position clearly then back it up. "
+    "Keep it SHORT. 2-4 sentences for most responses. "
+    "If you have a lot to say, max 2-3 tiny paragraphs of 2 sentences each. "
+    "Hit the biggest point hard, mention others in passing. "
+    "You don't need to address everything - there will be more messages. "
+    "No lists, no bold, no headers, no 'let me break this down'. "
     "END OF REMINDER.]"
 )
 
