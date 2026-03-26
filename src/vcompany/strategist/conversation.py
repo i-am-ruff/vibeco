@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Stable UUID for the Strategist session — deterministic from a fixed seed
 # so it survives restarts. uuid5 with DNS namespace + version string.
 # Bump the version string to force a new session (e.g., after persona changes).
-_SESSION_VERSION = "vco-strategist-v4-persona-fix"
+_SESSION_VERSION = "vco-strategist-v5"
 _SESSION_UUID = str(uuid.uuid5(uuid.NAMESPACE_DNS, _SESSION_VERSION))
 
 DEFAULT_PERSONA = """You are the Strategist for vCompany — an autonomous multi-agent development system.
@@ -97,8 +97,12 @@ class StrategistConversation:
         """Send a message and get the Strategist's response.
 
         Acquires the conversation lock to prevent concurrent interleaving.
-        Tries --resume first (session may exist from prior run). Falls back
-        to --session-id with --system-prompt to create a new session.
+        First call always creates session with --session-id + --system-prompt.
+        Subsequent calls use --resume.
+
+        If session-id is already taken (from a prior run), --session-id fails
+        and we fall back to --resume. The system prompt from the prior session
+        persists in that case.
 
         Args:
             content: The message to send.
@@ -107,27 +111,26 @@ class StrategistConversation:
             The Strategist's text response.
         """
         async with self._lock:
-            # Try resume first (handles restarts, existing sessions)
             if self._initialized:
                 return await self._exec_claude(
                     self._resume_command(), content
                 )
 
-            # First call: try resume in case session exists from prior run
+            # First call: try to create new session with system prompt
             result = await self._exec_claude(
-                self._resume_command(), content, allow_failure=True
+                self._create_command(), content, allow_failure=True
             )
             if result is not None:
                 self._initialized = True
-                logger.info("Strategist resumed existing session: %s", self._session_id)
+                logger.info("Strategist created new session: %s", self._session_id)
                 return result
 
-            # Resume failed: create new session with system prompt
+            # Session already exists from prior run — resume it
+            logger.info("Session %s already exists, resuming", self._session_id)
             result = await self._exec_claude(
-                self._create_command(), content
+                self._resume_command(), content
             )
             self._initialized = True
-            logger.info("Strategist created new session: %s", self._session_id)
             return result
 
     async def _exec_claude(
