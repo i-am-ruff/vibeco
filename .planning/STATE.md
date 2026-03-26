@@ -166,6 +166,12 @@ None yet.
 - libtmux API stability at 0.55.x needs validation during Phase 1
 - GSD resume-work reliability unknown -- needs testing during Phase 2
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260326-2rg | Refactor Strategist and PM tier to use Claude Code CLI instead of Anthropic API | 2026-03-26 | 7069df5 | [260326-2rg-refactor-strategist-and-pm-tier-to-use-c](./quick/260326-2rg-refactor-strategist-and-pm-tier-to-use-c/) |
+
 ## Session Continuity
 
 Last session: 2026-03-25T22:31:55.809Z
