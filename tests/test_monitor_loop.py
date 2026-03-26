@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -454,3 +454,107 @@ async def test_plan_mtimes_persist_between_cycles(project_dir, config, tmux):
     assert gate_calls[0] == {}
     # Second call should get mtimes from first call's return
     assert gate_calls[1] == {"plan1.md": 100.0}
+
+
+@pytest.mark.asyncio
+async def test_advisory_callback_on_dead_agent(project_dir, config, tmux):
+    """on_advisory callback fires with message when liveness check fails."""
+    from vcompany.monitor.loop import MonitorLoop
+
+    (project_dir / "state" / "agents.json").write_text(
+        _make_registry_json({"frontend": {}, "backend": {}})
+    )
+
+    on_advisory = AsyncMock()
+
+    with (
+        patch("vcompany.monitor.loop.check_liveness") as mock_live,
+        patch("vcompany.monitor.loop.check_stuck", side_effect=lambda aid, cd, **kw: _ok_stuck(aid)),
+        patch("vcompany.monitor.loop.check_plan_gate", side_effect=lambda aid, cd, mtimes: _ok_plan_gate(aid)),
+        patch("vcompany.monitor.loop.write_heartbeat"),
+        patch("vcompany.monitor.loop.generate_project_status", return_value="# status"),
+        patch("vcompany.monitor.loop.distribute_project_status", return_value=2),
+    ):
+        def live_effect(aid, t, p, agent_pid=None):
+            if aid == "frontend":
+                return CheckResult(check_type="liveness", agent_id=aid, passed=False, detail="pane gone")
+            return _ok_liveness(aid)
+
+        mock_live.side_effect = live_effect
+
+        loop = MonitorLoop(
+            project_dir, config, tmux,
+            on_advisory=on_advisory,
+        )
+        await loop._run_cycle()
+
+    on_advisory.assert_called_once()
+    args = on_advisory.call_args[0]
+    assert args[0] == "frontend"
+    assert "appears dead" in args[1]
+    assert "pane gone" in args[1]
+
+
+@pytest.mark.asyncio
+async def test_advisory_callback_on_stuck_agent(project_dir, config, tmux):
+    """on_advisory callback fires with message when stuck check fails."""
+    from vcompany.monitor.loop import MonitorLoop
+
+    (project_dir / "state" / "agents.json").write_text(
+        _make_registry_json({"frontend": {}, "backend": {}})
+    )
+
+    on_advisory = AsyncMock()
+
+    with (
+        patch("vcompany.monitor.loop.check_liveness", side_effect=lambda aid, t, p, agent_pid=None: _ok_liveness(aid)),
+        patch("vcompany.monitor.loop.check_stuck") as mock_stuck,
+        patch("vcompany.monitor.loop.check_plan_gate", side_effect=lambda aid, cd, mtimes: _ok_plan_gate(aid)),
+        patch("vcompany.monitor.loop.write_heartbeat"),
+        patch("vcompany.monitor.loop.generate_project_status", return_value="# status"),
+        patch("vcompany.monitor.loop.distribute_project_status", return_value=2),
+    ):
+        def stuck_effect(aid, cd, **kw):
+            if aid == "backend":
+                return CheckResult(check_type="stuck", agent_id=aid, passed=False, detail="no commits 30min")
+            return _ok_stuck(aid)
+
+        mock_stuck.side_effect = stuck_effect
+
+        loop = MonitorLoop(
+            project_dir, config, tmux,
+            on_advisory=on_advisory,
+        )
+        await loop._run_cycle()
+
+    on_advisory.assert_called_once()
+    args = on_advisory.call_args[0]
+    assert args[0] == "backend"
+    assert "appears stuck" in args[1]
+    assert "no commits 30min" in args[1]
+
+
+@pytest.mark.asyncio
+async def test_advisory_none_no_error_on_dead(project_dir, config, tmux):
+    """When on_advisory is None, dead agent detection doesn't error."""
+    from vcompany.monitor.loop import MonitorLoop
+
+    (project_dir / "state" / "agents.json").write_text(
+        _make_registry_json({"frontend": {}, "backend": {}})
+    )
+
+    with (
+        patch("vcompany.monitor.loop.check_liveness") as mock_live,
+        patch("vcompany.monitor.loop.check_stuck", side_effect=lambda aid, cd, **kw: _ok_stuck(aid)),
+        patch("vcompany.monitor.loop.check_plan_gate", side_effect=lambda aid, cd, mtimes: _ok_plan_gate(aid)),
+        patch("vcompany.monitor.loop.write_heartbeat"),
+        patch("vcompany.monitor.loop.generate_project_status", return_value="# status"),
+        patch("vcompany.monitor.loop.distribute_project_status", return_value=2),
+    ):
+        mock_live.side_effect = lambda aid, t, p, agent_pid=None: CheckResult(
+            check_type="liveness", agent_id=aid, passed=False, detail="dead"
+        )
+
+        # No on_advisory, no on_agent_dead -- should not crash
+        loop = MonitorLoop(project_dir, config, tmux)
+        await loop._run_cycle()  # Should complete without error

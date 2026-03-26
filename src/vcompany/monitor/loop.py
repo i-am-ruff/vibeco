@@ -50,7 +50,7 @@ class MonitorLoop:
         on_status_digest: Callable[[str], None] | None = None,
         on_integration_ready: Callable[[], Awaitable[None]] | None = None,
         on_checkin: Callable[[str], Awaitable[None]] | None = None,
-        on_agent_report: Callable[[str, str], Awaitable[None]] | None = None,
+        on_advisory: Callable[[str, str], Awaitable[None]] | None = None,
         digest_interval: int = 1800,
         cycle_interval: int | None = None,
     ) -> None:
@@ -63,9 +63,8 @@ class MonitorLoop:
         self._on_status_digest = on_status_digest
         self._on_integration_ready = on_integration_ready
         self._on_checkin = on_checkin
-        self._on_agent_report = on_agent_report
+        self._on_advisory = on_advisory
         self._integration_pending = False
-        self._report_line_counts: dict[str, int] = {}  # agent_id -> lines already read
         self._digest_interval = digest_interval
         self._last_digest_time: float = 0.0
         self._last_status_content: str = ""
@@ -137,11 +136,7 @@ class MonitorLoop:
                 agent_id = self._config.agents[i].id
                 logger.error("Agent check raised for %s: %s", agent_id, result)
 
-        # Step 5: Check for agent reports
-        if self._on_agent_report:
-            await self._check_agent_reports()
-
-        # Step 6: Generate and distribute status
+        # Step 5: Generate and distribute status
         try:
             status_content = generate_project_status(self._project_dir, self._config)
             distribute_project_status(self._project_dir, self._config, status_content)
@@ -186,11 +181,15 @@ class MonitorLoop:
             )
             if not liveness.passed and self._on_agent_dead:
                 self._on_agent_dead(agent_id)
+            if not liveness.passed and self._on_advisory:
+                await self._on_advisory(agent_id, f"agent {agent_id} appears dead: {liveness.detail}")
 
             # Stuck check
             stuck = await asyncio.to_thread(check_stuck, agent_id, clone_dir)
             if not stuck.passed and self._on_agent_stuck:
                 self._on_agent_stuck(agent_id)
+            if not stuck.passed and self._on_advisory:
+                await self._on_advisory(agent_id, f"agent {agent_id} appears stuck: {stuck.detail}")
 
             # Plan gate check with persisted mtimes
             state = self._agent_states.get(agent_id)
@@ -227,29 +226,6 @@ class MonitorLoop:
 
         except Exception:
             logger.exception("Error checking agent %s", agent_id)
-
-    async def _check_agent_reports(self) -> None:
-        """Check for new report lines from agents and fire callback."""
-        reports_dir = self._project_dir / "state" / "reports"
-        if not reports_dir.exists():
-            return
-
-        for agent in self._config.agents:
-            report_file = reports_dir / f"{agent.id}.log"
-            if not report_file.exists():
-                continue
-
-            try:
-                lines = report_file.read_text().splitlines()
-                last_count = self._report_line_counts.get(agent.id, 0)
-                new_lines = lines[last_count:]
-                self._report_line_counts[agent.id] = len(lines)
-
-                for line in new_lines:
-                    if line.strip():
-                        await self._on_agent_report(agent.id, line.strip())
-            except Exception:
-                logger.exception("Error reading report for %s", agent.id)
 
     def _load_registry(self) -> AgentsRegistry:
         """Load agents.json from project state directory."""

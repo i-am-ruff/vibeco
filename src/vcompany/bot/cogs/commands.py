@@ -53,6 +53,7 @@ class CommandsCog(commands.Cog):
 
     def __init__(self, bot: VcoBot) -> None:
         self.bot: VcoBot = bot
+        self._advisories_enabled: bool = True
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Global check: reject commands if bot is not ready (Pitfall 6)."""
@@ -607,19 +608,27 @@ class CommandsCog(commands.Cog):
         # Defer wiring to on_ready since monitor may not exist yet
         pass
 
-    async def _on_agent_report(self, agent_id: str, report_line: str) -> None:
-        """Post agent status report to their Discord channel."""
+    async def _on_advisory(self, agent_id: str, message: str) -> None:
+        """Post monitor advisory to #strategist channel."""
+        if not self._advisories_enabled:
+            return
         guild = self.bot.get_guild(self.bot._guild_id)
         if not guild:
             return
-
-        channel_name = f"agent-{agent_id}"
-        channel = discord.utils.get(guild.text_channels, name=channel_name)
+        channel = discord.utils.get(guild.text_channels, name="strategist")
         if channel:
             try:
-                await channel.send(report_line)
+                await channel.send(f"[monitor-advisory] {message}")
             except Exception:
-                logger.exception("Failed to post report for %s", agent_id)
+                logger.exception("Failed to post advisory")
+
+    @app_commands.command(name="toggle-advisories", description="Enable/disable monitor advisories to Strategist")
+    @is_owner_app_check()
+    async def toggle_advisories(self, interaction: discord.Interaction) -> None:
+        """Toggle monitor advisory posting to #strategist."""
+        self._advisories_enabled = not self._advisories_enabled
+        state = "enabled" if self._advisories_enabled else "disabled"
+        await interaction.response.send_message(f"Monitor advisories are now **{state}**.")
 
     @app_commands.command(name="remove-project", description="Remove a project: kill agents, delete Discord channels/category, and clean files")
     @is_owner_app_check()
@@ -700,7 +709,7 @@ class CommandsCog(commands.Cog):
         monitor = self.bot.monitor_loop
         if monitor:
             monitor._on_checkin = self._on_checkin
-            monitor._on_agent_report = self._on_agent_report
+            monitor._on_advisory = self._on_advisory
 
 
 async def setup(bot: commands.Bot) -> None:
