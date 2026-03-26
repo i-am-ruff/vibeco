@@ -622,7 +622,7 @@ class CommandsCog(commands.Cog):
                 logger.exception("Failed to post report for %s", agent_id)
 
     @app_commands.command(name="remove-project", description="Remove a project: kill agents, delete Discord channels/category, and clean files")
-    @app_commands.check(is_owner_app_check)
+    @is_owner_app_check()
     async def remove_project(self, interaction: discord.Interaction, name: str) -> None:
         """Remove a project entirely: agents, Discord channels, and local files."""
         try:
