@@ -184,11 +184,12 @@ class CommandsCog(commands.Cog):
                 f"Dispatched {ok}/{len(results)} agents. Waiting for Claude to start..."
             )
 
-            # Wait for Claude to boot, then send work command
-            await asyncio.sleep(15)
+            # Wait for Claude to boot (polls pane output), then send work command
+            await interaction.channel.send("Waiting for Claude Code to be ready in each agent...")
             sent = await asyncio.to_thread(
                 self.bot.agent_manager.send_work_command_all,
-                "/gsd:plan-phase 1 --auto"
+                "/gsd:plan-phase 1 --auto",
+                wait_for_ready=True,
             )
             ok_sent = sum(1 for v in sent.values() if v)
             await interaction.channel.send(
@@ -589,11 +590,26 @@ class CommandsCog(commands.Cog):
         # Defer wiring to on_ready since monitor may not exist yet
         pass
 
+    async def _on_agent_report(self, agent_id: str, report_line: str) -> None:
+        """Post agent status report to their Discord channel."""
+        guild = self.bot.get_guild(self.bot._guild_id)
+        if not guild:
+            return
+
+        channel_name = f"agent-{agent_id}"
+        channel = discord.utils.get(guild.text_channels, name=channel_name)
+        if channel:
+            try:
+                await channel.send(report_line)
+            except Exception:
+                logger.exception("Failed to post report for %s", agent_id)
+
     def wire_monitor_callbacks(self) -> None:
-        """Wire _on_checkin into monitor loop. Called from on_ready after monitor init."""
+        """Wire callbacks into monitor loop. Called from on_ready after monitor init."""
         monitor = self.bot.monitor_loop
         if monitor:
             monitor._on_checkin = self._on_checkin
+            monitor._on_agent_report = self._on_agent_report
 
 
 async def setup(bot: commands.Bot) -> None:

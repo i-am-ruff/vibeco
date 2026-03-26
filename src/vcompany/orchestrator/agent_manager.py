@@ -185,9 +185,6 @@ class AgentManager:
                 )
             )
 
-        # Create monitor pane (Phase 3 will use this)
-        self._tmux.create_pane(session, window_name="monitor")
-
         self._save_registry()
         return results
 
@@ -312,7 +309,9 @@ class AgentManager:
 
     # ── Work Commands ──────────────────────────────────────────────────
 
-    def send_work_command(self, agent_id: str, command: str) -> bool:
+    def send_work_command(
+        self, agent_id: str, command: str, *, wait_for_ready: bool = False
+    ) -> bool:
         """Send a GSD command to an agent's Claude Code session via tmux.
 
         Used by monitor/bot to send phase commands like:
@@ -323,6 +322,7 @@ class AgentManager:
         Args:
             agent_id: Agent to send command to.
             command: GSD command string (e.g., "/gsd:plan-phase 1 --auto").
+            wait_for_ready: If True, poll pane output until Claude prompt is detected.
 
         Returns:
             True if command was sent, False on error.
@@ -333,6 +333,8 @@ class AgentManager:
             return False
 
         try:
+            if wait_for_ready:
+                self._wait_for_claude_ready(pane, agent_id)
             self._tmux.send_command(pane, command)
             logger.info("Sent to %s: %s", agent_id, command)
             return True
@@ -340,15 +342,46 @@ class AgentManager:
             logger.exception("Failed to send command to %s", agent_id)
             return False
 
-    def send_work_command_all(self, command: str) -> dict[str, bool]:
+    def _wait_for_claude_ready(
+        self, pane, agent_id: str, timeout: int = 120, poll_interval: float = 3
+    ) -> None:
+        """Poll pane output until Claude Code prompt is detected.
+
+        Claude Code shows a '>' prompt or 'Type your prompt' when ready.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                output = self._tmux.get_output(pane, lines=20)
+                text = "\n".join(output).lower()
+                # Claude Code shows these when ready for input
+                if ">" in text or "type your prompt" in text or "claude" in text:
+                    logger.info("Claude ready for %s", agent_id)
+                    return
+            except Exception:
+                pass
+            time.sleep(poll_interval)
+        logger.warning("Timed out waiting for Claude ready on %s (continuing anyway)", agent_id)
+
+    def send_work_command_all(
+        self, command: str, *, wait_for_ready: bool = False
+    ) -> dict[str, bool]:
         """Send the same GSD command to all agents.
+
+        Args:
+            command: GSD command to send.
+            wait_for_ready: If True, wait for each agent's Claude to be ready first.
 
         Returns:
             Dict of agent_id -> success.
         """
         results = {}
         for agent_id in self._panes:
-            results[agent_id] = self.send_work_command(agent_id, command)
+            if agent_id == "monitor":
+                continue  # Skip monitor pane
+            results[agent_id] = self.send_work_command(
+                agent_id, command, wait_for_ready=wait_for_ready
+            )
         return results
 
     # ── Private helpers ───────────────────────────────────────────────

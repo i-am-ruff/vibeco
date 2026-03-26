@@ -53,8 +53,10 @@ def _deploy_artifacts(clone_dir: Path, agent, config, project_dir: Path) -> None
     # 4. .claude/commands/vco/checkin.md and standup.md
     commands_dir = claude_dir / "commands" / "vco"
     commands_dir.mkdir(parents=True, exist_ok=True)
-    for cmd_file in ["checkin.md", "standup.md"]:
-        shutil.copy2(_COMMANDS_SOURCE / cmd_file, commands_dir / cmd_file)
+    for cmd_file in ["checkin.md", "standup.md", "report.md"]:
+        src = _COMMANDS_SOURCE / cmd_file
+        if src.exists():
+            shutil.copy2(src, commands_dir / cmd_file)
 
     # 5. Deploy planning artifacts if they exist in project context.
     #    These are pre-built by the Strategist or owner so agents don't
