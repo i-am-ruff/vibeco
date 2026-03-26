@@ -91,8 +91,31 @@ class PlanReviewCog(commands.Cog):
             await message.channel.send(f"[PM] Verifying {agent_id}'s execution...")
             await self._verify_agent_execution(agent_id, message.channel)
 
+    def _pm_context_path(self) -> Path:
+        """Path to PM's persistent knowledge doc."""
+        return self.bot.project_dir / "state" / "pm-context.md"
+
+    def _read_pm_context(self) -> str:
+        """Read PM's accumulated knowledge, or empty string if none."""
+        path = self._pm_context_path()
+        if path.exists():
+            return path.read_text()
+        return ""
+
+    def _append_pm_context(self, entry: str) -> None:
+        """Append a condensed entry to PM's knowledge doc."""
+        path = self._pm_context_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a") as f:
+            f.write(f"\n{entry}\n")
+
     async def _review_agent_plans(self, agent_id: str, channel: discord.TextChannel) -> None:
-        """PM reviews all plans for an agent, checking for conflicts with other agents."""
+        """PM reviews agent's plan using accumulated knowledge doc.
+
+        PM reads its own condensed notes (not raw plan files from other agents),
+        reviews the new plan, checks for conflicts, then appends what matters
+        to its knowledge doc. Like a real PM keeping running notes.
+        """
         if not self.bot.project_dir or not self.bot.project_config:
             await channel.send("[PM] No project loaded, cannot review.")
             return
@@ -107,42 +130,56 @@ class PlanReviewCog(commands.Cog):
             return
 
         latest_plan = plan_files[-1]
+        plan_content = await asyncio.to_thread(latest_plan.read_text)
 
-        # Gather all other agents' plans for conflict detection
-        other_plans: dict[str, str] = {}
-        for agent in self.bot.project_config.agents:
-            if agent.id == agent_id:
-                continue
-            other_clone = self.bot.project_dir / "clones" / agent.id / ".planning" / "phases"
-            if other_clone.exists():
-                for pf in other_clone.rglob("*-PLAN.md"):
-                    try:
-                        other_plans[f"{agent.id}/{pf.name}"] = pf.read_text()[:2000]
-                    except Exception:
-                        pass
+        # Read PM's accumulated knowledge
+        pm_knowledge = await asyncio.to_thread(self._read_pm_context)
+
+        # Also read project roadmap for overall context
+        roadmap_path = clone_dir / ".planning" / "ROADMAP.md"
+        roadmap = ""
+        if roadmap_path.exists():
+            roadmap = await asyncio.to_thread(roadmap_path.read_text)
 
         # Use PlanReviewer (PM) if available
         if self._plan_reviewer:
             try:
-                plan_content = await asyncio.to_thread(latest_plan.read_text)
-
-                # Build context with other agents' plans for conflict check
-                context = plan_content
-                if other_plans:
-                    context += "\n\n--- OTHER AGENTS' PLANS (check for conflicts) ---\n"
-                    for name, content in other_plans.items():
-                        context += f"\n### {name}\n{content[:1000]}\n"
+                # Build PM review prompt with knowledge doc, not raw plans
+                review_prompt = (
+                    f"You are reviewing a plan from agent '{agent_id}'.\n\n"
+                    f"## Your accumulated project knowledge\n{pm_knowledge or '(first review — no prior knowledge)'}\n\n"
+                    f"## Project roadmap\n{roadmap[:1500]}\n\n"
+                    f"## New plan to review\n{plan_content}\n\n"
+                    f"Review this plan for:\n"
+                    f"1. Does it conflict with any approved work from other agents?\n"
+                    f"2. Are the file paths within this agent's owned directories?\n"
+                    f"3. Is the scope appropriate for the phase?\n"
+                    f"4. Any interface/dependency risks?\n\n"
+                    f"After your review, provide a CONDENSED SUMMARY (3-5 lines) of what this agent "
+                    f"plans to do, which directories/files it touches, and any interfaces it creates. "
+                    f"This summary will be saved to your knowledge doc for future reviews."
+                )
 
                 review = await asyncio.to_thread(
-                    self._plan_reviewer.review_plan, agent_id, context
+                    self._plan_reviewer.review_plan, agent_id, review_prompt
                 )
+
+                # Save condensed knowledge from this review
+                from datetime import datetime, timezone
+                ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+                knowledge_entry = (
+                    f"---\n"
+                    f"## {agent_id} — {latest_plan.name} (reviewed {ts})\n"
+                    f"Decision: {'APPROVED' if review.confidence.level == 'HIGH' else 'NEEDS REVISION'}\n"
+                    f"Note: {review.note}\n"
+                )
+                await asyncio.to_thread(self._append_pm_context, knowledge_entry)
 
                 if review.confidence.level == "HIGH":
                     await channel.send(
                         f"[PM] Plan approved for {agent_id}. {review.note}\n"
                         f"Sending execute command."
                     )
-                    # Send execute command to agent
                     if self.bot.agent_manager:
                         pane = self.bot.agent_manager._panes.get(agent_id)
                         if pane:
@@ -157,10 +194,20 @@ class PlanReviewCog(commands.Cog):
             except Exception:
                 logger.exception("PM review failed for %s", agent_id)
 
-        # Fallback: auto-approve if no PM configured
+        # Fallback: auto-approve if no PM configured, still save knowledge
         await channel.send(
             f"[PM] Auto-approving plan for {agent_id} (no PM tier configured). Sending execute command."
         )
+        # Save basic knowledge even without PM
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        knowledge_entry = (
+            f"---\n"
+            f"## {agent_id} — {latest_plan.name} (auto-approved {ts})\n"
+            f"Plan file: {latest_plan}\n"
+        )
+        await asyncio.to_thread(self._append_pm_context, knowledge_entry)
+
         if self.bot.agent_manager:
             pane = self.bot.agent_manager._panes.get(agent_id)
             if pane:
