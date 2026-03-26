@@ -183,6 +183,18 @@ def test_standup_md_content(runner, initialized_project):
     assert "interactive group standup" in standup.read_text()
 
 
+def test_clone_adds_planning_to_gitignore(runner, initialized_project):
+    """Verify .gitignore in each clone contains .planning/ to prevent merge conflicts."""
+    from vcompany.cli.clone_cmd import clone
+
+    result = runner.invoke(clone, ["testproject"])
+    assert result.exit_code == 0, f"Failed: {result.output}"
+
+    gitignore = initialized_project / "clones" / "BACKEND" / ".gitignore"
+    assert gitignore.exists()
+    assert ".planning/" in gitignore.read_text().splitlines()
+
+
 def test_clone_force_reclone(runner, initialized_project):
     """Clone once, then clone with --force, verify fresh clone."""
     from vcompany.cli.clone_cmd import clone

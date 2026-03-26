@@ -212,17 +212,18 @@ class TestCheckinAutoTrigger:
 
         # Simulate _check_agent detecting phase completion
         state = monitor._agent_states["agent-a"]
-        state.phase_status = "completed"
         state.checkin_sent = False
 
         # We need to test _check_agent's checkin logic
         # Patch the check functions to simulate phase completion
         with patch("vcompany.monitor.loop.check_liveness") as mock_live, \
              patch("vcompany.monitor.loop.check_stuck") as mock_stuck, \
-             patch("vcompany.monitor.loop.check_plan_gate") as mock_gate:
+             patch("vcompany.monitor.loop.check_plan_gate") as mock_gate, \
+             patch("vcompany.monitor.loop.check_phase_completion") as mock_phase:
             mock_live.return_value = MagicMock(passed=True)
             mock_stuck.return_value = MagicMock(passed=True)
             mock_gate.return_value = (MagicMock(passed=True, new_plans=[]), {})
+            mock_phase.return_value = ("phase-1", "completed")
 
             registry = MagicMock()
             entry = MagicMock()
@@ -243,15 +244,16 @@ class TestCheckinAutoTrigger:
         monitor = _make_monitor(["agent-a"], on_checkin=checkin_cb)
 
         state = monitor._agent_states["agent-a"]
-        state.phase_status = "completed"
         state.checkin_sent = True  # Already sent
 
         with patch("vcompany.monitor.loop.check_liveness") as mock_live, \
              patch("vcompany.monitor.loop.check_stuck") as mock_stuck, \
-             patch("vcompany.monitor.loop.check_plan_gate") as mock_gate:
+             patch("vcompany.monitor.loop.check_plan_gate") as mock_gate, \
+             patch("vcompany.monitor.loop.check_phase_completion") as mock_phase:
             mock_live.return_value = MagicMock(passed=True)
             mock_stuck.return_value = MagicMock(passed=True)
             mock_gate.return_value = (MagicMock(passed=True, new_plans=[]), {})
+            mock_phase.return_value = ("phase-1", "completed")
 
             registry = MagicMock()
             entry = MagicMock()
@@ -271,15 +273,16 @@ class TestCheckinAutoTrigger:
         monitor = _make_monitor(["agent-a"], on_checkin=checkin_cb)
 
         state = monitor._agent_states["agent-a"]
-        state.phase_status = "in_progress"
         state.checkin_sent = False
 
         with patch("vcompany.monitor.loop.check_liveness") as mock_live, \
              patch("vcompany.monitor.loop.check_stuck") as mock_stuck, \
-             patch("vcompany.monitor.loop.check_plan_gate") as mock_gate:
+             patch("vcompany.monitor.loop.check_plan_gate") as mock_gate, \
+             patch("vcompany.monitor.loop.check_phase_completion") as mock_phase:
             mock_live.return_value = MagicMock(passed=True)
             mock_stuck.return_value = MagicMock(passed=True)
             mock_gate.return_value = (MagicMock(passed=True, new_plans=[]), {})
+            mock_phase.return_value = ("phase-1", "in_progress")
 
             registry = MagicMock()
             entry = MagicMock()

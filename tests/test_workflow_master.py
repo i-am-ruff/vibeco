@@ -110,7 +110,7 @@ async def test_channel_filter_routes_workflow_master() -> None:
     cog._wm_channel.send.return_value = placeholder
 
     await cog.on_message(msg)
-    conversation.send.assert_awaited_once()
+    conversation.send_streaming.assert_awaited_once()
 
 
 @pytest.mark.asyncio
