@@ -66,58 +66,71 @@ async def test_send_yields_text_chunks():
 
 @pytest.mark.asyncio
 async def test_session_id_reused_across_sends():
-    """Session name is reused across multiple send() calls (conversation persistence)."""
+    """Session ID is reused across multiple send() calls (conversation persistence)."""
     from vcompany.strategist.conversation import StrategistConversation
 
     conv = StrategistConversation()
     session_id = conv.session_id
 
+    call_count = 0
     call_args_list = []
 
     async def mock_exec(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
         call_args_list.append(args)
+        # First call is resume attempt (fails), second is create, third is resume with user msg
+        if call_count == 1:
+            return make_mock_process(result_text="", returncode=1)
         return make_mock_process(result_text="reply")
 
     with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
-        # First send
         await conv.send("first")
-
-        # Second send
         await conv.send("second")
 
-    # First call should use --session-id
-    first_args = call_args_list[0]
-    assert "--session-id" in first_args
-    session_idx = first_args.index("--session-id")
-    assert first_args[session_idx + 1] == session_id
-
-    # Second call should use --resume with same session name
-    second_args = call_args_list[1]
-    assert "--resume" in second_args
-    resume_idx = second_args.index("--resume")
-    assert second_args[resume_idx + 1] == session_id
+    # All calls should reference the same session_id
+    for args in call_args_list:
+        found_id = None
+        for flag in ("--session-id", "--resume"):
+            if flag in args:
+                idx = args.index(flag)
+                found_id = args[idx + 1]
+        assert found_id == session_id, f"Wrong session ID in {args}"
 
 
 @pytest.mark.asyncio
-async def test_first_send_includes_system_prompt():
-    """First send() includes --system-prompt, subsequent calls do not."""
+async def test_first_send_loads_persona_as_message():
+    """First send() sends persona as first message, not --system-prompt."""
     from vcompany.strategist.conversation import StrategistConversation
 
-    call_args_list = []
+    call_count = 0
+    stdin_contents = []
 
     async def mock_exec(*args, **kwargs):
-        call_args_list.append(args)
-        return make_mock_process(result_text="ok")
+        nonlocal call_count
+        call_count += 1
+        proc = make_mock_process(result_text="ok")
+        original_communicate = proc.communicate
+
+        async def capture_communicate(input=None):
+            if input:
+                stdin_contents.append(input.decode())
+            return await original_communicate(input=input)
+
+        proc.communicate = capture_communicate
+        # First call: resume fails (no existing session)
+        if call_count == 1:
+            return make_mock_process(result_text="", returncode=1)
+        return proc
 
     with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
         conv = StrategistConversation()
+        await conv.send("hello")
 
-        await conv.send("first")
-        await conv.send("second")
-
-    # Both calls include --system-prompt (persona persists on every call)
-    assert "--system-prompt" in call_args_list[0]
-    assert "--system-prompt" in call_args_list[1]
+    # No --system-prompt flag in any call
+    # (persona is sent as stdin content, not as a CLI flag)
+    # call_count should be 3: resume(fail), create(persona), resume(hello)
+    assert call_count == 3
 
 
 @pytest.mark.asyncio

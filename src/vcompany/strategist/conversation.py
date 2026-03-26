@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Stable UUID for the Strategist session — deterministic from a fixed seed
 # so it survives restarts. uuid5 with DNS namespace + version string.
 # Bump the version string to force a new session (e.g., after persona changes).
-_SESSION_VERSION = "vco-strategist-v1-operational"
+_SESSION_VERSION = "vco-strategist-v1"
 _SESSION_UUID = str(uuid.uuid5(uuid.NAMESPACE_DNS, _SESSION_VERSION))
 
 DEFAULT_PERSONA = """You are the Strategist for vCompany — an autonomous multi-agent development system.
@@ -97,12 +97,13 @@ class StrategistConversation:
         """Send a message and get the Strategist's response.
 
         Acquires the conversation lock to prevent concurrent interleaving.
-        First call always creates session with --session-id + --system-prompt.
-        Subsequent calls use --resume.
 
-        If session-id is already taken (from a prior run), --session-id fails
-        and we fall back to --resume. The system prompt from the prior session
-        persists in that case.
+        First call: creates session and sends persona as the first message
+        (not as --system-prompt). This bakes the persona into conversation
+        history where it persists across all future --resume calls and
+        benefits from prompt caching automatically.
+
+        Subsequent calls: resume with just the user message.
 
         Args:
             content: The message to send.
@@ -116,22 +117,29 @@ class StrategistConversation:
                     self._resume_command(), content
                 )
 
-            # First call: try to create new session with system prompt
+            # First call: try to resume (session may exist from prior run)
             result = await self._exec_claude(
-                self._create_command(), content, allow_failure=True
+                self._resume_command(), content, allow_failure=True
             )
             if result is not None:
                 self._initialized = True
-                logger.info("Strategist created new session: %s", self._session_id)
+                logger.info("Strategist resumed existing session: %s", self._session_id)
                 return result
 
-            # Session already exists from prior run — resume it
-            logger.info("Session %s already exists, resuming", self._session_id)
-            result = await self._exec_claude(
+            # No existing session — create new one with persona as first message
+            logger.info("Creating new Strategist session: %s", self._session_id)
+            persona_result = await self._exec_claude(
+                self._create_command(), self._system_prompt
+            )
+            if persona_result is None:
+                return "Failed to initialize Strategist session."
+            logger.info("Persona loaded. Strategist ready.")
+
+            # Now send the actual user message
+            self._initialized = True
+            return await self._exec_claude(
                 self._resume_command(), content
             )
-            self._initialized = True
-            return result
 
     async def _exec_claude(
         self, cmd: list[str], content: str, *, allow_failure: bool = False
@@ -180,28 +188,26 @@ class StrategistConversation:
         return response if response else "I don't have a response for that."
 
     def _resume_command(self) -> list[str]:
-        """Build command to resume existing session.
+        """Build command to resume existing session."""
+        return [
+            "claude", "-p",
+            "--output-format", "text",
+            "--allowedTools", "Bash Read Write",
+            "--resume", self._session_id,
+        ]
 
-        Always includes --system-prompt so the persona persists across
-        every call, not just the first one.
-        Allows operational tools (Bash, Read, Write) so Strategist can
-        check status, generate files, and run vco commands.
+    def _create_command(self) -> list[str]:
+        """Build command to create a new session.
+
+        No --system-prompt here. The persona is sent as the first USER
+        message instead, which bakes it into conversation history where
+        it persists across all --resume calls and benefits from prompt
+        caching automatically.
         """
         return [
             "claude", "-p",
             "--output-format", "text",
             "--allowedTools", "Bash Read Write",
-            "--system-prompt", self._system_prompt,
-            "--resume", self._session_id,
-        ]
-
-    def _create_command(self) -> list[str]:
-        """Build command to create new session with system prompt."""
-        return [
-            "claude", "-p",
-            "--output-format", "text",
-            "--allowedTools", "Bash Read Write",
-            "--system-prompt", self._system_prompt,
             "--session-id", self._session_id,
         ]
 
