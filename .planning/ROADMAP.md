@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 5: Hooks and Plan Gate** - AskUserQuestion hook, plan detection, plan review flow, interaction safety in planning
 - [ ] **Phase 6: PM/Strategist and Milestones** - Autonomous question answering, plan review, confidence scoring, milestone management
 - [ ] **Phase 7: Integration Pipeline and Communications** - Branch merging, test attribution, standup/checkin rituals, interaction regression tests
+- [ ] **Phase 8: Reliable tmux Agent Lifecycle** - Fix libtmux thread safety, reliable Claude readiness detection, validated work command delivery
 
 ## Phase Details
 
@@ -143,6 +144,20 @@ Plans:
 - [x] 07-05-PLAN.md -- Standup session + ReleaseView + !standup command
 - [ ] 07-06-PLAN.md -- Interaction regression tests (SAFE-04)
 
+### Phase 8: Reliable tmux Agent Lifecycle
+**Goal**: Work commands are reliably delivered to agent tmux panes, Claude readiness is detected correctly, and pane references remain valid across async boundaries
+**Depends on**: Phase 2, Phase 4
+**Requirements**: LIFE-01, MON-02
+**Success Criteria** (what must be TRUE):
+  1. `send_work_command` reliably delivers slash commands to agent Claude sessions — verified by observing agents process the command
+  2. `_wait_for_claude_ready` correctly detects when Claude Code is ready to accept input (no false timeouts)
+  3. libtmux Pane objects work correctly when used from asyncio.to_thread — or an alternative approach is implemented with documented rationale
+  4. Agent dispatch + work command delivery completes in under 2 minutes for 3 agents (not 6+ minutes)
+  5. No silent failures — every send attempt is logged with success/failure and pane state
+**Plans**: 0 plans
+Plans:
+(none yet — research first)
+
 ## Progress
 
 **Execution Order:**
@@ -157,3 +172,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 5. Hooks and Plan Gate | 3/4 | In Progress|  |
 | 6. PM/Strategist and Milestones | 2/5 | In Progress|  |
 | 7. Integration Pipeline and Communications | 4/6 | In Progress|  |
+| 8. Reliable tmux Agent Lifecycle | 0/0 | Not Started | - |
