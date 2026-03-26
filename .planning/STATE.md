@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Milestone complete
-stopped_at: Completed quick/260326-4p2
-last_updated: "2026-03-26T01:34:38.104Z"
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-03-26T23:04:12.106Z"
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 30
-  completed_plans: 30
+  total_phases: 8
+  completed_phases: 8
+  total_plans: 32
+  completed_plans: 32
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 07 — integration-pipeline-and-communications
+**Current focus:** Phase 08 — reliable-tmux-agent-lifecycle
 
 ## Current Position
 
-Phase: 07
+Phase: 08
 Plan: Not started
 
 ## Performance Metrics
@@ -76,6 +76,8 @@ Plan: Not started
 | Phase 07 P04 | 3min | 2 tasks | 5 files |
 | Phase 07 P05 | 3min | 2 tasks | 5 files |
 | Phase 07 P06 | 1min | 2 tasks | 2 files |
+| Phase 08 P01 | 4min | 2 tasks | 4 files |
+| Phase 08 P02 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -157,6 +159,12 @@ Recent decisions affecting current work:
 - [Phase 07]: Threading barriers for deterministic concurrent test synchronization
 - [Phase quick]: VcoBot guild_id as explicit constructor arg; slash command tree sync in setup_hook not on_ready; on_ready split into always-run and project-only sections
 - [Phase quick]: StrategistConversation reuse with allowed_tools parameter for workflow-master (custom session_id + expanded tool set)
+- [Phase 08]: libtmux send_keys does not raise on killed panes; exception path tested via mock
+- [Phase 08]: Bare '>' removed from ready markers to prevent false positives from shell prompts
+- [Phase 08]: Post-ready settle time reduced from 30s to 2s per research findings
+- [Phase 08]: send_work_command_all uses set union of _panes and registry for complete agent coverage
+- [Phase 08]: Logging includes both agent_id and pane_id for full traceability in send_command callers
+- [Phase 08]: wait_for_ready=True used in both dispatch_all and single-agent paths
 
 ### Pending Todos
 
@@ -179,6 +187,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T20:54:10Z
-Stopped at: Completed quick/260326-vo1
+Last session: 2026-03-26T22:59:56.216Z
+Stopped at: Completed 08-02-PLAN.md
 Resume file: None

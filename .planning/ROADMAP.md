@@ -156,7 +156,7 @@ Plans:
   5. No silent failures — every send attempt is logged with success/failure and pane state
 **Plans**: 2 plans
 Plans:
-- [ ] 08-01-PLAN.md -- TmuxManager send_command Pane|str union + readiness detection + registry fallback
+- [x] 08-01-PLAN.md -- TmuxManager send_command Pane|str union + readiness detection + registry fallback
 - [ ] 08-02-PLAN.md -- Fix callers (plan_review, standup) + dispatch_cmd readiness-based launch
 
 ## Progress
@@ -173,4 +173,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 5. Hooks and Plan Gate | 3/4 | In Progress|  |
 | 6. PM/Strategist and Milestones | 2/5 | In Progress|  |
 | 7. Integration Pipeline and Communications | 4/6 | In Progress|  |
-| 8. Reliable tmux Agent Lifecycle | 0/2 | Planning complete | - |
+| 8. Reliable tmux Agent Lifecycle | 1/2 | In Progress|  |
