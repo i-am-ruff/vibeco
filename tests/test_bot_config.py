@@ -27,7 +27,7 @@ class TestBotConfig:
         monkeypatch.setenv("DISCORD_GUILD_ID", "123456789")
 
         with pytest.raises(ValidationError):
-            BotConfig()
+            BotConfig(_env_file=None)
 
     def test_raises_on_missing_guild_id(self, monkeypatch):
         """BotConfig raises ValidationError when DISCORD_GUILD_ID is missing."""
@@ -35,7 +35,7 @@ class TestBotConfig:
         monkeypatch.delenv("DISCORD_GUILD_ID", raising=False)
 
         with pytest.raises(ValidationError):
-            BotConfig()
+            BotConfig(_env_file=None)
 
     def test_default_project_dir(self, monkeypatch):
         """project_dir defaults to '.' when not set."""
