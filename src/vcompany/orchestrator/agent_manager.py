@@ -343,11 +343,13 @@ class AgentManager:
             return False
 
     def _wait_for_claude_ready(
-        self, pane, agent_id: str, timeout: int = 120, poll_interval: float = 3
+        self, pane, agent_id: str, timeout: int = 120, poll_interval: float = 3,
+        post_ready_delay: int = 30,
     ) -> None:
-        """Poll pane output until Claude Code prompt is detected.
+        """Poll pane output until Claude Code prompt is detected, then wait extra.
 
-        Claude Code shows a '>' prompt or 'Type your prompt' when ready.
+        Claude Code shows a '>' prompt when ready, but needs extra time
+        to fully initialize before accepting complex slash commands.
         """
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -355,8 +357,12 @@ class AgentManager:
                 output = self._tmux.get_output(pane, lines=20)
                 text = "\n".join(output).lower()
                 # Claude Code shows these when ready for input
-                if ">" in text or "type your prompt" in text or "claude" in text:
-                    logger.info("Claude ready for %s", agent_id)
+                if ">" in text or "type your prompt" in text or "bypass permissions" in text:
+                    logger.info(
+                        "Claude prompt detected for %s, waiting %ds for full init",
+                        agent_id, post_ready_delay,
+                    )
+                    time.sleep(post_ready_delay)
                     return
             except Exception:
                 pass
