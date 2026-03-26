@@ -141,26 +141,26 @@ class TestDispatch:
         assert result.success is False
         assert "nonexistent" in result.error
 
-    def test_dispatch_uses_new_project_prompt_by_default(
+    def test_dispatch_launches_interactive_claude(
         self, project_dir, config, mock_tmux
     ):
-        """dispatch(agent_id) uses /gsd:new-project for fresh starts."""
+        """dispatch(agent_id) launches Claude in interactive mode (no -p flag)."""
         manager = AgentManager(project_dir, config, tmux=mock_tmux)
         manager.dispatch("backend")
 
         cmd = mock_tmux.send_command.call_args[0][1]
-        assert "/gsd:new-project" in cmd
+        assert "claude --dangerously-skip-permissions" in cmd
+        assert "-p " not in cmd  # No single-prompt mode
 
-    def test_dispatch_resume_uses_resume_work_prompt(
+    def test_dispatch_does_not_embed_gsd_command(
         self, project_dir, config, mock_tmux
     ):
-        """dispatch(agent_id, resume=True) uses /gsd:resume-work."""
+        """dispatch no longer embeds GSD commands — work commands sent separately."""
         manager = AgentManager(project_dir, config, tmux=mock_tmux)
-        manager.dispatch("backend", resume=True)
+        manager.dispatch("backend")
 
         cmd = mock_tmux.send_command.call_args[0][1]
-        assert "/gsd:resume-work" in cmd
-        assert "/gsd:new-project" not in cmd
+        assert "/gsd:" not in cmd
 
     def test_dispatch_uses_append_system_prompt_file_flag(
         self, project_dir, config, mock_tmux

@@ -91,8 +91,9 @@ class AgentManager:
         prompt_path = self._project_dir / "context" / "agents" / f"{agent_id}.md"
 
         # Build chained cd + env + claude command (Pitfall 2: single send_keys call)
+        # Launch Claude in INTERACTIVE mode (no -p) so it persists across
+        # multiple GSD commands. Monitor sends work commands via tmux.
         clone_dir = self._project_dir / "clones" / agent_id
-        prompt_cmd = "/gsd:resume-work" if resume else "/gsd:new-project"
         chained_cmd = (
             f"cd {clone_dir} "
             f"&& export DISCORD_AGENT_WEBHOOK_URL='' "
@@ -100,8 +101,7 @@ class AgentManager:
             f"&& export AGENT_ID='{agent_id}' "
             f"&& export AGENT_ROLE='{agent_cfg.role}' "
             f"&& claude --dangerously-skip-permissions "
-            f"--append-system-prompt-file {prompt_path} "
-            f"-p '{prompt_cmd}'"
+            f"--append-system-prompt-file {prompt_path}"
         )
 
         self._tmux.send_command(pane, chained_cmd)
@@ -147,7 +147,7 @@ class AgentManager:
             pane = self._tmux.create_pane(session, window_name=agent_cfg.id)
             self._panes[agent_cfg.id] = pane
 
-            # Build command
+            # Build command — interactive mode (no -p), monitor sends work commands
             clone_dir = self._project_dir / "clones" / agent_cfg.id
             prompt_path = (
                 self._project_dir / "context" / "agents" / f"{agent_cfg.id}.md"
@@ -159,8 +159,7 @@ class AgentManager:
                 f"&& export AGENT_ID='{agent_cfg.id}' "
                 f"&& export AGENT_ROLE='{agent_cfg.role}' "
                 f"&& claude --dangerously-skip-permissions "
-                f"--append-system-prompt-file {prompt_path} "
-                f"-p '/gsd:new-project'"
+                f"--append-system-prompt-file {prompt_path}"
             )
             self._tmux.send_command(pane, chained_cmd)
 
@@ -310,6 +309,47 @@ class AgentManager:
             agent_id=agent_id,
             pane_id=str(getattr(pane, "pane_id", "")),
         )
+
+    # ── Work Commands ──────────────────────────────────────────────────
+
+    def send_work_command(self, agent_id: str, command: str) -> bool:
+        """Send a GSD command to an agent's Claude Code session via tmux.
+
+        Used by monitor/bot to send phase commands like:
+          /gsd:plan-phase 1 --auto
+          /gsd:execute-phase 1 --auto
+          /gsd:resume-work
+
+        Args:
+            agent_id: Agent to send command to.
+            command: GSD command string (e.g., "/gsd:plan-phase 1 --auto").
+
+        Returns:
+            True if command was sent, False on error.
+        """
+        pane = self._panes.get(agent_id)
+        if pane is None:
+            logger.error("No tmux pane for agent %s", agent_id)
+            return False
+
+        try:
+            self._tmux.send_command(pane, command)
+            logger.info("Sent to %s: %s", agent_id, command)
+            return True
+        except Exception:
+            logger.exception("Failed to send command to %s", agent_id)
+            return False
+
+    def send_work_command_all(self, command: str) -> dict[str, bool]:
+        """Send the same GSD command to all agents.
+
+        Returns:
+            Dict of agent_id -> success.
+        """
+        results = {}
+        for agent_id in self._panes:
+            results[agent_id] = self.send_work_command(agent_id, command)
+        return results
 
     # ── Private helpers ───────────────────────────────────────────────
 

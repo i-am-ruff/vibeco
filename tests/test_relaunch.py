@@ -81,10 +81,10 @@ class TestRelaunch:
     @patch("vcompany.orchestrator.agent_manager._verify_pid_is_claude")
     @patch("vcompany.orchestrator.agent_manager._find_child_pids")
     @patch("vcompany.orchestrator.agent_manager._kill_process")
-    def test_relaunch_uses_resume_work_prompt(
+    def test_relaunch_launches_interactive_claude(
         self, mock_kill_proc, mock_find_children, mock_verify, project_dir, config, mock_tmux
     ):
-        """relaunch sends /gsd:resume-work instead of /gsd:new-project."""
+        """relaunch launches Claude in interactive mode (work commands sent separately)."""
         mock_find_children.return_value = [99999]
         mock_verify.return_value = True
         mock_kill_proc.return_value = True
@@ -93,9 +93,10 @@ class TestRelaunch:
         manager.dispatch("backend")
         manager.relaunch("backend")
 
-        # The last send_command call should contain resume-work
+        # The last send_command call should launch Claude interactive (no -p)
         last_cmd = mock_tmux.send_command.call_args[0][1]
-        assert "/gsd:resume-work" in last_cmd
+        assert "claude --dangerously-skip-permissions" in last_cmd
+        assert "-p " not in last_cmd
 
     @patch("vcompany.orchestrator.agent_manager._verify_pid_is_claude")
     @patch("vcompany.orchestrator.agent_manager._find_child_pids")

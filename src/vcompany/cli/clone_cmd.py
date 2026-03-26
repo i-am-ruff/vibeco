@@ -16,13 +16,14 @@ from vcompany.shared.templates import render_template
 _COMMANDS_SOURCE = Path(__file__).parent.parent.parent.parent / "commands" / "vco"
 
 
-def _deploy_artifacts(clone_dir: Path, agent, config) -> None:
-    """Deploy all 5 artifact types to an agent clone.
+def _deploy_artifacts(clone_dir: Path, agent, config, project_dir: Path) -> None:
+    """Deploy all artifact types to an agent clone.
 
     Args:
         clone_dir: Root of the agent's cloned repository.
         agent: AgentConfig for this agent.
         config: Full ProjectConfig (needed for other_agents list).
+        project_dir: Project root (for planning artifacts).
     """
     claude_dir = clone_dir / ".claude"
     claude_dir.mkdir(exist_ok=True)
@@ -54,6 +55,15 @@ def _deploy_artifacts(clone_dir: Path, agent, config) -> None:
     commands_dir.mkdir(parents=True, exist_ok=True)
     for cmd_file in ["checkin.md", "standup.md"]:
         shutil.copy2(_COMMANDS_SOURCE / cmd_file, commands_dir / cmd_file)
+
+    # 5. Deploy planning artifacts if they exist in project context.
+    #    These are pre-built by the Strategist or owner so agents don't
+    #    need to run /gsd:new-project (which requires interactive input).
+    planning_source = project_dir / "planning"
+    if planning_source.is_dir():
+        for artifact in planning_source.iterdir():
+            if artifact.is_file() and artifact.suffix == ".md":
+                shutil.copy2(artifact, planning_dir / artifact.name)
 
 
 @click.command()
@@ -115,7 +125,7 @@ def clone(project_name: str, force: bool) -> None:
             continue
 
         # Deploy all artifacts
-        _deploy_artifacts(clone_dir, agent, config)
+        _deploy_artifacts(clone_dir, agent, config, project_dir)
         cloned_count += 1
         click.echo(f"  {agent.id} ready")
 
