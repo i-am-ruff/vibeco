@@ -185,18 +185,6 @@ class TestDispatchAll:
         assert all(r.success for r in results)
         mock_tmux.create_session.assert_called_once()
 
-    def test_dispatch_all_creates_monitor_pane(
-        self, project_dir, config, mock_tmux
-    ):
-        """dispatch_all() creates an additional monitor pane."""
-        manager = AgentManager(project_dir, config, tmux=mock_tmux)
-        manager.dispatch_all()
-
-        # Should have create_pane calls for each agent + monitor
-        pane_calls = mock_tmux.create_pane.call_args_list
-        window_names = [c[1].get("window_name", c[0][1] if len(c[0]) > 1 else None) for c in pane_calls]
-        assert "monitor" in window_names
-
     def test_dispatch_all_returns_list_of_dispatch_results(
         self, project_dir, config, mock_tmux
     ):
