@@ -6,11 +6,40 @@ works without a project -- Strategist is always available in #strategist.
 """
 
 import logging
+import subprocess
 from pathlib import Path
 
 import click
 
 logger = logging.getLogger("vcompany.cli.up")
+
+WORKTREE_PATH = Path.home() / "vco-workflow-master-worktree"
+WORKTREE_BRANCH = "worktree/workflow-master"
+
+
+def _ensure_worktree(repo_root: Path) -> Path:
+    """Create workflow-master git worktree if it doesn't exist. Idempotent."""
+    if WORKTREE_PATH.exists():
+        return WORKTREE_PATH
+
+    # Check if branch already exists (leftover branch without worktree dir)
+    branch_check = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--list", WORKTREE_BRANCH],
+        capture_output=True,
+        text=True,
+    )
+    has_branch = bool(branch_check.stdout.strip())
+
+    cmd = ["git", "-C", str(repo_root), "worktree", "add"]
+    if not has_branch:
+        cmd += ["-b", WORKTREE_BRANCH]
+    cmd.append(str(WORKTREE_PATH))
+    if has_branch:
+        cmd.append(WORKTREE_BRANCH)
+
+    subprocess.run(cmd, check=True)
+    logger.info("Created workflow-master worktree at %s", WORKTREE_PATH)
+    return WORKTREE_PATH
 
 
 @click.command()
@@ -47,6 +76,13 @@ def up(project_dir: str | None, log_level: str) -> None:
     active_window.rename_window("monitor")
     active_pane = active_window.active_pane
     tmux.send_command(active_pane, "echo 'vCompany monitor: waiting for project...'")
+
+    # Create workflow-master worktree (idempotent, non-blocking on failure)
+    repo_root = Path(__file__).resolve().parents[3]
+    try:
+        _ensure_worktree(repo_root)
+    except Exception:
+        logger.warning("Failed to create workflow-master worktree -- continuing without it", exc_info=True)
 
     # Load bot config from environment
     bot_config = BotConfig()

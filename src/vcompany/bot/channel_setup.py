@@ -25,6 +25,7 @@ _SYSTEM_CHANNELS: list[str] = [
     "strategist",
     "alerts",
     "readme",
+    "workflow-master",
 ]
 
 _README_CONTENT = """# Welcome to vCompany
@@ -43,6 +44,7 @@ _README_CONTENT = """# Welcome to vCompany
 - **#strategist** — Chat with the Strategist AI (always available)
 - **#alerts** — System alerts (crashes, stuck agents, timeouts)
 - **#readme** — This channel (system info)
+- **#workflow-master** — Self-improvement dev agent (always available)
 
 When you create a project, additional channels appear:
 - **#plan-review** — Agent plans posted for approval

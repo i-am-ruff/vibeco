@@ -31,6 +31,7 @@ _COG_EXTENSIONS: list[str] = [
     "vcompany.bot.cogs.plan_review",
     "vcompany.bot.cogs.strategist",
     "vcompany.bot.cogs.question_handler",
+    "vcompany.bot.cogs.workflow_master",
 ]
 
 
@@ -153,6 +154,19 @@ class VcoBot(commands.Bot):
             logger.info("Strategist initialized (always available)")
         except Exception:
             logger.exception("Failed to initialize Strategist")
+
+        # Initialize WorkflowMaster (always available, like Strategist)
+        try:
+            wm_cog = self.get_cog("WorkflowMasterCog")
+            if wm_cog:
+                worktree_path = Path.home() / "vco-workflow-master-worktree"
+                await wm_cog.initialize(
+                    persona_path=None,
+                    worktree_path=worktree_path,
+                )
+            logger.info("WorkflowMasterCog initialized")
+        except Exception:
+            logger.exception("Failed to initialize WorkflowMasterCog")
 
         # ── Project-only initialization ────────────────────────────────
 
