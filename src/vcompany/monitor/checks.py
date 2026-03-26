@@ -43,6 +43,13 @@ def check_liveness(
     """
     try:
         # Step 1: Check tmux pane is alive
+        if pane is None:
+            return CheckResult(
+                check_type="liveness",
+                agent_id=agent_id,
+                passed=True,
+                detail="Pane not resolved yet -- skipping liveness check",
+            )
         if not tmux.is_alive(pane):
             return CheckResult(
                 check_type="liveness",
