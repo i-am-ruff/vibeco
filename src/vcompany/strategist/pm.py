@@ -6,18 +6,17 @@ D-06/D-09 (confidence thresholds), D-08 (heuristic confidence scoring).
 The PM evaluates agent questions by:
 1. Loading project context docs fresh each call (stateless per D-01).
 2. Scoring confidence via heuristic ConfidenceScorer (D-08).
-3. HIGH confidence: answers directly.
+3. HIGH confidence: answers directly via Claude CLI.
 4. MEDIUM confidence: answers with "@Owner can override" note (STRAT-04).
 5. LOW confidence: escalates to Strategist without calling Claude (STRAT-05/D-05).
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
-
-from anthropic import AsyncAnthropic
 
 from vcompany.strategist.confidence import ConfidenceScorer
 from vcompany.strategist.context_builder import build_pm_context
@@ -39,11 +38,12 @@ class PMTier:
 
     Each call loads context fresh (D-01). Confidence scoring is heuristic-based
     (D-08), not AI self-assessed. Escalation follows D-05 chain.
+    Uses Claude CLI (claude -p) for single-shot answers instead of Anthropic SDK.
     """
 
-    def __init__(self, client: AsyncAnthropic, project_dir: Path) -> None:
-        self._client = client
+    def __init__(self, project_dir: Path, model: str = "sonnet") -> None:
         self._project_dir = project_dir
+        self._model = model
         self._scorer = self._get_scorer()
 
     @staticmethod
@@ -76,7 +76,7 @@ class PMTier:
                 escalate_to="strategist",
             )
 
-        # HIGH or MEDIUM: call Claude API for answer
+        # HIGH or MEDIUM: call Claude CLI for answer
         answer = await self._answer_directly(question, context_docs)
 
         note = ""
@@ -93,7 +93,10 @@ class PMTier:
     async def _answer_directly(
         self, question: str, context_docs: dict[str, str]
     ) -> str:
-        """Make a fresh Claude API call to answer the question.
+        """Make a fresh Claude CLI call to answer the question.
+
+        Uses `claude -p` with --output-format json for single-shot answers.
+        Tools are disabled (PM should only answer, not run code).
 
         Args:
             question: The agent's question.
@@ -104,15 +107,34 @@ class PMTier:
         """
         try:
             system_prompt = build_pm_context(self._project_dir)
-            response = await self._client.messages.create(
-                model="claude-sonnet-4-20250514",
-                system=system_prompt,
-                messages=[{"role": "user", "content": question}],
-                max_tokens=2048,
+
+            cmd = [
+                "claude",
+                "-p",
+                "--model", self._model,
+                "--output-format", "json",
+                "--system-prompt", system_prompt,
+                "--tools", "",
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            return response.content[0].text
+
+            stdout, _ = await proc.communicate(input=question.encode())
+
+            if proc.returncode != 0:
+                logger.error("Claude CLI exited with code %d for PM question", proc.returncode)
+                return "PM was unable to generate an answer. Escalating."
+
+            data = json.loads(stdout.decode())
+            return data.get("result", "PM was unable to generate an answer. Escalating.")
+
         except Exception:
-            logger.exception("Claude API call failed for PM question")
+            logger.exception("Claude CLI call failed for PM question")
             return "PM was unable to generate an answer. Escalating."
 
     def _load_context_docs(self) -> dict[str, str]:
