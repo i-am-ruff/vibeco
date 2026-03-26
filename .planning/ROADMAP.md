@@ -154,9 +154,10 @@ Plans:
   3. libtmux Pane objects work correctly when used from asyncio.to_thread — or an alternative approach is implemented with documented rationale
   4. Agent dispatch + work command delivery completes in under 2 minutes for 3 agents (not 6+ minutes)
   5. No silent failures — every send attempt is logged with success/failure and pane state
-**Plans**: 0 plans
+**Plans**: 2 plans
 Plans:
-(none yet — research first)
+- [ ] 08-01-PLAN.md -- TmuxManager send_command Pane|str union + readiness detection + registry fallback
+- [ ] 08-02-PLAN.md -- Fix callers (plan_review, standup) + dispatch_cmd readiness-based launch
 
 ## Progress
 
@@ -172,4 +173,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 5. Hooks and Plan Gate | 3/4 | In Progress|  |
 | 6. PM/Strategist and Milestones | 2/5 | In Progress|  |
 | 7. Integration Pipeline and Communications | 4/6 | In Progress|  |
-| 8. Reliable tmux Agent Lifecycle | 0/0 | Not Started | - |
+| 8. Reliable tmux Agent Lifecycle | 0/2 | Planning complete | - |
