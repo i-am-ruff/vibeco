@@ -1,47 +1,74 @@
 """Persistent Strategist conversation manager.
 
-Uses the Claude Code CLI with --session-id for persistent conversation sessions.
-Claude CLI manages its own context window, so no manual token tracking needed.
+Uses Claude Code CLI with -p --resume for persistent conversation.
+Each send() call continues the same session, preserving full history.
+Output format is text-only (no tool call noise in Discord).
 
-Per Pitfall 7: Graceful fallback when persona file is missing.
 Per Pitfall 8: asyncio.Lock prevents concurrent message interleaving.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import uuid
-from collections.abc import AsyncGenerator
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PERSONA = (
-    "You are a strategic advisor and PM for a software development project. "
-    "You provide thoughtful, direct guidance on architecture, prioritization, "
-    "and team coordination. You communicate like a trusted colleague, not an AI assistant."
-)
+# Session name for the Strategist — stable across restarts
+_SESSION_NAME = "vco-strategist"
+
+DEFAULT_PERSONA = """You are the Strategist for vCompany — an autonomous multi-agent development system.
+
+You are the owner's CEO-friend. You speak directly, humanly, with personality. Minimal LLM feel.
+
+## What you know
+- vCompany coordinates multiple Claude Code agents to build software products
+- Each agent runs in its own repo clone with GSD (Get Shit Done) workflow
+- Agents are isolated: each owns specific directories, never writes outside them
+- A monitor loop supervises agents (liveness, stuck detection, plan gate)
+- Plans are gated: agents plan, you/PM review, then agents execute
+
+## How projects work
+1. Owner discusses what to build with you (here in #strategist)
+2. You help shape the blueprint, interfaces, and milestone scope
+3. Owner runs `/new-project <name>` to create Discord channels
+4. Owner provides agents.yaml (agent roster) and context docs
+5. CLI: `vco init <name> -c agents.yaml --blueprint ... --interfaces ... --milestone ...`
+6. CLI: `vco clone <name>` — creates per-agent repo clones
+7. CLI: `vco dispatch <name> --all --command "/gsd:plan-phase 1 --auto"` — agents start working
+8. Monitor + plan gate handle the rest. You review escalations.
+
+## Your role
+- Strategic advisor: product vision, priorities, cross-agent coordination
+- You answer questions from the PM tier when it's not confident
+- You guide the owner through project setup and milestone planning
+- You know the current status of all projects and agents
+
+## Communication style
+- Direct, concise, opinionated when you have a view
+- Push back when something doesn't make sense
+- Ask clarifying questions rather than assuming
+- Never say "as an AI" or "I'd be happy to help"
+"""
 
 
 class StrategistConversation:
-    """Manages a persistent Claude CLI conversation via --session-id/--resume.
+    """Manages a persistent Claude CLI conversation via --resume.
 
-    The conversation is maintained across calls using a stable session ID.
-    Claude CLI handles context management internally, so no manual token
-    tracking or Knowledge Transfer is needed.
+    Each send() call uses `claude -p --resume vco-strategist --output-format text`
+    which continues the existing conversation and returns only the final text
+    response (no tool calls shown).
     """
 
     def __init__(
         self,
         persona_path: Path | None = None,
-        model: str = "opus",
+        session_name: str = _SESSION_NAME,
     ) -> None:
-        self._model = model
         self._system_prompt = self._load_persona(persona_path)
-        self._session_id = str(uuid.uuid4())
-        self._first_send = True
+        self._session_name = session_name
+        self._initialized = False
         self._lock = asyncio.Lock()
 
     @staticmethod
@@ -62,77 +89,76 @@ class StrategistConversation:
             return DEFAULT_PERSONA
         return content
 
-    async def send(self, content: str, role: str = "user") -> AsyncGenerator[str, None]:
-        """Send a message and stream the assistant's response.
+    async def send(self, content: str) -> str:
+        """Send a message and get the Strategist's response.
 
-        Acquires the conversation lock to prevent concurrent interleaving
-        (Pitfall 8). Uses Claude CLI with --resume for conversation persistence.
-
-        On first call, uses --session-id with --system-prompt to start a new
-        session. On subsequent calls, uses --resume to continue the conversation.
+        Acquires the conversation lock to prevent concurrent interleaving.
+        Uses -p --resume for conversation persistence. First call uses
+        --system-prompt to initialize the session.
 
         Args:
-            content: The message content to send.
-            role: The message role (default "user").
+            content: The message to send.
 
-        Yields:
-            Text chunks from the streaming response.
+        Returns:
+            The Strategist's text response.
         """
         async with self._lock:
             cmd = self._build_command()
 
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
 
-            # Send content via stdin
-            proc.stdin.write(content.encode())
-            await proc.stdin.drain()
-            proc.stdin.close()
-
-            # Read all stdout
-            stdout, _ = await proc.communicate()
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(input=content.encode()),
+                    timeout=300,  # 5 min max per response
+                )
+            except asyncio.TimeoutError:
+                logger.error("Strategist timed out after 300s")
+                return "I need more time to think about that. Could you rephrase or simplify the question?"
+            except Exception:
+                logger.exception("Failed to run Claude CLI")
+                return "Something went wrong on my end. Try again?"
 
             if proc.returncode != 0:
-                logger.error("Claude CLI exited with code %d", proc.returncode)
-                yield "Strategist encountered an error. Please try again."
-                return
+                logger.error(
+                    "Claude CLI exited with code %d: %s",
+                    proc.returncode,
+                    stderr.decode()[:500],
+                )
+                return "I hit a snag. Try asking again?"
 
-            # Parse JSON output: {"type":"result","result":"answer text",...}
-            try:
-                data = json.loads(stdout.decode())
-                result_text = data.get("result", "")
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                result_text = stdout.decode().strip()
+            response = stdout.decode().strip()
 
-            if self._first_send:
-                self._first_send = False
+            if not self._initialized:
+                self._initialized = True
+                logger.info("Strategist session initialized: %s", self._session_name)
 
-            if result_text:
-                yield result_text
+            return response if response else "I don't have a response for that."
 
     def _build_command(self) -> list[str]:
-        """Build the claude CLI command for this send call."""
+        """Build the claude CLI command."""
         cmd = [
             "claude",
             "-p",
-            "--output-format", "json",
-            "--model", self._model,
-            "--tools", "",
+            "--output-format", "text",
         ]
 
-        if self._first_send:
-            cmd.extend(["--session-id", self._session_id])
+        if not self._initialized:
+            # First call: create session with system prompt
+            cmd.extend(["--session-id", self._session_name])
             cmd.extend(["--system-prompt", self._system_prompt])
         else:
-            cmd.extend(["--resume", self._session_id])
+            # Subsequent calls: resume existing session
+            cmd.extend(["--resume", self._session_name])
 
         return cmd
 
     @property
-    def session_id(self) -> str:
-        """Return the stable session ID for this conversation."""
-        return self._session_id
+    def session_name(self) -> str:
+        """Return the session name."""
+        return self._session_name

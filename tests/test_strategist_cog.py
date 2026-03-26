@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
@@ -69,15 +68,9 @@ def _make_cog_with_conversation(bot: MagicMock | None = None) -> tuple[Strategis
         bot = _make_bot()
     cog = StrategistCog(bot)
 
-    # Mock the conversation
+    # Mock the conversation — send() now returns str directly
     conversation = AsyncMock()
-
-    async def mock_send(content: str, role: str = "user"):
-        """Mock streaming generator."""
-        for word in ["Hello", " there", " friend"]:
-            yield word
-
-    conversation.send = mock_send
+    conversation.send = AsyncMock(return_value="Hello there friend")
     cog._conversation = conversation
 
     # Mock channel
@@ -155,10 +148,9 @@ async def test_owner_message_forwarded_to_conversation() -> None:
     sent_content = []
     original_send = conversation.send
 
-    async def tracking_send(content: str, role: str = "user"):
+    async def tracking_send(content: str):
         sent_content.append(content)
-        async for chunk in original_send(content, role):
-            yield chunk
+        return await original_send(content)
 
     conversation.send = tracking_send
 
@@ -166,19 +158,19 @@ async def test_owner_message_forwarded_to_conversation() -> None:
     assert "What about the roadmap?" in sent_content
 
 
-# --- Streaming response tests ---
+# --- Response posting tests ---
 
 
 @pytest.mark.asyncio
 async def test_streaming_response_posted_to_channel() -> None:
-    """Streaming response is posted to channel with rate-limited edits."""
+    """Response is posted to channel after full reply received."""
     cog, _ = _make_cog_with_conversation()
 
     channel = AsyncMock(spec=discord.TextChannel)
     placeholder_msg = AsyncMock(spec=discord.Message)
     channel.send.return_value = placeholder_msg
 
-    result = await cog._stream_to_channel(channel, "test input")
+    result = await cog._send_to_channel(channel, "test input")
 
     # Should have sent "Thinking..." placeholder
     channel.send.assert_awaited()
@@ -197,18 +189,14 @@ async def test_long_response_handled() -> None:
 
     # Make conversation return a long response
     long_text = "A" * 2500
-
-    async def long_send(content: str, role: str = "user"):
-        yield long_text
-
-    conversation.send = long_send
+    conversation.send = AsyncMock(return_value=long_text)
     cog._conversation = conversation
 
     channel = AsyncMock(spec=discord.TextChannel)
     placeholder_msg = AsyncMock(spec=discord.Message)
     channel.send.return_value = placeholder_msg
 
-    result = await cog._stream_to_channel(channel, "test")
+    result = await cog._send_to_channel(channel, "test")
 
     # Full text returned
     assert len(result) == 2500
@@ -228,9 +216,9 @@ async def test_handle_pm_escalation_formats_message() -> None:
 
     sent_content = []
 
-    async def tracking_send(content: str, role: str = "user"):
+    async def tracking_send(content: str):
         sent_content.append(content)
-        yield "Use approach A."
+        return "Use approach A."
 
     conversation.send = tracking_send
 
@@ -246,10 +234,7 @@ async def test_handle_pm_escalation_returns_response() -> None:
     """Strategist response to escalation is returned for relay to agent."""
     cog, conversation = _make_cog_with_conversation()
 
-    async def mock_send(content: str, role: str = "user"):
-        yield "Use REST for simplicity."
-
-    conversation.send = mock_send
+    conversation.send = AsyncMock(return_value="Use REST for simplicity.")
 
     result = await cog.handle_pm_escalation("agent-alpha", "REST or GraphQL?", 0.75)
     assert result == "Use REST for simplicity."

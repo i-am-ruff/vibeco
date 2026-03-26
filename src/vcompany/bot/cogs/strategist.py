@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from pathlib import Path
 
 import discord
@@ -29,9 +28,6 @@ logger = logging.getLogger(__name__)
 
 # Discord message character limit
 _DISCORD_MAX_CHARS = 2000
-
-# Minimum interval between message edits (rate limiting per Pitfall 1)
-_EDIT_INTERVAL_SECS = 1.0
 
 
 class StrategistCog(commands.Cog):
@@ -142,54 +138,45 @@ class StrategistCog(commands.Cog):
             return
 
         # Forward to conversation and stream response
-        await self._stream_to_channel(message.channel, message.content)
+        await self._send_to_channel(message.channel, message.content)
 
     @staticmethod
     def _has_owner_role(member: discord.Member) -> bool:
         """Check if member has the vco-owner role."""
         return any(role.name == "vco-owner" for role in getattr(member, "roles", []))
 
-    async def _stream_to_channel(
+    async def _send_to_channel(
         self, channel: discord.TextChannel, content: str
     ) -> str:
-        """Stream conversation response to channel with rate-limited edits.
+        """Send message to Strategist and post response to channel.
 
-        Sends a "Thinking..." placeholder, then edits it as chunks arrive.
-        Edits are rate-limited to 1/sec per Pitfall 1. Long responses (>2000
-        chars) are truncated in the main message with overflow sent as follow-up.
+        Sends a "Thinking..." placeholder, waits for full response, then
+        edits the placeholder with the answer. Long responses (>2000 chars)
+        split into multiple messages.
 
         Args:
             channel: Discord channel to send response to.
             content: User message content to send to conversation.
 
         Returns:
-            Full response text (not truncated).
+            Full response text.
         """
         placeholder = await channel.send("Thinking...")
-        buffer = ""
-        last_edit = time.monotonic()
 
-        async for chunk in self._conversation.send(content):
-            buffer += chunk
-            now = time.monotonic()
-            if now - last_edit >= _EDIT_INTERVAL_SECS:
-                display = buffer[:_DISCORD_MAX_CHARS]
-                await placeholder.edit(content=display)
-                last_edit = now
+        response = await self._conversation.send(content)
 
-        # Final edit with complete (truncated if needed) response
-        if len(buffer) > _DISCORD_MAX_CHARS:
-            await placeholder.edit(content=buffer[:_DISCORD_MAX_CHARS - 3] + "...")
-            # Send overflow as follow-up messages
-            remaining = buffer[_DISCORD_MAX_CHARS - 3:]
+        # Post response (split if > 2000 chars)
+        if len(response) > _DISCORD_MAX_CHARS:
+            await placeholder.edit(content=response[:_DISCORD_MAX_CHARS - 3] + "...")
+            remaining = response[_DISCORD_MAX_CHARS - 3:]
             while remaining:
                 chunk = remaining[:_DISCORD_MAX_CHARS]
                 await channel.send(chunk)
                 remaining = remaining[_DISCORD_MAX_CHARS:]
         else:
-            await placeholder.edit(content=buffer)
+            await placeholder.edit(content=response)
 
-        return buffer
+        return response
 
     async def handle_pm_escalation(
         self, agent_id: str, question: str, confidence_score: float
@@ -217,9 +204,7 @@ class StrategistCog(commands.Cog):
             f"PM confidence: {confidence_score:.0%}. Please provide your assessment."
         )
 
-        full_response = ""
-        async for chunk in self._conversation.send(formatted):
-            full_response += chunk
+        full_response = await self._conversation.send(formatted)
 
         # Check if Strategist indicates low confidence
         low_confidence_signals = [

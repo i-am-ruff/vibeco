@@ -1,7 +1,6 @@
 """Tests for StrategistConversation using Claude CLI."""
 
 import asyncio
-import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,14 +13,7 @@ import pytest
 
 
 def make_mock_process(result_text: str = "Hello world", returncode: int = 0):
-    """Create a mock asyncio subprocess process returning JSON result."""
-    result_json = json.dumps({
-        "type": "result",
-        "subtype": "success",
-        "result": result_text,
-        "session_id": "test-session-id",
-    })
-
+    """Create a mock asyncio subprocess process returning plain text result."""
     proc = AsyncMock()
     proc.returncode = returncode
 
@@ -31,9 +23,9 @@ def make_mock_process(result_text: str = "Hello world", returncode: int = 0):
     proc.stdin.drain = AsyncMock()
     proc.stdin.close = MagicMock()
 
-    # Mock communicate to return the JSON output
+    # Mock communicate to return plain text output
     proc.communicate = AsyncMock(
-        return_value=(result_json.encode(), b"")
+        return_value=(result_text.encode(), b"")
     )
 
     return proc
@@ -46,45 +38,39 @@ def make_mock_process(result_text: str = "Hello world", returncode: int = 0):
 
 @pytest.mark.asyncio
 async def test_send_yields_text_from_cli():
-    """send() yields text from Claude CLI JSON response."""
+    """send() returns text from Claude CLI response."""
     from vcompany.strategist.conversation import StrategistConversation
 
     proc = make_mock_process(result_text="Hi there")
 
     with patch("asyncio.create_subprocess_exec", return_value=proc):
         conv = StrategistConversation()
+        result = await conv.send("Hello")
 
-        chunks = []
-        async for chunk in conv.send("Hello"):
-            chunks.append(chunk)
-
-    assert chunks == ["Hi there"]
+    assert result == "Hi there"
 
 
 @pytest.mark.asyncio
 async def test_send_yields_text_chunks():
-    """send() yields text chunks from CLI response."""
+    """send() returns text from CLI response."""
     from vcompany.strategist.conversation import StrategistConversation
 
     proc = make_mock_process(result_text="chunk1 chunk2 chunk3")
 
     with patch("asyncio.create_subprocess_exec", return_value=proc):
         conv = StrategistConversation()
+        result = await conv.send("test")
 
-        chunks = []
-        async for chunk in conv.send("test"):
-            chunks.append(chunk)
-
-    assert chunks == ["chunk1 chunk2 chunk3"]
+    assert result == "chunk1 chunk2 chunk3"
 
 
 @pytest.mark.asyncio
 async def test_session_id_reused_across_sends():
-    """Session ID is reused across multiple send() calls (conversation persistence)."""
+    """Session name is reused across multiple send() calls (conversation persistence)."""
     from vcompany.strategist.conversation import StrategistConversation
 
     conv = StrategistConversation()
-    session_id = conv.session_id
+    session_name = conv.session_name
 
     call_args_list = []
 
@@ -94,24 +80,22 @@ async def test_session_id_reused_across_sends():
 
     with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
         # First send
-        async for _ in conv.send("first"):
-            pass
+        await conv.send("first")
 
         # Second send
-        async for _ in conv.send("second"):
-            pass
+        await conv.send("second")
 
     # First call should use --session-id
     first_args = call_args_list[0]
     assert "--session-id" in first_args
     session_idx = first_args.index("--session-id")
-    assert first_args[session_idx + 1] == session_id
+    assert first_args[session_idx + 1] == session_name
 
-    # Second call should use --resume with same session ID
+    # Second call should use --resume with same session name
     second_args = call_args_list[1]
     assert "--resume" in second_args
     resume_idx = second_args.index("--resume")
-    assert second_args[resume_idx + 1] == session_id
+    assert second_args[resume_idx + 1] == session_name
 
 
 @pytest.mark.asyncio
@@ -128,10 +112,8 @@ async def test_first_send_includes_system_prompt():
     with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
         conv = StrategistConversation()
 
-        async for _ in conv.send("first"):
-            pass
-        async for _ in conv.send("second"):
-            pass
+        await conv.send("first")
+        await conv.send("second")
 
     # First call has --system-prompt
     assert "--system-prompt" in call_args_list[0]
@@ -160,8 +142,7 @@ async def test_asyncio_lock_prevents_concurrent_sends():
         async def slow_communicate(input=None):
             await asyncio.sleep(0.05)
             execution_order.append(f"end-{label}")
-            result = json.dumps({"type": "result", "result": f"response-{label}"})
-            return (result.encode(), b"")
+            return (f"response-{label}".encode(), b"")
 
         proc.communicate = slow_communicate
         return proc
@@ -170,8 +151,7 @@ async def test_asyncio_lock_prevents_concurrent_sends():
         conv = StrategistConversation()
 
         async def send_msg(content):
-            async for _ in conv.send(content):
-                pass
+            await conv.send(content)
 
         # Launch two concurrent sends
         await asyncio.gather(send_msg("first"), send_msg("second"))
@@ -211,7 +191,7 @@ async def test_persona_loaded_from_file(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_cli_error_yields_error_message():
-    """CLI error (non-zero exit) yields an error message."""
+    """CLI error (non-zero exit) returns an error message."""
     from vcompany.strategist.conversation import StrategistConversation
 
     proc = make_mock_process(returncode=1)
@@ -219,13 +199,9 @@ async def test_cli_error_yields_error_message():
 
     with patch("asyncio.create_subprocess_exec", return_value=proc):
         conv = StrategistConversation()
+        result = await conv.send("test")
 
-        chunks = []
-        async for chunk in conv.send("test"):
-            chunks.append(chunk)
-
-    assert len(chunks) == 1
-    assert "error" in chunks[0].lower()
+    assert "error" in result.lower() or "snag" in result.lower()
 
 
 # ---------------------------------------------------------------------------

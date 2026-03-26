@@ -38,20 +38,15 @@ def up(project_dir: str | None, log_level: str) -> None:
     from vcompany.bot.config import BotConfig
     from vcompany.tmux.session import TmuxManager
 
-    # Set up tmux session with strategist and monitor windows
+    # Set up tmux session for monitor and agents (Strategist runs via subprocess, not tmux)
     tmux = TmuxManager()
     session = tmux.get_or_create_session("vco-system")
 
-    # First window (active): rename to "strategist"
+    # First window: monitor (placeholder until project loads)
     active_window = session.active_window
-    active_window.rename_window("strategist")
+    active_window.rename_window("monitor")
     active_pane = active_window.active_pane
-    tmux.send_command(active_pane, "claude --resume vco-strategist")
-
-    # Second window: monitor (placeholder until project loads)
-    monitor_window = session.new_window(window_name="monitor")
-    monitor_pane = monitor_window.active_pane
-    tmux.send_command(monitor_pane, "echo 'Monitor: waiting for project...'")
+    tmux.send_command(active_pane, "echo 'vCompany monitor: waiting for project...'")
 
     # Load bot config from environment
     bot_config = BotConfig()
