@@ -54,20 +54,23 @@ class StrategistCog(commands.Cog):
     async def initialize(
         self,
         persona_path: Path | None,
-        decisions_path: Path,
+        decisions_path: Path | None = None,
     ) -> None:
         """Initialize the Strategist conversation and decision logger.
 
         Args:
             persona_path: Path to STRATEGIST-PERSONA.md, or None for default.
-            decisions_path: Path to state/decisions.jsonl file.
+            decisions_path: Path to state/decisions.jsonl file, or None if no project.
         """
         self._conversation = StrategistConversation(persona_path=persona_path)
         await self._resolve_channels()
-        self._decision_logger = DecisionLogger(
-            decisions_path=decisions_path,
-            decisions_channel=self._decisions_channel,
-        )
+        if decisions_path is not None:
+            self._decision_logger = DecisionLogger(
+                decisions_path=decisions_path,
+                decisions_channel=self._decisions_channel,
+            )
+        else:
+            logger.info("No decisions_path -- DecisionLogger disabled (no project loaded)")
         logger.info("StrategistCog initialized with persistent conversation")
 
     async def _resolve_channels(self) -> None:
