@@ -341,7 +341,13 @@ class AgentManager:
         try:
             if wait_for_ready:
                 self._wait_for_claude_ready(pane, agent_id)
-            self._tmux.send_command(pane, command)
+            # Use raw tmux send-keys for thread safety (called from asyncio.to_thread)
+            import subprocess as sp
+            target = f"{self._session_name}:{agent_id}"
+            sp.run(
+                ["tmux", "send-keys", "-t", target, command, "Enter"],
+                check=True, timeout=5,
+            )
             logger.info("Sent to %s: %s", agent_id, command)
             return True
         except Exception:
