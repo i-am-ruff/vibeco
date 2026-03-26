@@ -95,8 +95,8 @@ class StrategistConversation:
         """Send a message and get the Strategist's response.
 
         Acquires the conversation lock to prevent concurrent interleaving.
-        Uses -p --resume for conversation persistence. First call uses
-        --system-prompt to initialize the session.
+        Tries --resume first (session may exist from prior run). Falls back
+        to --session-id with --system-prompt to create a new session.
 
         Args:
             content: The message to send.
@@ -105,60 +105,91 @@ class StrategistConversation:
             The Strategist's text response.
         """
         async with self._lock:
-            cmd = self._build_command()
-
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+            # Try resume first (handles restarts, existing sessions)
+            if self._initialized:
+                return await self._exec_claude(
+                    self._resume_command(), content
                 )
 
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(input=content.encode()),
-                    timeout=300,  # 5 min max per response
-                )
-            except asyncio.TimeoutError:
-                logger.error("Strategist timed out after 300s")
-                return "I need more time to think about that. Could you rephrase or simplify the question?"
-            except Exception:
-                logger.exception("Failed to run Claude CLI")
-                return "Something went wrong on my end. Try again?"
-
-            if proc.returncode != 0:
-                logger.error(
-                    "Claude CLI exited with code %d: %s",
-                    proc.returncode,
-                    stderr.decode()[:500],
-                )
-                return "I hit a snag. Try asking again?"
-
-            response = stdout.decode().strip()
-
-            if not self._initialized:
+            # First call: try resume in case session exists from prior run
+            result = await self._exec_claude(
+                self._resume_command(), content, allow_failure=True
+            )
+            if result is not None:
                 self._initialized = True
-                logger.info("Strategist session initialized: %s", self._session_id)
+                logger.info("Strategist resumed existing session: %s", self._session_id)
+                return result
 
-            return response if response else "I don't have a response for that."
+            # Resume failed: create new session with system prompt
+            result = await self._exec_claude(
+                self._create_command(), content
+            )
+            self._initialized = True
+            logger.info("Strategist created new session: %s", self._session_id)
+            return result
 
-    def _build_command(self) -> list[str]:
-        """Build the claude CLI command."""
-        cmd = [
-            "claude",
-            "-p",
+    async def _exec_claude(
+        self, cmd: list[str], content: str, *, allow_failure: bool = False
+    ) -> str | None:
+        """Execute a claude CLI command and return the response.
+
+        Args:
+            cmd: CLI command args.
+            content: Message to send via stdin.
+            allow_failure: If True, return None on failure instead of error message.
+
+        Returns:
+            Response text, or None if allow_failure and command failed.
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=content.encode()),
+                timeout=300,
+            )
+        except asyncio.TimeoutError:
+            logger.error("Strategist timed out after 300s")
+            if allow_failure:
+                return None
+            return "I need more time to think about that. Could you rephrase or simplify the question?"
+        except Exception:
+            logger.exception("Failed to run Claude CLI")
+            if allow_failure:
+                return None
+            return "Something went wrong on my end. Try again?"
+
+        if proc.returncode != 0:
+            stderr_text = stderr.decode()[:500]
+            logger.warning("Claude CLI exited with code %d: %s", proc.returncode, stderr_text)
+            if allow_failure:
+                return None
+            return "I hit a snag. Try asking again?"
+
+        response = stdout.decode().strip()
+        return response if response else "I don't have a response for that."
+
+    def _resume_command(self) -> list[str]:
+        """Build command to resume existing session."""
+        return [
+            "claude", "-p",
             "--output-format", "text",
+            "--resume", self._session_id,
         ]
 
-        if not self._initialized:
-            # First call: create session with system prompt
-            cmd.extend(["--session-id", self._session_id])
-            cmd.extend(["--system-prompt", self._system_prompt])
-        else:
-            # Subsequent calls: resume existing session
-            cmd.extend(["--resume", self._session_id])
-
-        return cmd
+    def _create_command(self) -> list[str]:
+        """Build command to create new session with system prompt."""
+        return [
+            "claude", "-p",
+            "--output-format", "text",
+            "--session-id", self._session_id,
+            "--system-prompt", self._system_prompt,
+        ]
 
     @property
     def session_id(self) -> str:
