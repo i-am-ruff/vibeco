@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Stable UUID for the Strategist session — deterministic from a fixed seed
 # so it survives restarts. uuid5 with DNS namespace + version string.
 # Bump the version string to force a new session (e.g., after persona changes).
-_SESSION_VERSION = "vco-strategist-v6-notools"
+_SESSION_VERSION = "vco-strategist-v7-persistent-persona"
 _SESSION_UUID = str(uuid.uuid5(uuid.NAMESPACE_DNS, _SESSION_VERSION))
 
 DEFAULT_PERSONA = """You are the Strategist for vCompany — an autonomous multi-agent development system.
@@ -180,11 +180,16 @@ class StrategistConversation:
         return response if response else "I don't have a response for that."
 
     def _resume_command(self) -> list[str]:
-        """Build command to resume existing session."""
+        """Build command to resume existing session.
+
+        Always includes --system-prompt so the persona persists across
+        every call, not just the first one.
+        """
         return [
             "claude", "-p",
             "--output-format", "text",
             "--allowedTools", "",
+            "--system-prompt", self._system_prompt,
             "--resume", self._session_id,
         ]
 
@@ -194,8 +199,8 @@ class StrategistConversation:
             "claude", "-p",
             "--output-format", "text",
             "--allowedTools", "",
-            "--session-id", self._session_id,
             "--system-prompt", self._system_prompt,
+            "--session-id", self._session_id,
         ]
 
     @property
