@@ -2,6 +2,7 @@
 
 Tests the PM tier per D-01 (stateless), D-05 (escalation chain),
 D-06/D-09 (confidence thresholds), D-08 (heuristic confidence).
+Now mocks asyncio.create_subprocess_exec instead of Anthropic SDK.
 """
 
 from __future__ import annotations
@@ -34,26 +35,35 @@ def _setup_project_dir(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _make_mock_process(result_text: str = "The answer is 42.", returncode: int = 0):
+    """Create a mock subprocess process returning Claude CLI JSON output."""
+    result_json = json.dumps({
+        "type": "result",
+        "subtype": "success",
+        "result": result_text,
+    })
+    proc = AsyncMock()
+    proc.returncode = returncode
+    proc.communicate = AsyncMock(return_value=(result_json.encode(), b""))
+    return proc
+
+
 @pytest.mark.asyncio
 async def test_high_confidence_returns_direct_answer(tmp_path: Path) -> None:
     """HIGH confidence: PM answers directly with decided_by='PM'."""
     project_dir = _setup_project_dir(tmp_path)
 
-    mock_client = AsyncMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="The answer is 42.")]
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
     from vcompany.strategist.pm import PMTier
 
-    with patch.object(
-        PMTier, "_get_scorer"
-    ) as mock_scorer_factory:
+    proc = _make_mock_process("The answer is 42.")
+
+    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory, \
+         patch("asyncio.create_subprocess_exec", return_value=proc):
         scorer = MagicMock()
         scorer.score.return_value = _make_confidence("HIGH", 0.95)
         mock_scorer_factory.return_value = scorer
 
-        pm = PMTier(client=mock_client, project_dir=project_dir)
+        pm = PMTier(project_dir=project_dir)
         result = await pm.evaluate_question("What database should I use?", agent_id="agent-1")
 
     assert isinstance(result, PMDecision)
@@ -69,19 +79,17 @@ async def test_medium_confidence_returns_answer_with_note(tmp_path: Path) -> Non
     """MEDIUM confidence: PM answers with override note per STRAT-04."""
     project_dir = _setup_project_dir(tmp_path)
 
-    mock_client = AsyncMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="Probably use PostgreSQL.")]
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
     from vcompany.strategist.pm import PMTier
 
-    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory:
+    proc = _make_mock_process("Probably use PostgreSQL.")
+
+    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory, \
+         patch("asyncio.create_subprocess_exec", return_value=proc):
         scorer = MagicMock()
         scorer.score.return_value = _make_confidence("MEDIUM", 0.75)
         mock_scorer_factory.return_value = scorer
 
-        pm = PMTier(client=mock_client, project_dir=project_dir)
+        pm = PMTier(project_dir=project_dir)
         result = await pm.evaluate_question("Should I add caching?", agent_id="agent-2")
 
     assert isinstance(result, PMDecision)
@@ -98,16 +106,15 @@ async def test_low_confidence_escalates_to_strategist(tmp_path: Path) -> None:
     """LOW confidence: PM escalates to strategist, no answer per STRAT-05/D-05."""
     project_dir = _setup_project_dir(tmp_path)
 
-    mock_client = AsyncMock()
-
     from vcompany.strategist.pm import PMTier
 
-    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory:
+    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory, \
+         patch("asyncio.create_subprocess_exec") as mock_exec:
         scorer = MagicMock()
         scorer.score.return_value = _make_confidence("LOW", 0.3)
         mock_scorer_factory.return_value = scorer
 
-        pm = PMTier(client=mock_client, project_dir=project_dir)
+        pm = PMTier(project_dir=project_dir)
         result = await pm.evaluate_question("Should we pivot the product?", agent_id="agent-3")
 
     assert isinstance(result, PMDecision)
@@ -115,59 +122,65 @@ async def test_low_confidence_escalates_to_strategist(tmp_path: Path) -> None:
     assert result.decided_by == "PM"
     assert result.confidence.level == "LOW"
     assert result.escalate_to == "strategist"
-    # Claude API should NOT be called for LOW confidence
-    mock_client.messages.create.assert_not_called()
+    # Claude CLI should NOT be called for LOW confidence
+    mock_exec.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_fresh_claude_api_call_per_question(tmp_path: Path) -> None:
-    """PM makes a fresh Claude API call per question (stateless per D-01)."""
+async def test_fresh_cli_call_per_question(tmp_path: Path) -> None:
+    """PM makes a fresh Claude CLI call per question (stateless per D-01)."""
     project_dir = _setup_project_dir(tmp_path)
-
-    mock_client = AsyncMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="Answer.")]
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
 
     from vcompany.strategist.pm import PMTier
 
-    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory:
+    call_count = 0
+
+    async def counting_exec(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return _make_mock_process("Answer.")
+
+    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory, \
+         patch("asyncio.create_subprocess_exec", side_effect=counting_exec):
         scorer = MagicMock()
         scorer.score.return_value = _make_confidence("HIGH", 0.95)
         mock_scorer_factory.return_value = scorer
 
-        pm = PMTier(client=mock_client, project_dir=project_dir)
+        pm = PMTier(project_dir=project_dir)
         await pm.evaluate_question("Question 1?", agent_id="agent-1")
         await pm.evaluate_question("Question 2?", agent_id="agent-1")
 
-    assert mock_client.messages.create.call_count == 2
+    assert call_count == 2
 
 
 @pytest.mark.asyncio
 async def test_uses_pm_context_as_system_prompt(tmp_path: Path) -> None:
-    """PM uses PM-CONTEXT.md content as system prompt for Claude API call."""
+    """PM passes --system-prompt arg to Claude CLI."""
     project_dir = _setup_project_dir(tmp_path)
-
-    mock_client = AsyncMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="Answer.")]
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
 
     from vcompany.strategist.pm import PMTier
 
-    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory:
+    captured_args = []
+
+    async def capturing_exec(*args, **kwargs):
+        captured_args.append(args)
+        return _make_mock_process("Answer.")
+
+    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory, \
+         patch("asyncio.create_subprocess_exec", side_effect=capturing_exec):
         scorer = MagicMock()
         scorer.score.return_value = _make_confidence("HIGH", 0.95)
         mock_scorer_factory.return_value = scorer
 
-        pm = PMTier(client=mock_client, project_dir=project_dir)
+        pm = PMTier(project_dir=project_dir)
         await pm.evaluate_question("Test question?", agent_id="agent-1")
 
-    # Verify that system prompt was passed to messages.create
-    call_kwargs = mock_client.messages.create.call_args
-    assert "system" in call_kwargs.kwargs or (len(call_kwargs.args) > 0)
-    system_prompt = call_kwargs.kwargs.get("system", "")
-    # System prompt should contain content from context docs
+    # Verify --system-prompt was passed to subprocess
+    assert len(captured_args) == 1
+    cli_args = captured_args[0]
+    assert "--system-prompt" in cli_args
+    prompt_idx = cli_args.index("--system-prompt")
+    system_prompt = cli_args[prompt_idx + 1]
     assert len(system_prompt) > 0
 
 
@@ -188,19 +201,17 @@ async def test_decision_log_loaded_for_scoring(tmp_path: Path) -> None:
     }
     decisions_path.write_text(json.dumps(entry) + "\n")
 
-    mock_client = AsyncMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="Answer.")]
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
     from vcompany.strategist.pm import PMTier
 
-    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory:
+    proc = _make_mock_process("Answer.")
+
+    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory, \
+         patch("asyncio.create_subprocess_exec", return_value=proc):
         scorer = MagicMock()
         scorer.score.return_value = _make_confidence("HIGH", 0.95)
         mock_scorer_factory.return_value = scorer
 
-        pm = PMTier(client=mock_client, project_dir=project_dir)
+        pm = PMTier(project_dir=project_dir)
         await pm.evaluate_question("Which database?", agent_id="agent-1")
 
     # Verify scorer was called with decision log entries
@@ -212,21 +223,22 @@ async def test_decision_log_loaded_for_scoring(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_graceful_degradation_on_api_failure(tmp_path: Path) -> None:
-    """PM returns PMDecision even when Claude API call fails."""
+async def test_graceful_degradation_on_cli_failure(tmp_path: Path) -> None:
+    """PM returns PMDecision even when Claude CLI call fails."""
     project_dir = _setup_project_dir(tmp_path)
-
-    mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(side_effect=Exception("API Error"))
 
     from vcompany.strategist.pm import PMTier
 
-    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory:
+    async def failing_exec(*args, **kwargs):
+        raise OSError("CLI not found")
+
+    with patch.object(PMTier, "_get_scorer") as mock_scorer_factory, \
+         patch("asyncio.create_subprocess_exec", side_effect=failing_exec):
         scorer = MagicMock()
         scorer.score.return_value = _make_confidence("HIGH", 0.95)
         mock_scorer_factory.return_value = scorer
 
-        pm = PMTier(client=mock_client, project_dir=project_dir)
+        pm = PMTier(project_dir=project_dir)
         result = await pm.evaluate_question("Test question?", agent_id="agent-1")
 
     assert isinstance(result, PMDecision)

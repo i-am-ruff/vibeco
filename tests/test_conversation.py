@@ -1,6 +1,7 @@
-"""Tests for StrategistConversation and Knowledge Transfer."""
+"""Tests for StrategistConversation using Claude CLI."""
 
 import asyncio
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,54 +9,34 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Mock helpers for Anthropic SDK
+# Mock helpers for subprocess (Claude CLI)
 # ---------------------------------------------------------------------------
 
-class MockStreamResponse:
-    """Mock for client.messages.stream() async context manager."""
 
-    def __init__(self, text_chunks: list[str]):
-        self._chunks = text_chunks
+def make_mock_process(result_text: str = "Hello world", returncode: int = 0):
+    """Create a mock asyncio subprocess process returning JSON result."""
+    result_json = json.dumps({
+        "type": "result",
+        "subtype": "success",
+        "result": result_text,
+        "session_id": "test-session-id",
+    })
 
-    async def __aenter__(self):
-        return self
+    proc = AsyncMock()
+    proc.returncode = returncode
 
-    async def __aexit__(self, *args):
-        pass
+    # Mock stdin
+    proc.stdin = AsyncMock()
+    proc.stdin.write = MagicMock()
+    proc.stdin.drain = AsyncMock()
+    proc.stdin.close = MagicMock()
 
-    @property
-    def text_stream(self):
-        return self._aiter_chunks()
-
-    async def _aiter_chunks(self):
-        for chunk in self._chunks:
-            yield chunk
-
-
-class MockTokenCountResult:
-    """Mock for count_tokens() return value."""
-
-    def __init__(self, input_tokens: int):
-        self.input_tokens = input_tokens
-
-
-def make_mock_client(
-    text_chunks: list[str] | None = None,
-    token_count: int = 100,
-):
-    """Create a mock AsyncAnthropic client."""
-    if text_chunks is None:
-        text_chunks = ["Hello", " world"]
-
-    client = MagicMock()
-    client.messages = MagicMock()
-    client.messages.stream = MagicMock(
-        return_value=MockStreamResponse(text_chunks)
+    # Mock communicate to return the JSON output
+    proc.communicate = AsyncMock(
+        return_value=(result_json.encode(), b"")
     )
-    client.messages.count_tokens = AsyncMock(
-        return_value=MockTokenCountResult(token_count)
-    )
-    return client
+
+    return proc
 
 
 # ---------------------------------------------------------------------------
@@ -64,113 +45,98 @@ def make_mock_client(
 
 
 @pytest.mark.asyncio
-async def test_send_appends_user_and_assistant_messages():
-    """send() appends user message and assistant response to messages list."""
+async def test_send_yields_text_from_cli():
+    """send() yields text from Claude CLI JSON response."""
     from vcompany.strategist.conversation import StrategistConversation
 
-    client = make_mock_client(text_chunks=["Hi", " there"])
-    conv = StrategistConversation(client=client)
+    proc = make_mock_process(result_text="Hi there")
 
-    chunks = []
-    async for chunk in conv.send("Hello"):
-        chunks.append(chunk)
+    with patch("asyncio.create_subprocess_exec", return_value=proc):
+        conv = StrategistConversation()
 
-    messages = conv.messages
-    assert len(messages) == 2
-    assert messages[0] == {"role": "user", "content": "Hello"}
-    assert messages[1] == {"role": "assistant", "content": "Hi there"}
+        chunks = []
+        async for chunk in conv.send("Hello"):
+            chunks.append(chunk)
+
+    assert chunks == ["Hi there"]
 
 
 @pytest.mark.asyncio
 async def test_send_yields_text_chunks():
-    """send() yields text chunks from streaming response."""
+    """send() yields text chunks from CLI response."""
     from vcompany.strategist.conversation import StrategistConversation
 
-    client = make_mock_client(text_chunks=["chunk1", "chunk2", "chunk3"])
-    conv = StrategistConversation(client=client)
+    proc = make_mock_process(result_text="chunk1 chunk2 chunk3")
 
-    chunks = []
-    async for chunk in conv.send("test"):
-        chunks.append(chunk)
+    with patch("asyncio.create_subprocess_exec", return_value=proc):
+        conv = StrategistConversation()
 
-    assert chunks == ["chunk1", "chunk2", "chunk3"]
+        chunks = []
+        async for chunk in conv.send("test"):
+            chunks.append(chunk)
+
+    assert chunks == ["chunk1 chunk2 chunk3"]
 
 
 @pytest.mark.asyncio
-async def test_messages_list_grows_persistently():
-    """Messages list grows with each send() call (persistent conversation)."""
+async def test_session_id_reused_across_sends():
+    """Session ID is reused across multiple send() calls (conversation persistence)."""
     from vcompany.strategist.conversation import StrategistConversation
 
-    client = make_mock_client(text_chunks=["reply"])
-    conv = StrategistConversation(client=client)
+    conv = StrategistConversation()
+    session_id = conv.session_id
 
-    # First send
-    async for _ in conv.send("first"):
-        pass
+    call_args_list = []
 
-    # Reset the stream mock for second call
-    client.messages.stream = MagicMock(
-        return_value=MockStreamResponse(["second reply"])
-    )
+    async def mock_exec(*args, **kwargs):
+        call_args_list.append(args)
+        return make_mock_process(result_text="reply")
 
-    async for _ in conv.send("second"):
-        pass
+    with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
+        # First send
+        async for _ in conv.send("first"):
+            pass
 
-    messages = conv.messages
-    assert len(messages) == 4  # user1, assistant1, user2, assistant2
-    assert messages[0]["content"] == "first"
-    assert messages[1]["content"] == "reply"
-    assert messages[2]["content"] == "second"
-    assert messages[3]["content"] == "second reply"
+        # Second send
+        async for _ in conv.send("second"):
+            pass
+
+    # First call should use --session-id
+    first_args = call_args_list[0]
+    assert "--session-id" in first_args
+    session_idx = first_args.index("--session-id")
+    assert first_args[session_idx + 1] == session_id
+
+    # Second call should use --resume with same session ID
+    second_args = call_args_list[1]
+    assert "--resume" in second_args
+    resume_idx = second_args.index("--resume")
+    assert second_args[resume_idx + 1] == session_id
 
 
 @pytest.mark.asyncio
-async def test_token_check_triggers_kt_on_limit():
-    """Token check triggers KT when estimate exceeds TOKEN_LIMIT (800_000)."""
+async def test_first_send_includes_system_prompt():
+    """First send() includes --system-prompt, subsequent calls do not."""
     from vcompany.strategist.conversation import StrategistConversation
 
-    # Set up client that returns token count above limit
-    client = make_mock_client(text_chunks=["ok"], token_count=850_000)
-    conv = StrategistConversation(client=client)
+    call_args_list = []
 
-    # Seed some messages to make rough estimate high enough to trigger count_tokens
-    # Each char ~ 1/4 token, so we need ~2.8M chars to reach 700K rough estimate
-    big_content = "x" * 2_900_000
-    conv._messages = [{"role": "user", "content": big_content}]
+    async def mock_exec(*args, **kwargs):
+        call_args_list.append(args)
+        return make_mock_process(result_text="ok")
 
-    async for _ in conv.send("trigger KT"):
-        pass
+    with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
+        conv = StrategistConversation()
 
-    # After KT, messages should be reset with KT document as first message
-    messages = conv.messages
-    assert len(messages) == 2  # KT user message + assistant reply to "trigger KT" after KT
-    assert "[KNOWLEDGE TRANSFER]" in messages[0]["content"]
+        async for _ in conv.send("first"):
+            pass
+        async for _ in conv.send("second"):
+            pass
 
-
-@pytest.mark.asyncio
-async def test_after_kt_messages_reset_with_kt_doc():
-    """After KT, messages list is reset with KT document as first user message."""
-    from vcompany.strategist.conversation import StrategistConversation
-
-    client = make_mock_client(text_chunks=["acknowledged"], token_count=850_000)
-    conv = StrategistConversation(client=client)
-
-    # Seed messages to trigger KT
-    big_content = "x" * 3_000_000
-    conv._messages = [
-        {"role": "user", "content": big_content},
-        {"role": "assistant", "content": "some decision made"},
-    ]
-
-    async for _ in conv.send("new question"):
-        pass
-
-    messages = conv.messages
-    # First message should be KT document
-    assert messages[0]["role"] == "user"
-    assert "Knowledge Transfer" in messages[0]["content"]
-    # Token count should be reset
-    assert conv.token_count == 0
+    # First call has --system-prompt
+    assert "--system-prompt" in call_args_list[0]
+    # Second call does not have --system-prompt
+    assert "--system-prompt" not in call_args_list[1]
 
 
 @pytest.mark.asyncio
@@ -180,43 +146,35 @@ async def test_asyncio_lock_prevents_concurrent_sends():
 
     execution_order = []
 
-    class SlowStreamResponse:
-        def __init__(self, label):
-            self._label = label
+    async def slow_exec(*args, **kwargs):
+        proc = AsyncMock()
+        proc.returncode = 0
+        proc.stdin = AsyncMock()
+        proc.stdin.write = MagicMock()
+        proc.stdin.drain = AsyncMock()
+        proc.stdin.close = MagicMock()
 
-        async def __aenter__(self):
-            return self
+        label = "1" if len(execution_order) == 0 else "2"
+        execution_order.append(f"start-{label}")
 
-        async def __aexit__(self, *args):
-            pass
-
-        @property
-        def text_stream(self):
-            return self._aiter()
-
-        async def _aiter(self):
-            execution_order.append(f"start-{self._label}")
+        async def slow_communicate(input=None):
             await asyncio.sleep(0.05)
-            yield f"response-{self._label}"
-            execution_order.append(f"end-{self._label}")
+            execution_order.append(f"end-{label}")
+            result = json.dumps({"type": "result", "result": f"response-{label}"})
+            return (result.encode(), b"")
 
-    call_count = 0
+        proc.communicate = slow_communicate
+        return proc
 
-    def make_stream(**kwargs):
-        nonlocal call_count
-        call_count += 1
-        return SlowStreamResponse(str(call_count))
+    with patch("asyncio.create_subprocess_exec", side_effect=slow_exec):
+        conv = StrategistConversation()
 
-    client = make_mock_client()
-    client.messages.stream = make_stream
-    conv = StrategistConversation(client=client)
+        async def send_msg(content):
+            async for _ in conv.send(content):
+                pass
 
-    async def send_msg(content):
-        async for _ in conv.send(content):
-            pass
-
-    # Launch two concurrent sends
-    await asyncio.gather(send_msg("first"), send_msg("second"))
+        # Launch two concurrent sends
+        await asyncio.gather(send_msg("first"), send_msg("second"))
 
     # With lock, first should complete before second starts
     assert execution_order[0] == "start-1"
@@ -234,8 +192,7 @@ async def test_missing_persona_uses_default(tmp_path: Path):
     )
 
     nonexistent = tmp_path / "STRATEGIST-PERSONA.md"
-    client = make_mock_client()
-    conv = StrategistConversation(client=client, persona_path=nonexistent)
+    conv = StrategistConversation(persona_path=nonexistent)
 
     assert conv._system_prompt == DEFAULT_PERSONA
 
@@ -247,14 +204,32 @@ async def test_persona_loaded_from_file(tmp_path: Path):
 
     persona_file = tmp_path / "STRATEGIST-PERSONA.md"
     persona_file.write_text("You are a genius CEO.")
-    client = make_mock_client()
-    conv = StrategistConversation(client=client, persona_path=persona_file)
+    conv = StrategistConversation(persona_path=persona_file)
 
     assert conv._system_prompt == "You are a genius CEO."
 
 
+@pytest.mark.asyncio
+async def test_cli_error_yields_error_message():
+    """CLI error (non-zero exit) yields an error message."""
+    from vcompany.strategist.conversation import StrategistConversation
+
+    proc = make_mock_process(returncode=1)
+    proc.communicate = AsyncMock(return_value=(b"", b"error"))
+
+    with patch("asyncio.create_subprocess_exec", return_value=proc):
+        conv = StrategistConversation()
+
+        chunks = []
+        async for chunk in conv.send("test"):
+            chunks.append(chunk)
+
+    assert len(chunks) == 1
+    assert "error" in chunks[0].lower()
+
+
 # ---------------------------------------------------------------------------
-# Tests for generate_knowledge_transfer
+# Tests for generate_knowledge_transfer (unchanged, no Anthropic dependency)
 # ---------------------------------------------------------------------------
 
 
@@ -317,44 +292,3 @@ def test_generate_knowledge_transfer_personality_from_first_assistant():
     result = generate_knowledge_transfer(messages, "system", 50_000)
 
     assert "Hey! Great to be working with you" in result
-
-
-# ---------------------------------------------------------------------------
-# Tests for rough token estimate behavior
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rough_estimate_skips_api_when_low():
-    """Rough token estimate (len(text)/4) used between real API counts per Pitfall 2."""
-    from vcompany.strategist.conversation import StrategistConversation
-
-    client = make_mock_client(text_chunks=["ok"], token_count=100)
-    conv = StrategistConversation(client=client)
-
-    # Small message - rough estimate way below threshold
-    async for _ in conv.send("short message"):
-        pass
-
-    # count_tokens should NOT have been called (rough estimate far below 700K)
-    client.messages.count_tokens.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_count_tokens_called_when_rough_estimate_high():
-    """count_tokens called only when rough estimate exceeds 700K threshold."""
-    from vcompany.strategist.conversation import StrategistConversation
-
-    client = make_mock_client(text_chunks=["ok"], token_count=750_000)
-    conv = StrategistConversation(client=client)
-
-    # Seed messages to make rough estimate exceed 700K
-    # 700K tokens * 4 chars/token = 2.8M chars
-    big_content = "x" * 2_900_000
-    conv._messages = [{"role": "user", "content": big_content}]
-
-    async for _ in conv.send("check tokens"):
-        pass
-
-    # count_tokens should have been called
-    client.messages.count_tokens.assert_called()
