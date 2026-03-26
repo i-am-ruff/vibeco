@@ -350,26 +350,32 @@ class AgentManager:
 
     def _wait_for_claude_ready(
         self, pane, agent_id: str, timeout: int = 120, poll_interval: float = 3,
-        post_ready_delay: int = 30,
+        post_ready_delay: int = 10,
     ) -> None:
         """Poll pane output until Claude Code prompt is detected, then wait extra.
 
-        Claude Code shows a '>' prompt when ready, but needs extra time
-        to fully initialize before accepting complex slash commands.
+        Uses raw tmux subprocess instead of libtmux for thread safety.
+        Claude Code shows 'bypass permissions' in the status bar when ready.
         """
+        import subprocess as sp
+        target = f"{self._session_name}:{agent_id}"
+
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
-                output = self._tmux.get_output(pane, lines=20)
-                text = "\n".join(output).lower()
-                # Claude Code shows these when ready for input
-                if ">" in text or "type your prompt" in text or "bypass permissions" in text:
-                    logger.info(
-                        "Claude prompt detected for %s, waiting %ds for full init",
-                        agent_id, post_ready_delay,
-                    )
-                    time.sleep(post_ready_delay)
-                    return
+                result = sp.run(
+                    ["tmux", "capture-pane", "-t", target, "-p"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode == 0:
+                    text = result.stdout.lower()
+                    if "bypass permissions" in text or "❯" in text:
+                        logger.info(
+                            "Claude prompt detected for %s, waiting %ds for full init",
+                            agent_id, post_ready_delay,
+                        )
+                        time.sleep(post_ready_delay)
+                        return
             except Exception:
                 pass
             time.sleep(poll_interval)
