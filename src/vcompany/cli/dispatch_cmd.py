@@ -1,7 +1,6 @@
 """vco dispatch command -- launch Claude Code agent sessions in tmux panes."""
 
 import sys
-import time
 from pathlib import Path
 
 import click
@@ -9,9 +8,6 @@ import click
 from vcompany.shared.paths import PROJECTS_BASE
 from vcompany.models.config import load_config
 from vcompany.orchestrator.agent_manager import AgentManager
-
-# Time to wait for Claude Code to start before sending work command
-_CLAUDE_STARTUP_DELAY = 15
 
 
 @click.command()
@@ -67,9 +63,8 @@ def dispatch(project_name: str, agent_id: str | None, dispatch_all: bool, comman
 
         # Send work command to all agents after Claude starts
         if work_cmd and ok_count > 0:
-            click.echo(f"  Waiting {_CLAUDE_STARTUP_DELAY}s for Claude to start...")
-            time.sleep(_CLAUDE_STARTUP_DELAY)
-            sent = manager.send_work_command_all(work_cmd)
+            click.echo("  Waiting for Claude readiness before sending work command...")
+            sent = manager.send_work_command_all(work_cmd, wait_for_ready=True)
             for aid, ok in sent.items():
                 if ok:
                     click.echo(f"  {aid}: sent '{work_cmd}'")
@@ -80,9 +75,8 @@ def dispatch(project_name: str, agent_id: str | None, dispatch_all: bool, comman
         if result.success:
             click.echo(f"Dispatched '{agent_id}' (pane={result.pane_id}, pid={result.pid})")
             if work_cmd:
-                click.echo(f"  Waiting {_CLAUDE_STARTUP_DELAY}s for Claude to start...")
-                time.sleep(_CLAUDE_STARTUP_DELAY)
-                if manager.send_work_command(agent_id, work_cmd):
+                click.echo("  Waiting for Claude readiness before sending work command...")
+                if manager.send_work_command(agent_id, work_cmd, wait_for_ready=True):
                     click.echo(f"  Sent '{work_cmd}'")
                 else:
                     click.echo(f"  FAILED to send command", err=True)
