@@ -70,7 +70,7 @@ async def test_session_id_reused_across_sends():
     from vcompany.strategist.conversation import StrategistConversation
 
     conv = StrategistConversation()
-    session_name = conv.session_name
+    session_id = conv.session_id
 
     call_args_list = []
 
@@ -89,13 +89,13 @@ async def test_session_id_reused_across_sends():
     first_args = call_args_list[0]
     assert "--session-id" in first_args
     session_idx = first_args.index("--session-id")
-    assert first_args[session_idx + 1] == session_name
+    assert first_args[session_idx + 1] == session_id
 
     # Second call should use --resume with same session name
     second_args = call_args_list[1]
     assert "--resume" in second_args
     resume_idx = second_args.index("--resume")
-    assert second_args[resume_idx + 1] == session_name
+    assert second_args[resume_idx + 1] == session_id
 
 
 @pytest.mark.asyncio

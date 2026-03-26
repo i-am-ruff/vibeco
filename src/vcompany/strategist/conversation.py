@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Session name for the Strategist — stable across restarts
-_SESSION_NAME = "vco-strategist"
+# Stable UUID for the Strategist session — deterministic from a fixed seed
+# so it survives restarts. uuid5 with DNS namespace + "vco-strategist" = always same UUID.
+_SESSION_UUID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "vco-strategist"))
 
 DEFAULT_PERSONA = """You are the Strategist for vCompany — an autonomous multi-agent development system.
 
@@ -64,10 +66,10 @@ class StrategistConversation:
     def __init__(
         self,
         persona_path: Path | None = None,
-        session_name: str = _SESSION_NAME,
+        session_id: str = _SESSION_UUID,
     ) -> None:
         self._system_prompt = self._load_persona(persona_path)
-        self._session_name = session_name
+        self._session_id = session_id
         self._initialized = False
         self._lock = asyncio.Lock()
 
@@ -136,7 +138,7 @@ class StrategistConversation:
 
             if not self._initialized:
                 self._initialized = True
-                logger.info("Strategist session initialized: %s", self._session_name)
+                logger.info("Strategist session initialized: %s", self._session_id)
 
             return response if response else "I don't have a response for that."
 
@@ -150,15 +152,15 @@ class StrategistConversation:
 
         if not self._initialized:
             # First call: create session with system prompt
-            cmd.extend(["--session-id", self._session_name])
+            cmd.extend(["--session-id", self._session_id])
             cmd.extend(["--system-prompt", self._system_prompt])
         else:
             # Subsequent calls: resume existing session
-            cmd.extend(["--resume", self._session_name])
+            cmd.extend(["--resume", self._session_id])
 
         return cmd
 
     @property
-    def session_name(self) -> str:
-        """Return the session name."""
-        return self._session_name
+    def session_id(self) -> str:
+        """Return the session UUID."""
+        return self._session_id
