@@ -16,6 +16,9 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
+# Persistent directory for files sent to the Strategist via Discord
+_STRATEGIST_FILES_DIR = Path.home() / "vco-strategist-files"
+
 from vcompany.strategist.conversation import StrategistConversation
 from vcompany.strategist.decision_log import DecisionLogger
 
@@ -137,13 +140,57 @@ class StrategistCog(commands.Cog):
             await message.reply("Strategist not initialized yet. Please wait for bot startup to complete.")
             return
 
-        # Forward to conversation and stream response
-        await self._send_to_channel(message.channel, message.content)
+        # Build message content with attachments
+        content = await self._build_message_with_attachments(message)
+
+        # Forward to conversation and post response
+        await self._send_to_channel(message.channel, content)
 
     @staticmethod
     def _has_owner_role(member: discord.Member) -> bool:
         """Check if member has the vco-owner role."""
         return any(role.name == "vco-owner" for role in getattr(member, "roles", []))
+
+    async def _build_message_with_attachments(self, message: discord.Message) -> str:
+        """Download attachments and build a message referencing their file paths.
+
+        Files are saved to ~/vco-strategist-files/{timestamp}_{filename} so the
+        Strategist can reference them later with Read tool.
+
+        Args:
+            message: Discord message potentially containing attachments.
+
+        Returns:
+            Message content with file paths appended.
+        """
+        content = message.content or ""
+
+        if not message.attachments:
+            return content
+
+        _STRATEGIST_FILES_DIR.mkdir(exist_ok=True)
+
+        file_refs = []
+        for att in message.attachments:
+            # Save with timestamp prefix to avoid collisions
+            from datetime import datetime, timezone
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            safe_name = att.filename.replace(" ", "_")
+            dest = _STRATEGIST_FILES_DIR / f"{ts}_{safe_name}"
+
+            try:
+                data = await att.read()
+                dest.write_bytes(data)
+                file_refs.append(f"[attached file: {dest}]")
+                logger.info("Saved attachment: %s (%d bytes)", dest, len(data))
+            except Exception:
+                logger.exception("Failed to download attachment %s", att.filename)
+                file_refs.append(f"[failed to download: {att.filename}]")
+
+        if file_refs:
+            content = content + "\n" + "\n".join(file_refs) if content else "\n".join(file_refs)
+
+        return content
 
     async def _send_to_channel(
         self, channel: discord.TextChannel, content: str
