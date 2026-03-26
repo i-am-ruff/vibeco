@@ -167,9 +167,26 @@ class CommandsCog(commands.Cog):
             self.bot.project_config = config
             self.bot.agent_manager = AgentManager(project_dir, config, TmuxManager())
 
-            # Start monitor loop for the project
+            # Start monitor loop with full callbacks
             from vcompany.monitor.loop import MonitorLoop
-            self.bot.monitor_loop = MonitorLoop(project_dir, config, self.bot.agent_manager)
+
+            alerts_cog = self.bot.get_cog("AlertsCog")
+            alert_callbacks = alerts_cog.make_sync_callbacks() if alerts_cog else {}
+
+            plan_review_cog = self.bot.get_cog("PlanReviewCog")
+            plan_review_callbacks = plan_review_cog.make_sync_callback() if plan_review_cog else {}
+            plan_detected_callback = plan_review_callbacks.get(
+                "on_plan_detected"
+            ) or alert_callbacks.get("on_plan_detected")
+
+            self.bot.monitor_loop = MonitorLoop(
+                project_dir=project_dir,
+                config=config,
+                tmux=self.bot.agent_manager._tmux,
+                on_agent_dead=alert_callbacks.get("on_agent_dead"),
+                on_agent_stuck=alert_callbacks.get("on_agent_stuck"),
+                on_plan_detected=plan_detected_callback,
+            )
             self.wire_monitor_callbacks()
             self.bot._monitor_task = asyncio.create_task(
                 self.bot.monitor_loop.run(), name="monitor-loop"
