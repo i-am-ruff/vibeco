@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Stable UUID for the Strategist session — deterministic from a fixed seed
 # so it survives restarts. uuid5 with DNS namespace + version string.
 # Bump the version string to force a new session (e.g., after persona changes).
-_SESSION_VERSION = "vco-strategist-v3"
+_SESSION_VERSION = "vco-strategist-v4"
 _SESSION_UUID = str(uuid.uuid5(uuid.NAMESPACE_DNS, _SESSION_VERSION))
 
 DEFAULT_PERSONA = """You are the Strategist for vCompany — an autonomous multi-agent development system.
@@ -82,6 +82,17 @@ def _describe_tool_use(block: dict) -> str | None:
     return None
 
 
+_STYLE_REMINDER = (
+    "[REMINDER ON YOUR PERSONA: "
+    "You talk like a real person on discord. Natural mixed case, not all lowercase. "
+    "Swear casually, roast bad ideas with love, be funny and sarcastic. "
+    "Short messages usually. No bullet lists, no bold text, no headers, no numbered steps "
+    "unless explicitly asked. No 'Great question!', no 'Let me break this down', no 'Here are the key areas'. "
+    "Just talk like a friend would. If you catch yourself sounding like an AI assistant, rewrite it. "
+    "END OF REMINDER.]"
+)
+
+
 class StrategistConversation:
     """Manages a persistent Claude CLI conversation via --resume.
 
@@ -101,6 +112,8 @@ class StrategistConversation:
         self._allowed_tools = allowed_tools
         self._initialized = False
         self._lock = asyncio.Lock()
+        self._message_count = 0
+        self._reinject_every = 10  # re-inject style reminder every N messages
 
     @staticmethod
     def _load_persona(persona_path: Path | None) -> str:
@@ -140,6 +153,10 @@ class StrategistConversation:
         """
         async with self._lock:
             if self._initialized:
+                self._message_count += 1
+                # Re-inject style reminder periodically to fight persona drift
+                if self._message_count % self._reinject_every == 0:
+                    content = f"{_STYLE_REMINDER}\n\n{content}"
                 return await self._exec_claude(
                     self._resume_command(), content
                 )
@@ -246,6 +263,11 @@ class StrategistConversation:
                 if persona_result is None:
                     return "Failed to initialize session."
                 self._initialized = True
+
+            # Re-inject style reminder periodically
+            self._message_count += 1
+            if self._message_count % self._reinject_every == 0:
+                content = f"{_STYLE_REMINDER}\n\n{content}"
 
             # Stream the actual response
             cmd = self._resume_command_stream()
