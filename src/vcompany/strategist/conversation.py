@@ -10,6 +10,7 @@ Per Pitfall 8: asyncio.Lock prevents concurrent message interleaving.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from pathlib import Path
@@ -55,6 +56,30 @@ You are the owner's CEO-friend. You speak directly, humanly, with personality. M
 - Ask clarifying questions rather than assuming
 - Never say "as an AI" or "I'd be happy to help"
 """
+
+
+def _describe_tool_use(block: dict) -> str | None:
+    """Convert a tool_use block into a short human-readable description."""
+    name = block.get("name", "")
+    inp = block.get("input", {})
+    if name == "Read":
+        path = inp.get("file_path", "")
+        short = path.split("/")[-1] if "/" in path else path
+        return f"reading {short}"
+    if name == "Bash":
+        cmd = inp.get("command", "")
+        return f"running: {cmd[:80]}"
+    if name in ("Write", "Edit"):
+        path = inp.get("file_path", "")
+        short = path.split("/")[-1] if "/" in path else path
+        return f"editing {short}"
+    if name == "Glob":
+        return f"searching: {inp.get('pattern', '')}"
+    if name == "Grep":
+        return f"grep: {inp.get('pattern', '')}"
+    if name:
+        return f"using {name}"
+    return None
 
 
 class StrategistConversation:
@@ -188,6 +213,114 @@ class StrategistConversation:
 
         response = stdout.decode().strip()
         return response if response else "I don't have a response for that."
+
+    async def send_streaming(
+        self, content: str, on_tool_use: callable | None = None
+    ) -> str:
+        """Send a message and stream progress via callback.
+
+        Like send(), but uses stream-json to report tool usage in real-time.
+        Calls on_tool_use(description: str) for each tool action detected.
+
+        Args:
+            content: The message to send.
+            on_tool_use: Async callback called with a human-readable description
+                        of each tool action (e.g., "Reading src/foo.py").
+
+        Returns:
+            The final text response.
+        """
+        async with self._lock:
+            if not self._initialized:
+                # Initialize session first (non-streaming, just setup)
+                result = await self._exec_claude(
+                    self._resume_command_text(), content, allow_failure=True
+                )
+                if result is not None:
+                    self._initialized = True
+                    return result
+
+                persona_result = await self._exec_claude(
+                    self._create_command_text(), self._system_prompt
+                )
+                if persona_result is None:
+                    return "Failed to initialize session."
+                self._initialized = True
+
+            # Stream the actual response
+            cmd = self._resume_command_stream()
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                proc.stdin.write(content.encode())
+                await proc.stdin.drain()
+                proc.stdin.close()
+
+                final_text = ""
+                async for line in proc.stdout:
+                    line = line.decode().strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    etype = event.get("type")
+
+                    # Tool use events
+                    if etype == "assistant" and on_tool_use:
+                        msg = event.get("message", {})
+                        for block in msg.get("content", []):
+                            if block.get("type") == "tool_use":
+                                desc = _describe_tool_use(block)
+                                if desc:
+                                    await on_tool_use(desc)
+
+                    # Final result
+                    if etype == "result":
+                        final_text = event.get("result", "")
+
+                await proc.wait()
+                return final_text if final_text else "Done (no text response)."
+
+            except asyncio.TimeoutError:
+                return "Timed out on that task."
+            except Exception:
+                logger.exception("Streaming send failed")
+                return "Something went wrong."
+
+    def _resume_command_text(self) -> list[str]:
+        """Resume command with text output (for init/simple sends)."""
+        return [
+            "claude", "-p",
+            "--output-format", "text",
+            "--allowedTools", self._allowed_tools,
+            "--resume", self._session_id,
+        ]
+
+    def _create_command_text(self) -> list[str]:
+        """Create command with text output (for init)."""
+        return [
+            "claude", "-p",
+            "--output-format", "text",
+            "--allowedTools", self._allowed_tools,
+            "--session-id", self._session_id,
+        ]
+
+    def _resume_command_stream(self) -> list[str]:
+        """Resume command with stream-json output (for streaming progress)."""
+        return [
+            "claude", "-p",
+            "--output-format", "stream-json",
+            "--verbose",
+            "--allowedTools", self._allowed_tools,
+            "--resume", self._session_id,
+        ]
 
     def _resume_command(self) -> list[str]:
         """Build command to resume existing session."""

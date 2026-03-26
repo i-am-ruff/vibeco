@@ -101,9 +101,10 @@ class WorkflowMasterCog(commands.Cog):
         if message.webhook_id is not None:
             return
 
-        # Filter: skip bot's own messages
+        # Filter: skip bot's own messages UNLESS it's a Strategist task dispatch
         if message.author.id == self.bot.user.id:
-            return
+            if not message.content.startswith("[strategist]"):
+                return
 
         # Filter: skip non-workflow-master channels
         if (
@@ -116,8 +117,13 @@ class WorkflowMasterCog(commands.Cog):
             ):
                 return
 
-        # Filter: skip non-owners
-        if not self._has_owner_role(message.author):
+        # Allow: owner (vco-owner role) or the Strategist (bot itself posting a task)
+        is_owner = self._has_owner_role(message.author)
+        is_strategist_task = (
+            message.author.id == self.bot.user.id
+            and message.content.startswith("[strategist]")
+        )
+        if not is_owner and not is_strategist_task:
             return
 
         # Check if conversation is initialized
@@ -179,11 +185,10 @@ class WorkflowMasterCog(commands.Cog):
     async def _send_to_channel(
         self, channel: discord.TextChannel, content: str
     ) -> str:
-        """Send message to workflow-master and post response to channel.
+        """Send message to workflow-master with streaming progress.
 
-        Sends a "Thinking..." placeholder, waits for full response, then
-        edits the placeholder with the answer. Long responses (>2000 chars)
-        split into multiple messages.
+        Posts new messages for each tool action so the Strategist and owner
+        can see what's happening in real-time. Final response is a separate message.
 
         Args:
             channel: Discord channel to send response to.
@@ -192,20 +197,37 @@ class WorkflowMasterCog(commands.Cog):
         Returns:
             Full response text.
         """
-        placeholder = await channel.send("Thinking...")
+        status_msg = await channel.send("[workflow-master] working on it...")
+        last_tool_desc = ""
 
-        response = await self._conversation.send(content)
+        async def on_tool_use(description: str):
+            nonlocal last_tool_desc
+            if description != last_tool_desc:
+                last_tool_desc = description
+                try:
+                    await channel.send(f"[workflow-master] {description}")
+                except Exception:
+                    pass  # don't break the stream if Discord rate-limits
 
-        # Post response (split if > 2000 chars)
-        if len(response) > _DISCORD_MAX_CHARS:
-            await placeholder.edit(content=response[:_DISCORD_MAX_CHARS - 3] + "...")
-            remaining = response[_DISCORD_MAX_CHARS - 3:]
-            while remaining:
-                chunk = remaining[:_DISCORD_MAX_CHARS]
-                await channel.send(chunk)
-                remaining = remaining[_DISCORD_MAX_CHARS:]
-        else:
-            await placeholder.edit(content=response)
+        response = await self._conversation.send_streaming(content, on_tool_use=on_tool_use)
+
+        # Delete the "working on it" status
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        # Post final response as new message(s)
+        if not response:
+            await channel.send("[workflow-master] done (no text output)")
+            return ""
+
+        remaining = response
+        while remaining:
+            chunk = remaining[:_DISCORD_MAX_CHARS]
+            prefix = "[workflow-master] " if remaining == response else ""
+            await channel.send(f"{prefix}{chunk}")
+            remaining = remaining[len(chunk):]
 
         return response
 

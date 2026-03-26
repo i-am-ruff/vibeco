@@ -71,6 +71,7 @@ def _make_cog_with_conversation(bot: MagicMock | None = None) -> tuple[WorkflowM
 
     conversation = AsyncMock()
     conversation.send = AsyncMock(return_value="Done, tests pass now.")
+    conversation.send_streaming = AsyncMock(return_value="Done, tests pass now.")
     cog._conversation = conversation
 
     channel = AsyncMock(spec=discord.TextChannel)
