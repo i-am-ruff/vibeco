@@ -1,4 +1,10 @@
-"""Channel setup: creates project category and channels with permissions.
+"""Channel setup: creates system and project channels with permissions.
+
+System channels (created on bot startup, always present):
+  vco-system category: #strategist, #alerts, #readme
+
+Project channels (created per-project via /new-project):
+  vco-{project} category: #plan-review, #standup, #decisions, #agent-{id}...
 
 Implements D-16, D-17, D-18, D-19 (DISC-02).
 """
@@ -13,14 +19,113 @@ from vcompany.models.config import AgentConfig
 
 logger = logging.getLogger("vcompany.bot.channel_setup")
 
-# Standard channels created in every project category (D-17)
-_STANDARD_CHANNELS: list[str] = [
+# System channels: always present, not tied to any project
+_SYSTEM_CATEGORY = "vco-system"
+_SYSTEM_CHANNELS: list[str] = [
     "strategist",
+    "alerts",
+    "readme",
+]
+
+_README_CONTENT = """# Welcome to vCompany
+
+**vCompany** is an autonomous multi-agent development system. This Discord server is your control center.
+
+## How to use
+
+1. **Talk to the Strategist** in #strategist — your AI CEO-friend who knows the project, the plan, and how vCompany works
+2. **Create a project** with `/new-project <name>` — sets up agent channels and deploys agents
+3. **Monitor progress** with `/status` — see what all agents are doing
+4. **Run standups** with `/standup` — interactive review with agent threads
+
+## Channels
+
+- **#strategist** — Chat with the Strategist AI (always available)
+- **#alerts** — System alerts (crashes, stuck agents, timeouts)
+- **#readme** — This channel (system info)
+
+When you create a project, additional channels appear:
+- **#plan-review** — Agent plans posted for approval
+- **#standup** — Group standup threads
+- **#decisions** — PM/Strategist decision log
+- **#agent-{id}** — Per-agent checkin logs
+
+## Commands
+
+- `/new-project <name>` — Create a new project
+- `/dispatch <agent|all>` — Launch agent sessions
+- `/status` — Show agent fleet status
+- `/kill <agent>` — Stop an agent
+- `/relaunch <agent>` — Restart an agent
+- `/standup` — Interactive group standup
+- `/integrate` — Merge agent branches and run tests
+"""
+
+# Project-specific channels (created per project)
+_PROJECT_CHANNELS: list[str] = [
     "plan-review",
     "standup",
-    "alerts",
     "decisions",
 ]
+
+
+async def setup_system_channels(
+    guild: discord.Guild,
+    owner_role: discord.Role,
+) -> dict[str, discord.TextChannel]:
+    """Create the global vco-system category and channels on bot startup.
+
+    Idempotent — skips channels that already exist.
+
+    Args:
+        guild: Discord guild.
+        owner_role: The vco-owner role for permission overwrites.
+
+    Returns:
+        Dict of channel_name -> TextChannel for the system channels.
+    """
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=False,
+        ),
+        owner_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            manage_messages=True,
+        ),
+    }
+
+    # Find or create category
+    category = discord.utils.get(guild.categories, name=_SYSTEM_CATEGORY)
+    if category is None:
+        category = await guild.create_category_channel(
+            _SYSTEM_CATEGORY,
+            overwrites=overwrites,
+        )
+        logger.info("Created system category: %s", _SYSTEM_CATEGORY)
+    else:
+        logger.info("System category already exists: %s", _SYSTEM_CATEGORY)
+
+    # Create system channels (idempotent)
+    channels: dict[str, discord.TextChannel] = {}
+    for channel_name in _SYSTEM_CHANNELS:
+        existing = discord.utils.get(category.channels, name=channel_name)
+        if existing is None:
+            ch = await category.create_text_channel(channel_name)
+            logger.info("Created system channel: #%s", channel_name)
+
+            # Post readme content to #readme on creation
+            if channel_name == "readme":
+                await ch.send(_README_CONTENT)
+                logger.info("Posted readme content to #readme")
+
+            channels[channel_name] = ch
+        else:
+            logger.info("System channel already exists: #%s", channel_name)
+            channels[channel_name] = existing
+
+    return channels
 
 
 async def setup_project_channels(
@@ -67,8 +172,8 @@ async def setup_project_channels(
     )
     logger.info("Created category: %s", category_name)
 
-    # Create standard channels (D-17)
-    for channel_name in _STANDARD_CHANNELS:
+    # Create project-specific channels (D-17)
+    for channel_name in _PROJECT_CHANNELS:
         await category.create_text_channel(channel_name)
         logger.info("Created channel: #%s", channel_name)
 

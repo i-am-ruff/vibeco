@@ -111,13 +111,23 @@ class VcoBot(commands.Bot):
         # Create vco-owner role if it doesn't exist (D-10)
         existing_role = discord.utils.get(guild.roles, name="vco-owner")
         if existing_role is None:
-            await guild.create_role(
+            existing_role = await guild.create_role(
                 name="vco-owner",
                 reason="VcoBot auto-created owner role",
             )
             logger.info("Created vco-owner role in guild %s", guild.name)
         else:
             logger.info("vco-owner role already exists in guild %s", guild.name)
+
+        # Create system channels (idempotent)
+        try:
+            from vcompany.bot.channel_setup import setup_system_channels
+
+            self._system_channels = await setup_system_channels(guild, existing_role)
+            logger.info("System channels ready: %s", list(self._system_channels.keys()))
+        except Exception:
+            logger.exception("Failed to set up system channels")
+            self._system_channels = {}
 
         # Initialize Strategist (always available, even without project)
         try:
