@@ -175,9 +175,10 @@ None yet.
 | 260326-2rg | Refactor Strategist and PM tier to use Claude Code CLI instead of Anthropic API | 2026-03-26 | 7069df5 | [260326-2rg-refactor-strategist-and-pm-tier-to-use-c](./quick/260326-2rg-refactor-strategist-and-pm-tier-to-use-c/) |
 | 260326-4p2 | Implement vco up and Strategist-first architecture (slash commands, project-optional bot) | 2026-03-26 | 03fed10 | [260326-4p2-implement-vco-up-and-strategist-first-ar](./quick/260326-4p2-implement-vco-up-and-strategist-first-ar/) |
 | 260326-km4 | Add workflow-master persistent dev agent with full tools in git worktree | 2026-03-26 | 644da66 | [260326-km4-add-workflow-master-persistent-dev-agent](./quick/260326-km4-add-workflow-master-persistent-dev-agent/) |
+| 260326-vo1 | Direct Discord reporting (no file intermediary) + monitor advisory pipeline + /toggle-advisories | 2026-03-26 | 76818bf | [260326-vo1-direct-discord-reporting-monitor-advisor](./quick/260326-vo1-direct-discord-reporting-monitor-advisor/) |
 
 ## Session Continuity
 
-Last session: 2026-03-26T13:00:55Z
-Stopped at: Completed quick/260326-km4
+Last session: 2026-03-26T20:54:10Z
+Stopped at: Completed quick/260326-vo1
 Resume file: None
