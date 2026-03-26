@@ -5,6 +5,15 @@
 
 set -euo pipefail
 
+# Source .env so all vars (DISCORD_BOT_TOKEN, etc.) are in OS environment
+# for child processes (agents need them for vco report)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+
 PIDFILE="$HOME/.vco-runner.pid"
 RESTART_DELAY=5
 
