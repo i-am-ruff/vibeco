@@ -341,13 +341,7 @@ class AgentManager:
         try:
             if wait_for_ready:
                 self._wait_for_claude_ready(pane, agent_id)
-            # Use raw tmux send-keys for thread safety (called from asyncio.to_thread)
-            import subprocess as sp
-            target = f"{self._session_name}:{agent_id}"
-            sp.run(
-                ["tmux", "send-keys", "-t", target, command, "Enter"],
-                check=True, timeout=5,
-            )
+            self._tmux.send_command(pane, command)
             logger.info("Sent to %s: %s", agent_id, command)
             return True
         except Exception:
@@ -356,32 +350,26 @@ class AgentManager:
 
     def _wait_for_claude_ready(
         self, pane, agent_id: str, timeout: int = 120, poll_interval: float = 3,
-        post_ready_delay: int = 10,
+        post_ready_delay: int = 30,
     ) -> None:
         """Poll pane output until Claude Code prompt is detected, then wait extra.
 
-        Uses raw tmux subprocess instead of libtmux for thread safety.
-        Claude Code shows 'bypass permissions' in the status bar when ready.
+        Claude Code shows a '>' prompt when ready, but needs extra time
+        to fully initialize before accepting complex slash commands.
         """
-        import subprocess as sp
-        target = f"{self._session_name}:{agent_id}"
-
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
-                result = sp.run(
-                    ["tmux", "capture-pane", "-t", target, "-p"],
-                    capture_output=True, text=True, timeout=5,
-                )
-                if result.returncode == 0:
-                    text = result.stdout.lower()
-                    if "bypass permissions" in text or "❯" in text:
-                        logger.info(
-                            "Claude prompt detected for %s, waiting %ds for full init",
-                            agent_id, post_ready_delay,
-                        )
-                        time.sleep(post_ready_delay)
-                        return
+                output = self._tmux.get_output(pane, lines=20)
+                text = "\n".join(output).lower()
+                # Claude Code shows these when ready for input
+                if ">" in text or "type your prompt" in text or "bypass permissions" in text:
+                    logger.info(
+                        "Claude prompt detected for %s, waiting %ds for full init",
+                        agent_id, post_ready_delay,
+                    )
+                    time.sleep(post_ready_delay)
+                    return
             except Exception:
                 pass
             time.sleep(poll_interval)
