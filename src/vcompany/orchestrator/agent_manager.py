@@ -20,6 +20,13 @@ from vcompany.tmux.session import TmuxManager
 
 logger = logging.getLogger("vcompany.orchestrator")
 
+CLAUDE_READY_MARKERS = [
+    "bypass permissions",
+    "what can i help",
+    "type your prompt",
+    "tips:",
+]
+
 
 @dataclass
 class DispatchResult:
@@ -335,45 +342,62 @@ class AgentManager:
         """
         pane = self._panes.get(agent_id)
         if pane is None:
-            logger.error("No tmux pane for agent %s", agent_id)
-            return False
+            # Fallback: resolve from registry pane_id via TmuxManager
+            entry = self._registry.agents.get(agent_id)
+            if entry and entry.pane_id:
+                logger.info(
+                    "Resolving pane for %s from registry (pane_id=%s)",
+                    agent_id, entry.pane_id,
+                )
+                pane = self._tmux.get_pane_by_id(entry.pane_id)
+            if pane is None:
+                logger.error(
+                    "No tmux pane for agent %s (not in _panes or registry)", agent_id
+                )
+                return False
 
         try:
             if wait_for_ready:
-                self._wait_for_claude_ready(pane, agent_id)
-            self._tmux.send_command(pane, command)
-            logger.info("Sent to %s: %s", agent_id, command)
-            return True
+                if not self._wait_for_claude_ready(pane, agent_id):
+                    logger.warning("Proceeding without ready confirmation for %s", agent_id)
+            result = self._tmux.send_command(pane, command)
+            if result:
+                logger.info("Sent to %s: %s", agent_id, command)
+            else:
+                logger.error("Failed to send to %s: %s", agent_id, command)
+            return result
         except Exception:
             logger.exception("Failed to send command to %s", agent_id)
             return False
 
     def _wait_for_claude_ready(
-        self, pane, agent_id: str, timeout: int = 120, poll_interval: float = 3,
-        post_ready_delay: int = 30,
-    ) -> None:
-        """Poll pane output until Claude Code prompt is detected, then wait extra.
+        self, pane, agent_id: str, timeout: int = 120, poll_interval: float = 2,
+    ) -> bool:
+        """Poll pane output until Claude Code ready markers are detected.
 
-        Claude Code shows a '>' prompt when ready, but needs extra time
-        to fully initialize before accepting complex slash commands.
+        Returns True if ready detected, False on timeout.
+        Uses Claude-specific UI markers (not generic '>' which matches too broadly).
+        Post-ready settle time is 2 seconds (not 30).
         """
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
-                output = self._tmux.get_output(pane, lines=20)
+                output = self._tmux.get_output(pane, lines=30)
                 text = "\n".join(output).lower()
-                # Claude Code shows these when ready for input
-                if ">" in text or "type your prompt" in text or "bypass permissions" in text:
-                    logger.info(
-                        "Claude prompt detected for %s, waiting %ds for full init",
-                        agent_id, post_ready_delay,
-                    )
-                    time.sleep(post_ready_delay)
-                    return
+                for marker in CLAUDE_READY_MARKERS:
+                    if marker in text:
+                        logger.info(
+                            "Claude ready for %s (marker: '%s')", agent_id, marker
+                        )
+                        time.sleep(2)  # Brief settle, NOT 30s
+                        return True
             except Exception:
-                pass
+                logger.debug("Error reading pane output for %s", agent_id)
             time.sleep(poll_interval)
-        logger.warning("Timed out waiting for Claude ready on %s (continuing anyway)", agent_id)
+        logger.warning(
+            "Timeout (%ds) waiting for Claude ready on %s", timeout, agent_id
+        )
+        return False
 
     def send_work_command_all(
         self, command: str, *, wait_for_ready: bool = False
@@ -388,9 +412,11 @@ class AgentManager:
             Dict of agent_id -> success.
         """
         results = {}
-        for agent_id in self._panes:
+        # Iterate all known agents from registry (not just in-memory _panes)
+        agent_ids = set(self._panes.keys()) | set(self._registry.agents.keys())
+        for agent_id in agent_ids:
             if agent_id == "monitor":
-                continue  # Skip monitor pane
+                continue
             results[agent_id] = self.send_work_command(
                 agent_id, command, wait_for_ready=wait_for_ready
             )

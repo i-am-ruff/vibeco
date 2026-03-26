@@ -196,3 +196,91 @@ class TestDispatchAll:
         assert all(isinstance(r, DispatchResult) for r in results)
         agent_ids = {r.agent_id for r in results}
         assert agent_ids == {"backend", "frontend"}
+
+
+class TestWaitForClaudeReady:
+    """Tests for _wait_for_claude_ready with Claude-specific markers."""
+
+    def test_detects_bypass_permissions_marker(self, project_dir, config, mock_tmux):
+        """_wait_for_claude_ready returns True when 'bypass permissions' is in output."""
+        mock_tmux.get_output.return_value = ["some init output", "bypass permissions mode"]
+        manager = AgentManager(project_dir, config, tmux=mock_tmux)
+        mock_pane = MagicMock()
+        result = manager._wait_for_claude_ready(mock_pane, "backend", timeout=5)
+        assert result is True
+
+    def test_detects_tips_marker(self, project_dir, config, mock_tmux):
+        """_wait_for_claude_ready returns True when 'tips:' is in output."""
+        mock_tmux.get_output.return_value = ["Welcome to Claude", "Tips: press Ctrl+C"]
+        manager = AgentManager(project_dir, config, tmux=mock_tmux)
+        mock_pane = MagicMock()
+        result = manager._wait_for_claude_ready(mock_pane, "backend", timeout=5)
+        assert result is True
+
+    def test_returns_false_on_timeout(self, project_dir, config, mock_tmux):
+        """_wait_for_claude_ready returns False when no markers found."""
+        mock_tmux.get_output.return_value = ["loading...", "initializing..."]
+        manager = AgentManager(project_dir, config, tmux=mock_tmux)
+        mock_pane = MagicMock()
+        result = manager._wait_for_claude_ready(mock_pane, "backend", timeout=1)
+        assert result is False
+
+    def test_bare_angle_bracket_does_not_trigger_ready(self, project_dir, config, mock_tmux):
+        """_wait_for_claude_ready does NOT match bare '>' as a ready marker."""
+        mock_tmux.get_output.return_value = ["$ >", "some > output"]
+        manager = AgentManager(project_dir, config, tmux=mock_tmux)
+        mock_pane = MagicMock()
+        result = manager._wait_for_claude_ready(mock_pane, "backend", timeout=1)
+        assert result is False
+
+
+class TestSendWorkCommand:
+    """Tests for send_work_command with registry fallback."""
+
+    def test_send_from_panes_dict(self, project_dir, config, mock_tmux):
+        """send_work_command succeeds when agent is in _panes dict."""
+        mock_tmux.send_command.return_value = True
+        manager = AgentManager(project_dir, config, tmux=mock_tmux)
+        mock_pane = MagicMock()
+        manager._panes["backend"] = mock_pane
+        result = manager.send_work_command("backend", "/gsd:plan-phase 1")
+        assert result is True
+
+    def test_falls_back_to_registry_pane_id(self, project_dir, config, mock_tmux):
+        """send_work_command falls back to registry pane_id when _panes is empty."""
+        mock_resolved_pane = MagicMock()
+        mock_tmux.get_pane_by_id.return_value = mock_resolved_pane
+        mock_tmux.send_command.return_value = True
+        manager = AgentManager(project_dir, config, tmux=mock_tmux)
+        # Put agent in registry with pane_id but NOT in _panes
+        manager._registry.agents["backend"] = AgentEntry(
+            agent_id="backend", pane_id="%5", status="running",
+            session_name="vco-test", launched_at=datetime.now(timezone.utc),
+        )
+        result = manager.send_work_command("backend", "/gsd:plan-phase 1")
+        assert result is True
+        mock_tmux.get_pane_by_id.assert_called_once_with("%5")
+
+    def test_returns_false_when_not_in_panes_or_registry(self, project_dir, config, mock_tmux):
+        """send_work_command returns False when agent has no pane anywhere."""
+        manager = AgentManager(project_dir, config, tmux=mock_tmux)
+        result = manager.send_work_command("nonexistent", "/gsd:plan-phase 1")
+        assert result is False
+
+
+class TestSendWorkCommandAll:
+    """Tests for send_work_command_all iterating registry agents."""
+
+    def test_iterates_registry_agents(self, project_dir, config, mock_tmux):
+        """send_work_command_all includes agents from registry, not just _panes."""
+        mock_tmux.get_pane_by_id.return_value = MagicMock()
+        mock_tmux.send_command.return_value = True
+        manager = AgentManager(project_dir, config, tmux=mock_tmux)
+        # Agent only in registry, not in _panes
+        manager._registry.agents["backend"] = AgentEntry(
+            agent_id="backend", pane_id="%5", status="running",
+            session_name="vco-test", launched_at=datetime.now(timezone.utc),
+        )
+        results = manager.send_work_command_all("/gsd:execute-phase 1")
+        assert "backend" in results
+        assert results["backend"] is True
