@@ -168,6 +168,22 @@ def get_agent_activity(clone_dir: Path) -> str:
     return "No recent activity"
 
 
+def _check_agent_alive(project_name: str, agent_id: str) -> bool:
+    """Check if an agent's tmux pane exists and is alive."""
+    import subprocess
+    session_name = f"vco-{project_name}"
+    try:
+        result = subprocess.run(
+            ["tmux", "list-windows", "-t", session_name, "-F", "#{window_name}"],
+            capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode != 0:
+            return False
+        return agent_id in result.stdout.splitlines()
+    except Exception:
+        return False
+
+
 def generate_project_status(
     project_dir: Path,
     config: ProjectConfig,
@@ -229,9 +245,16 @@ def generate_project_status(
         if current_status == "complete" and total > 0:
             current_status = "complete"
 
+        # Check if agent is actually alive in tmux
+        is_alive = _check_agent_alive(config.project, agent.id)
+        if not is_alive and current_status == "executing":
+            current_status = "not running"
+
         # Agent section header
         agent_id_upper = agent.id.upper()
-        if total > 0:
+        if not is_alive:
+            lines.append(f"## {agent_id_upper} (NOT RUNNING \u2014 Phase {current_phase_num}/{total})")
+        elif total > 0:
             lines.append(f"## {agent_id_upper} (Phase {current_phase_num}/{total} \u2014 {current_status})")
         else:
             lines.append(f"## {agent_id_upper} (status unknown)")
