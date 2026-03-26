@@ -23,7 +23,6 @@ from vcompany.strategist.decision_log import DecisionLogger
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from anthropic import AsyncAnthropic
     from vcompany.bot.client import VcoBot
 
 logger = logging.getLogger(__name__)
@@ -54,18 +53,16 @@ class StrategistCog(commands.Cog):
 
     async def initialize(
         self,
-        client: AsyncAnthropic,
         persona_path: Path | None,
         decisions_path: Path,
     ) -> None:
         """Initialize the Strategist conversation and decision logger.
 
         Args:
-            client: AsyncAnthropic client for Claude API calls.
             persona_path: Path to STRATEGIST-PERSONA.md, or None for default.
             decisions_path: Path to state/decisions.jsonl file.
         """
-        self._conversation = StrategistConversation(client, persona_path)
+        self._conversation = StrategistConversation(persona_path=persona_path)
         await self._resolve_channels()
         self._decision_logger = DecisionLogger(
             decisions_path=decisions_path,

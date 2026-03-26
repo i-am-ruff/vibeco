@@ -156,63 +156,55 @@ class VcoBot(commands.Bot):
             logger.exception("Failed to initialize orchestration components")
             # Bot still works for commands, just without monitor
 
-        # Phase 6: Initialize PM/Strategist if ANTHROPIC_API_KEY is set
+        # Phase 6: Initialize PM/Strategist via Claude CLI (no API key needed)
         try:
-            from anthropic import AsyncAnthropic
-
             from vcompany.bot.config import BotConfig
             from vcompany.strategist.plan_reviewer import PlanReviewer
             from vcompany.strategist.pm import PMTier
 
             bot_config = BotConfig()
-            if bot_config.anthropic_api_key:
-                anthropic_client = AsyncAnthropic(api_key=bot_config.anthropic_api_key)
 
-                # Initialize StrategistCog
-                strategist_cog = self.get_cog("StrategistCog")
-                if strategist_cog:
-                    persona_path = (
-                        Path(bot_config.strategist_persona_path)
-                        if bot_config.strategist_persona_path
-                        else None
-                    )
-                    decisions_path = self.project_dir / "state" / "decisions.jsonl"
-                    await strategist_cog.initialize(anthropic_client, persona_path, decisions_path)
+            # Initialize StrategistCog
+            strategist_cog = self.get_cog("StrategistCog")
+            if strategist_cog:
+                persona_path = (
+                    Path(bot_config.strategist_persona_path)
+                    if bot_config.strategist_persona_path
+                    else None
+                )
+                decisions_path = self.project_dir / "state" / "decisions.jsonl"
+                await strategist_cog.initialize(persona_path, decisions_path)
 
-                # Initialize PMTier and inject into QuestionHandlerCog
-                pm = PMTier(anthropic_client, self.project_dir)
-                question_cog = self.get_cog("QuestionHandlerCog")
-                if question_cog:
-                    question_cog.set_pm(pm)
+            # Initialize PMTier and inject into QuestionHandlerCog
+            pm = PMTier(project_dir=self.project_dir)
+            question_cog = self.get_cog("QuestionHandlerCog")
+            if question_cog:
+                question_cog.set_pm(pm)
 
-                # Initialize PlanReviewer and inject into PlanReviewCog
-                plan_reviewer = PlanReviewer(self.project_dir, self.project_config)
-                plan_review_cog_ref = self.get_cog("PlanReviewCog")
-                if plan_review_cog_ref:
-                    plan_review_cog_ref.set_plan_reviewer(plan_reviewer)
+            # Initialize PlanReviewer and inject into PlanReviewCog
+            plan_reviewer = PlanReviewer(self.project_dir, self.project_config)
+            plan_review_cog_ref = self.get_cog("PlanReviewCog")
+            if plan_review_cog_ref:
+                plan_review_cog_ref.set_plan_reviewer(plan_reviewer)
 
-                # Wire status digest callback from MonitorLoop to StrategistCog
-                if self.monitor_loop and strategist_cog:
-                    callbacks = strategist_cog.make_sync_callbacks()
-                    # Status digests feed project status to Strategist conversation
+            # Wire status digest callback from MonitorLoop to StrategistCog
+            if self.monitor_loop and strategist_cog:
+                callbacks = strategist_cog.make_sync_callbacks()
+                # Status digests feed project status to Strategist conversation
 
-                    def _digest_callback(status_content: str) -> None:
-                        loop = self.loop
-                        if strategist_cog._conversation:
-                            asyncio.run_coroutine_threadsafe(
-                                strategist_cog._conversation.send(
-                                    f"[Status Digest]\n{status_content}"
-                                ).__anext__(),
-                                loop,
-                            )
+                def _digest_callback(status_content: str) -> None:
+                    loop = self.loop
+                    if strategist_cog._conversation:
+                        asyncio.run_coroutine_threadsafe(
+                            strategist_cog._conversation.send(
+                                f"[Status Digest]\n{status_content}"
+                            ).__anext__(),
+                            loop,
+                        )
 
-                    self.monitor_loop._on_status_digest = _digest_callback
+                self.monitor_loop._on_status_digest = _digest_callback
 
-                logger.info("PM/Strategist initialized with Anthropic API")
-            else:
-                logger.warning("ANTHROPIC_API_KEY not set -- PM/Strategist disabled")
-        except ImportError:
-            logger.warning("anthropic SDK not installed -- PM/Strategist disabled")
+            logger.info("PM/Strategist initialized with Claude CLI")
         except Exception:
             logger.exception("Failed to initialize PM/Strategist")
 
