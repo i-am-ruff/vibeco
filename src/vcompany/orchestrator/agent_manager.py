@@ -90,10 +90,12 @@ class AgentManager:
         # Build prompt path
         prompt_path = self._project_dir / "context" / "agents" / f"{agent_id}.md"
 
-        # Build chained env + claude command (Pitfall 2: single send_keys call)
+        # Build chained cd + env + claude command (Pitfall 2: single send_keys call)
+        clone_dir = self._project_dir / "clones" / agent_id
         prompt_cmd = "/gsd:resume-work" if resume else "/gsd:new-project"
         chained_cmd = (
-            f"export DISCORD_AGENT_WEBHOOK_URL='' "
+            f"cd {clone_dir} "
+            f"&& export DISCORD_AGENT_WEBHOOK_URL='' "
             f"&& export PROJECT_NAME='{self._config.project}' "
             f"&& export AGENT_ID='{agent_id}' "
             f"&& export AGENT_ROLE='{agent_cfg.role}' "
@@ -146,11 +148,13 @@ class AgentManager:
             self._panes[agent_cfg.id] = pane
 
             # Build command
+            clone_dir = self._project_dir / "clones" / agent_cfg.id
             prompt_path = (
                 self._project_dir / "context" / "agents" / f"{agent_cfg.id}.md"
             )
             chained_cmd = (
-                f"export DISCORD_AGENT_WEBHOOK_URL='' "
+                f"cd {clone_dir} "
+                f"&& export DISCORD_AGENT_WEBHOOK_URL='' "
                 f"&& export PROJECT_NAME='{self._config.project}' "
                 f"&& export AGENT_ID='{agent_cfg.id}' "
                 f"&& export AGENT_ROLE='{agent_cfg.role}' "
