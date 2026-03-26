@@ -45,6 +45,8 @@ class AgentManager:
         project_dir: Path,
         config: ProjectConfig,
         tmux: TmuxManager | None = None,
+        bot_token: str = "",
+        guild_id: str = "",
     ) -> None:
         self._project_dir = Path(project_dir)
         self._config = config
@@ -52,6 +54,8 @@ class AgentManager:
         self._agents_json_path = self._project_dir / "state" / "agents.json"
         self._registry = self._load_registry()
         self._session_name = f"vco-{config.project}"
+        self._bot_token = bot_token or os.environ.get("DISCORD_BOT_TOKEN", "")
+        self._guild_id = guild_id or os.environ.get("DISCORD_GUILD_ID", "")
         # Track tmux panes by agent_id for kill fallback
         self._panes: dict[str, object] = {}
 
@@ -96,8 +100,8 @@ class AgentManager:
         clone_dir = self._project_dir / "clones" / agent_id
         chained_cmd = (
             f"cd {clone_dir} "
-            f"&& export DISCORD_BOT_TOKEN='{os.environ.get('DISCORD_BOT_TOKEN', '')}' "
-            f"&& export DISCORD_GUILD_ID='{os.environ.get('DISCORD_GUILD_ID', '')}' "
+            f"&& export DISCORD_BOT_TOKEN='{self._bot_token}' "
+            f"&& export DISCORD_GUILD_ID='{self._guild_id}' "
             f"&& export PROJECT_NAME='{self._config.project}' "
             f"&& export AGENT_ID='{agent_id}' "
             f"&& export AGENT_ROLE='{agent_cfg.role}' "

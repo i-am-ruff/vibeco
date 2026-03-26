@@ -166,7 +166,13 @@ class CommandsCog(commands.Cog):
 
             self.bot.project_dir = project_dir
             self.bot.project_config = config
-            self.bot.agent_manager = AgentManager(project_dir, config, TmuxManager())
+            from vcompany.bot.config import BotConfig
+            _bot_config = BotConfig()
+            self.bot.agent_manager = AgentManager(
+                project_dir, config, TmuxManager(),
+                bot_token=_bot_config.discord_bot_token,
+                guild_id=str(_bot_config.discord_guild_id),
+            )
 
             # Start monitor loop with full callbacks
             from vcompany.monitor.loop import MonitorLoop

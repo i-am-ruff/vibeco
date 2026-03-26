@@ -187,7 +187,11 @@ class VcoBot(commands.Bot):
                 callbacks = alerts_cog.make_sync_callbacks() if alerts_cog else {}
 
                 # Initialize AgentManager
-                self.agent_manager = AgentManager(self.project_dir, self.project_config, tmux)
+                self.agent_manager = AgentManager(
+                    self.project_dir, self.project_config, tmux,
+                    bot_token=bot_config.discord_bot_token,
+                    guild_id=str(bot_config.discord_guild_id),
+                )
 
                 # Initialize CrashTracker with circuit breaker callback
                 self.crash_tracker = CrashTracker(
