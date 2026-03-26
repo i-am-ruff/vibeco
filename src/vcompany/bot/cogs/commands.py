@@ -621,6 +621,80 @@ class CommandsCog(commands.Cog):
             except Exception:
                 logger.exception("Failed to post report for %s", agent_id)
 
+    @app_commands.command(name="remove-project", description="Remove a project: kill agents, delete Discord channels/category, and clean files")
+    @app_commands.check(is_owner_app_check)
+    async def remove_project(self, interaction: discord.Interaction, name: str) -> None:
+        """Remove a project entirely: agents, Discord channels, and local files."""
+        try:
+            guild = interaction.guild
+            if guild is None:
+                await interaction.response.send_message("Server only.", ephemeral=True)
+                return
+
+            await interaction.response.defer()
+            removed = []
+
+            # Step 1: Kill agents if running
+            if self.bot.agent_manager and self.bot.project_config:
+                for agent in self.bot.project_config.agents:
+                    try:
+                        self.bot.agent_manager.kill(agent.id, force=True)
+                    except Exception:
+                        pass
+                removed.append("agents killed")
+
+            # Step 2: Stop monitor if running for this project
+            if self.bot.monitor_loop:
+                self.bot.monitor_loop.stop()
+                if self.bot._monitor_task:
+                    self.bot._monitor_task.cancel()
+                self.bot.monitor_loop = None
+                self.bot._monitor_task = None
+                removed.append("monitor stopped")
+
+            # Step 3: Kill project tmux session
+            try:
+                from vcompany.tmux.session import TmuxManager
+                tmux = TmuxManager()
+                if tmux.kill_session(f"vco-{name}"):
+                    removed.append("tmux session killed")
+            except Exception:
+                pass
+
+            # Step 4: Delete Discord category and all channels under it
+            category_name = f"vco-{name}"
+            category = discord.utils.get(guild.categories, name=category_name)
+            if category:
+                for channel in category.channels:
+                    await channel.delete()
+                await category.delete()
+                removed.append(f"Discord category '{category_name}' deleted")
+
+            # Step 5: Delete project files
+            import shutil
+            from vcompany.shared.paths import PROJECTS_BASE
+            project_dir = PROJECTS_BASE / name
+            if project_dir.exists():
+                await asyncio.to_thread(shutil.rmtree, project_dir)
+                removed.append(f"files at {project_dir} deleted")
+
+            # Step 6: Clear bot project reference
+            if self.bot.project_dir and self.bot.project_dir.name == name:
+                self.bot.project_dir = None
+                self.bot.project_config = None
+                self.bot.agent_manager = None
+                removed.append("bot project reference cleared")
+
+            summary = "\n".join(f"- {r}" for r in removed) if removed else "Nothing to remove."
+            await interaction.followup.send(f"Project **{name}** removed:\n{summary}")
+
+        except Exception as exc:
+            logger.exception("Error in /remove-project")
+            if interaction.response.is_done():
+                await interaction.followup.send(f"Error: {exc}")
+            else:
+                await interaction.response.send_message(f"Error: {exc}")
+
     def wire_monitor_callbacks(self) -> None:
         """Wire callbacks into monitor loop. Called from on_ready after monitor init."""
         monitor = self.bot.monitor_loop
