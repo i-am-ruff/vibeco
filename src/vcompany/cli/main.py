@@ -12,6 +12,7 @@ from vcompany.cli.new_milestone_cmd import new_milestone
 from vcompany.cli.preflight_cmd import preflight
 from vcompany.cli.relaunch_cmd import relaunch
 from vcompany.cli.sync_context_cmd import sync_context
+from vcompany.cli.up_cmd import up
 
 
 @click.group()
@@ -31,3 +32,4 @@ cli.add_command(new_milestone)
 cli.add_command(preflight)
 cli.add_command(relaunch)
 cli.add_command(sync_context)
+cli.add_command(up)

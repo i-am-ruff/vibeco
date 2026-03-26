@@ -19,6 +19,23 @@ class TmuxManager:
     def __init__(self) -> None:
         self._server = libtmux.Server()
 
+    def get_session(self, name: str) -> libtmux.Session | None:
+        """Get an existing tmux session by name, or None if not found."""
+        try:
+            return self._server.sessions.get(session_name=name)
+        except Exception:
+            return None
+
+    def get_or_create_session(self, name: str) -> libtmux.Session:
+        """Get existing session or create a new one (does not kill existing)."""
+        existing = self.get_session(name)
+        if existing:
+            logger.info("Found existing tmux session: %s", name)
+            return existing
+        session = self._server.new_session(session_name=name, detach=True)
+        logger.info("Created tmux session: %s", name)
+        return session
+
     def create_session(self, name: str) -> libtmux.Session:
         """Create a new detached tmux session. Kills existing session with same name first."""
         self.kill_session(name)

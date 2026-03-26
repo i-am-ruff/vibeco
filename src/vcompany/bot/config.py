@@ -17,7 +17,7 @@ class BotConfig(BaseSettings):
 
     discord_bot_token: str
     discord_guild_id: int
-    project_dir: str = "."
+    project_dir: str = ""
     anthropic_api_key: str = ""
     strategist_persona_path: str = ""
     status_digest_interval: int = 1800
