@@ -171,7 +171,11 @@ Plans:
   1. GsdAgent runs an internal phase FSM (IDLE to DISCUSS to PLAN to EXECUTE to UAT to SHIP) nested inside the container's RUNNING state using python-statemachine compound states
   2. Each GsdAgent phase transition checkpoints to memory_store -- a crash mid-phase resumes from the last checkpointed state instead of restarting from scratch
   3. GsdAgent fully absorbs WorkflowOrchestrator's state tracking -- no external system tracks GsdAgent phase state
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md -- GsdLifecycle compound state FSM + GsdPhase enum + CheckpointData model
+- [ ] 03-02-PLAN.md -- GsdAgent class with checkpoint recovery + WorkflowOrchestrator absorption
 
 ### Phase 4: Remaining Agent Types and Scheduler
 **Goal**: ContinuousAgent, FulltimeAgent, and CompanyAgent are operational as containers, and sleeping agents wake on schedule
@@ -235,9 +239,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Container Foundation | 0/0 | Not started | - |
-| 2. Supervision Tree | 0/2 | Planned    |  |
-| 3. GsdAgent | 0/0 | Not started | - |
+| 1. Container Foundation | 3/3 | Complete | 2026-03-27 |
+| 2. Supervision Tree | 2/2 | Complete | 2026-03-27 |
+| 3. GsdAgent | 0/2 | Planned | - |
 | 4. Remaining Agent Types and Scheduler | 0/0 | Not started | - |
 | 5. Health Tree | 0/0 | Not started | - |
 | 6. Resilience | 0/0 | Not started | - |
