@@ -3,16 +3,24 @@
 The root of the supervision tree. Manages ProjectSupervisor instances,
 one per active project. When escalation bubbles to the top (no parent),
 calls the on_escalation callback to alert via Discord.
+
+Owns the Scheduler (AUTO-06) which wakes sleeping ContinuousAgents on
+schedule. Registers all built-in agent types in the factory at startup.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Awaitable, Callable
 
 from vcompany.container.child_spec import ChildSpec
+from vcompany.container.container import AgentContainer
+from vcompany.container.factory import register_defaults
+from vcompany.container.memory_store import MemoryStore
 from vcompany.supervisor.project_supervisor import ProjectSupervisor
+from vcompany.supervisor.scheduler import Scheduler
 from vcompany.supervisor.strategies import RestartStrategy
 from vcompany.supervisor.supervisor import Supervisor
 
@@ -55,6 +63,12 @@ class CompanyRoot(Supervisor):
             data_dir=data_dir,
         )
         self._projects: dict[str, ProjectSupervisor] = {}
+        # Scheduler for waking sleeping ContinuousAgents (AUTO-06)
+        self._scheduler: Scheduler | None = None
+        self._scheduler_task: asyncio.Task | None = None
+        self._scheduler_memory: MemoryStore | None = None
+        if data_dir is not None:
+            self._scheduler_memory = MemoryStore(data_dir / "scheduler" / "memory.db")
 
     @property
     def projects(self) -> dict[str, ProjectSupervisor]:
@@ -108,6 +122,39 @@ class CompanyRoot(Supervisor):
         if ps.state != "stopped":
             await ps.stop()
         logger.info("Removed project %s", project_id)
+
+    async def _find_container(self, agent_id: str) -> AgentContainer | None:
+        """Search all ProjectSupervisors for a container by agent_id."""
+        for ps in self._projects.values():
+            container = ps.children.get(agent_id)
+            if container is not None:
+                return container
+        return None
+
+    async def start(self) -> None:
+        """Register agent types, open scheduler memory, and start scheduler loop."""
+        register_defaults()
+        await super().start()
+
+        if self._scheduler_memory is not None:
+            await self._scheduler_memory.open()
+            self._scheduler = Scheduler(
+                memory=self._scheduler_memory,
+                find_container=self._find_container,
+            )
+            await self._scheduler.load()
+            self._scheduler_task = asyncio.create_task(self._scheduler.run())
+            logger.info("Scheduler started")
+
+    async def add_schedule(self, agent_id: str, interval_seconds: int) -> None:
+        """Add a wake schedule for an agent (pass-through to Scheduler)."""
+        if self._scheduler is not None:
+            await self._scheduler.add_schedule(agent_id, interval_seconds)
+
+    async def remove_schedule(self, agent_id: str) -> None:
+        """Remove a wake schedule for an agent (pass-through to Scheduler)."""
+        if self._scheduler is not None:
+            await self._scheduler.remove_schedule(agent_id)
 
     async def handle_child_escalation(self, child_supervisor_id: str) -> None:
         """Handle escalation from a child ProjectSupervisor.
@@ -165,7 +212,21 @@ class CompanyRoot(Supervisor):
                 await self._on_escalation(msg)
 
     async def stop(self) -> None:
-        """Stop all ProjectSupervisors and the root supervisor."""
+        """Cancel scheduler, stop all ProjectSupervisors, and stop the root."""
+        # Cancel the scheduler task first
+        if self._scheduler_task is not None:
+            self._scheduler_task.cancel()
+            try:
+                await self._scheduler_task
+            except asyncio.CancelledError:
+                pass
+            self._scheduler_task = None
+            logger.info("Scheduler stopped")
+
+        # Close scheduler memory store
+        if self._scheduler_memory is not None:
+            await self._scheduler_memory.close()
+
         # Stop all dynamically added projects
         for ps in list(self._projects.values()):
             if ps.state != "stopped":

@@ -51,6 +51,23 @@ def create_container(
     return cls.from_spec(spec, data_dir=data_dir, comm_port=comm_port, on_state_change=on_state_change)
 
 
+def register_defaults() -> None:
+    """Register all built-in agent types. Call once at startup.
+
+    Uses lazy imports to avoid circular dependencies. Idempotent --
+    safe to call multiple times.
+    """
+    from vcompany.agent.company_agent import CompanyAgent
+    from vcompany.agent.continuous_agent import ContinuousAgent
+    from vcompany.agent.fulltime_agent import FulltimeAgent
+    from vcompany.agent.gsd_agent import GsdAgent
+
+    register_agent_type("gsd", GsdAgent)
+    register_agent_type("continuous", ContinuousAgent)
+    register_agent_type("fulltime", FulltimeAgent)
+    register_agent_type("company", CompanyAgent)
+
+
 def get_registry() -> dict[str, type[AgentContainer]]:
     """Return a copy of the current registry for inspection/testing."""
     return dict(_REGISTRY)
