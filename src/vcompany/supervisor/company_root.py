@@ -109,6 +109,61 @@ class CompanyRoot(Supervisor):
             await ps.stop()
         logger.info("Removed project %s", project_id)
 
+    async def handle_child_escalation(self, child_supervisor_id: str) -> None:
+        """Handle escalation from a child ProjectSupervisor.
+
+        Since ProjectSupervisors are managed dynamically (not via child_specs),
+        the base Supervisor._handle_child_failure path cannot find them.
+        CompanyRoot handles this directly: check its own restart budget,
+        and if exceeded, call on_escalation (the Discord alert path).
+        """
+        logger.warning(
+            "CompanyRoot received escalation from child %s",
+            child_supervisor_id,
+        )
+
+        if not self._restart_tracker.allow_restart():
+            # CompanyRoot itself has exceeded its budget -- fire the callback
+            msg = (
+                f"ESCALATION: Supervisor {self.supervisor_id} exceeded restart limits "
+                f"for child {child_supervisor_id}. Manual intervention required."
+            )
+            if self._on_escalation is not None:
+                await self._on_escalation(msg)
+            return
+
+        # Otherwise, try to restart the project supervisor
+        # Find the project by supervisor_id
+        project_id: str | None = None
+        for pid, ps in self._projects.items():
+            if ps.supervisor_id == child_supervisor_id:
+                project_id = pid
+                break
+
+        if project_id is not None:
+            old_ps = self._projects[project_id]
+            # Rebuild with same specs
+            new_ps = ProjectSupervisor(
+                project_id=project_id,
+                child_specs=old_ps._child_specs,
+                strategy=old_ps.strategy,
+                max_restarts=old_ps._restart_tracker.max_restarts,
+                window_seconds=old_ps._restart_tracker.window_seconds,
+                parent=self,
+                data_dir=self._data_dir,
+            )
+            await new_ps.start()
+            self._projects[project_id] = new_ps
+            logger.info("Restarted project supervisor for %s", project_id)
+        else:
+            # Unknown child -- fire escalation callback
+            msg = (
+                f"ESCALATION: Supervisor {self.supervisor_id} received escalation "
+                f"from unknown child {child_supervisor_id}. Manual intervention required."
+            )
+            if self._on_escalation is not None:
+                await self._on_escalation(msg)
+
     async def stop(self) -> None:
         """Stop all ProjectSupervisors and the root supervisor."""
         # Stop all dynamically added projects
