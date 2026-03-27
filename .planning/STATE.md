@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
-status: Ready to plan
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-03-27T22:59:17.871Z"
+status: Ready to execute
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-27T23:17:10.519Z"
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
+  total_plans: 13
+  completed_plans: 12
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 04 — remaining-agent-types-and-scheduler
+**Current focus:** Phase 05 — health-tree
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
+Phase: 05 (health-tree) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Plan: Not started
 | Phase 04 P03 | 3min | 2 tasks | 7 files |
 | Phase 04 P02 | 4min | 2 tasks | 6 files |
 | Phase 04 P04 | 4min | 2 tasks | 4 files |
+| Phase 05 P01 | 6min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,10 @@ Recent decisions affecting current work:
 - [Phase 04]: Wake uses sleeping.to(running) for fresh cycle; recover uses errored.to(running.h) for mid-cycle resume
 - [Phase 04]: Scheduler uses MemoryStore KV with JSON array for schedule persistence
 - [Phase 04]: register_defaults() uses lazy imports to avoid circular deps between factory and agent modules
+- [Phase 05]: Store HealthReport on every callback (before _restarting check) so tree always populated
+- [Phase 05]: health_tree() iterates _child_specs for ordering, not _health_reports dict
+- [Phase 05]: Notification uses loop.create_task for fire-and-forget async dispatch from sync callback
+- [Phase 05]: Only errored/running/stopped trigger notifications (not creating)
 
 ### Pending Todos
 
@@ -107,6 +112,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T22:55:26.227Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-03-27T23:17:10.515Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None

@@ -36,9 +36,9 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 ### Health Reporting
 
 - [x] **HLTH-01**: Each container self-reports a HealthReport (state, inner_state, uptime, last_heartbeat, error_count, last_activity)
-- [ ] **HLTH-02**: Supervisors aggregate children's health into a tree — queryable at any level (company-wide, project, individual)
+- [x] **HLTH-02**: Supervisors aggregate children's health into a tree — queryable at any level (company-wide, project, individual)
 - [ ] **HLTH-03**: Discord slash command `/health` renders the full status tree with state indicators
-- [ ] **HLTH-04**: State transitions (RUNNING→ERRORED, etc.) push notifications to Discord automatically
+- [x] **HLTH-04**: State transitions (RUNNING→ERRORED, etc.) push notifications to Discord automatically
 
 ### Autonomy
 
@@ -47,7 +47,7 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 - [ ] **AUTO-03**: Delegation protocol — ContinuousAgent requests task spawns through supervisor with hard caps and rate limits
 - [ ] **AUTO-04**: Supervisor validates delegation requests, enforces policy, spawns short-lived task agents
 - [ ] **AUTO-05**: Project state owned by PM — agents read assignments and write completions. Agent crash never corrupts project state
-- [ ] **AUTO-06**: Scheduler in CompanyRoot triggers WAKE on sleeping ContinuousAgents per their configured schedule
+- [x] **AUTO-06**: Scheduler in CompanyRoot triggers WAKE on sleeping ContinuousAgents per their configured schedule
 
 ### Resilience
 
@@ -116,10 +116,10 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 | TYPE-03 | Phase 4 | Complete |
 | TYPE-04 | Phase 4 | Complete |
 | TYPE-05 | Phase 4 | Complete |
-| AUTO-06 | Phase 4 | Pending |
-| HLTH-02 | Phase 5 | Pending |
+| AUTO-06 | Phase 4 | Complete |
+| HLTH-02 | Phase 5 | Complete |
 | HLTH-03 | Phase 5 | Pending |
-| HLTH-04 | Phase 5 | Pending |
+| HLTH-04 | Phase 5 | Complete |
 | RESL-01 | Phase 6 | Pending |
 | RESL-02 | Phase 6 | Pending |
 | RESL-03 | Phase 6 | Pending |

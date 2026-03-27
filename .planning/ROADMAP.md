@@ -206,7 +206,7 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 05-01-PLAN.md -- Health tree models, supervisor aggregation, notification callback
+- [x] 05-01-PLAN.md -- Health tree models, supervisor aggregation, notification callback
 - [ ] 05-02-PLAN.md -- HealthCog with /health slash command and embed builder
 
 ### Phase 6: Resilience
