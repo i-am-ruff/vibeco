@@ -174,3 +174,25 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 6. PM/Strategist and Milestones | 2/5 | In Progress|  |
 | 7. Integration Pipeline and Communications | 4/6 | In Progress|  |
 | 8. Reliable tmux Agent Lifecycle | 1/2 | In Progress|  |
+
+### Phase 9: AskUser hook sends questions to agent Discord channel mentioning PM for autonomous Q&A forwarding
+
+**Goal:** Agent questions route to #agent-{id} channels via Discord REST API, a reusable message routing framework dispatches messages to the correct entity, PM auto-answers via Discord replies, and file-based IPC is fully replaced by Discord-native communication
+**Requirements**: D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08, D-09, D-10, D-11, D-12, D-13, D-14, D-15, D-16, D-17, D-18, D-19, D-20
+**Depends on:** Phase 8
+**Plans:** 3 plans
+
+Plans:
+- [ ] 09-01-PLAN.md -- Message routing framework + dispatch env var fix + hook timeout bump
+- [ ] 09-02-PLAN.md -- Hook rewrite (Discord REST API posting + reply polling)
+- [ ] 09-03-PLAN.md -- Bot-side rework (QuestionHandlerCog + StrategistCog routing adoption)
+
+### Phase 10: Rework GSD agent dispatch to bypass all interactive prompts (research, context, discuss) for fully autonomous operation
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 9
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 10 to break down)
