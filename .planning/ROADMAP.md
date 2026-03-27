@@ -175,7 +175,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md -- GsdLifecycle compound state FSM + GsdPhase enum + CheckpointData model
-- [ ] 03-02-PLAN.md -- GsdAgent class with checkpoint recovery + WorkflowOrchestrator absorption
+- [x] 03-02-PLAN.md -- GsdAgent class with checkpoint recovery + WorkflowOrchestrator absorption
 
 ### Phase 4: Remaining Agent Types and Scheduler
 **Goal**: ContinuousAgent, FulltimeAgent, and CompanyAgent are operational as containers, and sleeping agents wake on schedule

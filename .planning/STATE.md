@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
-status: Ready to execute
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-27T22:03:35.991Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-03-27T22:14:19.625Z"
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -52,6 +52,7 @@ Plan: 2 of 2
 | Phase 02 P01 | 4min | 2 tasks | 7 files |
 | Phase 02 P02 | 6min | 2 tasks | 5 files |
 | Phase 03 P01 | 3min | 2 tasks | 4 files |
+| Phase 03 P02 | 4min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,9 @@ Recent decisions affecting current work:
 - [Phase 02]: Override handle_child_escalation in CompanyRoot for dynamic project topology
 - [Phase 03]: GsdLifecycle is standalone StateMachine (not subclass of ContainerLifecycle) -- compound states require fresh class definition
 - [Phase 03]: HistoryState used for both sleep/wake and error/recover to preserve inner phase
+- [Phase 03]: OrderedSet[0] for outer state, OrderedSet[1] for inner state when decomposing compound FSM state
+- [Phase 03]: Checkpoint before sleep/error (not after) to capture phase state before exiting running
+- [Phase 03]: Invalid checkpoint falls back silently to running.idle rather than raising
 
 ### Pending Todos
 
@@ -93,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T22:03:35.987Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-03-27T22:14:19.621Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
