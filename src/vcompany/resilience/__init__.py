@@ -1,8 +1,6 @@
-"""Resilience utilities for vCompany.
+"""Resilience utilities for vCompany supervision tree."""
 
-Exports the priority message queue used for all outbound Discord messaging.
-"""
-
+from vcompany.resilience.bulk_failure import BulkFailureDetector
 from vcompany.resilience.message_queue import (
     MessagePriority,
     MessageQueue,
@@ -11,6 +9,7 @@ from vcompany.resilience.message_queue import (
 )
 
 __all__ = [
+    "BulkFailureDetector",
     "MessagePriority",
     "MessageQueue",
     "QueuedMessage",

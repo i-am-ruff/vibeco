@@ -16,6 +16,7 @@ from vcompany.container.child_spec import ChildSpec, RestartPolicy
 from vcompany.container.container import AgentContainer
 from vcompany.container.factory import create_container
 from vcompany.container.health import HealthNode, HealthReport, HealthTree
+from vcompany.resilience.bulk_failure import BulkFailureDetector
 from vcompany.supervisor.restart_tracker import RestartTracker
 from vcompany.supervisor.strategies import RestartStrategy
 
@@ -66,6 +67,12 @@ class Supervisor:
             max_restarts=max_restarts,
             window_seconds=window_seconds,
         )
+        # RESL-02: Bulk failure detection (upstream outage)
+        self._bulk_detector: BulkFailureDetector | None = None
+        if len(child_specs) >= 2:
+            self._bulk_detector = BulkFailureDetector(
+                child_count=len(child_specs),
+            )
         self._restarting: bool = False
         self._state: str = "stopped"
         self._health_reports: dict[str, HealthReport] = {}
@@ -220,6 +227,25 @@ class Supervisor:
 
     async def _handle_child_failure(self, failed_id: str) -> None:
         """Apply restart policy and strategy for a failed child."""
+        # RESL-02: Check for bulk failure (upstream outage detection)
+        if self._bulk_detector is not None:
+            if self._bulk_detector.is_in_backoff:
+                logger.info(
+                    "Supervisor %s in global backoff, skipping restart for %s",
+                    self.supervisor_id,
+                    failed_id,
+                )
+                return
+            is_outage = self._bulk_detector.record_failure(failed_id)
+            if is_outage:
+                logger.warning(
+                    "Supervisor %s detected upstream outage (bulk failure from %s)",
+                    self.supervisor_id,
+                    failed_id,
+                )
+                await self._enter_global_backoff()
+                return
+
         spec = self._get_spec(failed_id)
         if spec is None:
             return
@@ -247,6 +273,40 @@ class Supervisor:
             await self._restart_all(failed_id)
         elif self.strategy == RestartStrategy.REST_FOR_ONE:
             await self._restart_rest(failed_id)
+
+    async def _enter_global_backoff(self) -> None:
+        """Enter global backoff due to bulk failure (RESL-02).
+
+        Suppresses per-agent restarts. Notifies owner via escalation callback.
+        After backoff period, resets detector to allow restarts.
+        """
+        if self._bulk_detector is None:
+            return
+
+        backoff = self._bulk_detector.current_backoff
+        msg = (
+            f"UPSTREAM OUTAGE: Supervisor {self.supervisor_id} detected bulk failure. "
+            f"Global backoff for {backoff:.0f}s. Per-agent restarts suppressed."
+        )
+
+        if self._on_escalation is not None:
+            await self._on_escalation(msg)
+        elif self._parent is not None:
+            # Notify parent but don't escalate (we're handling it)
+            pass
+
+        # Schedule backoff reset
+        async def _reset_after_backoff() -> None:
+            await asyncio.sleep(backoff)
+            if self._bulk_detector is not None:
+                self._bulk_detector.escalate_backoff()
+                self._bulk_detector.reset_backoff()
+                logger.info(
+                    "Supervisor %s global backoff expired, resuming restarts",
+                    self.supervisor_id,
+                )
+
+        asyncio.create_task(_reset_after_backoff())
 
     def _get_spec(self, child_id: str) -> ChildSpec | None:
         """Look up a child spec by ID."""
