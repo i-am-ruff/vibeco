@@ -38,12 +38,12 @@ created: 2026-03-27
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 2-01-01 | 01 | 1 | SUPV-01 | integration | `uv run pytest tests/test_supervision_tree.py -x -q` | ❌ W0 | ⬜ pending |
+| 2-01-01 | 01 | 1 | SUPV-05 | unit | `uv run pytest tests/test_restart_tracker.py -x -q` | ❌ W0 | ⬜ pending |
 | 2-01-02 | 01 | 1 | SUPV-02 | unit | `uv run pytest tests/test_restart_strategies.py::test_one_for_one -x -q` | ❌ W0 | ⬜ pending |
 | 2-01-03 | 01 | 1 | SUPV-03 | unit | `uv run pytest tests/test_restart_strategies.py::test_all_for_one -x -q` | ❌ W0 | ⬜ pending |
 | 2-01-04 | 01 | 1 | SUPV-04 | unit | `uv run pytest tests/test_restart_strategies.py::test_rest_for_one -x -q` | ❌ W0 | ⬜ pending |
-| 2-02-01 | 02 | 1 | SUPV-05 | unit | `uv run pytest tests/test_restart_tracker.py -x -q` | ❌ W0 | ⬜ pending |
-| 2-02-02 | 02 | 1 | SUPV-06 | integration | `uv run pytest tests/test_supervision_tree.py::test_escalation -x -q` | ❌ W0 | ⬜ pending |
+| 2-02-01 | 02 | 2 | SUPV-01 | integration | `uv run pytest tests/test_supervision_tree.py -x -q` | ❌ W0 | ⬜ pending |
+| 2-02-02 | 02 | 2 | SUPV-06 | integration | `uv run pytest tests/test_supervision_tree.py::test_escalation -x -q` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
