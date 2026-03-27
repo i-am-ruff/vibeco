@@ -11,84 +11,84 @@ class TestValidTransitions:
 
     def test_initial_state_is_creating(self):
         sm = ContainerLifecycle()
-        assert sm.current_state.id == "creating"
+        assert sm.current_state_value == "creating"
 
     def test_creating_to_running_via_start(self):
         sm = ContainerLifecycle()
         sm.start()
-        assert sm.current_state.id == "running"
+        assert sm.current_state_value == "running"
 
     def test_running_to_sleeping_via_sleep(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.sleep()
-        assert sm.current_state.id == "sleeping"
+        assert sm.current_state_value == "sleeping"
 
     def test_sleeping_to_running_via_wake(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.sleep()
         sm.wake()
-        assert sm.current_state.id == "running"
+        assert sm.current_state_value == "running"
 
     def test_running_to_errored_via_error(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.error()
-        assert sm.current_state.id == "errored"
+        assert sm.current_state_value == "errored"
 
     def test_creating_to_errored_via_error(self):
         sm = ContainerLifecycle()
         sm.error()
-        assert sm.current_state.id == "errored"
+        assert sm.current_state_value == "errored"
 
     def test_sleeping_to_errored_via_error(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.sleep()
         sm.error()
-        assert sm.current_state.id == "errored"
+        assert sm.current_state_value == "errored"
 
     def test_errored_to_running_via_recover(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.error()
         sm.recover()
-        assert sm.current_state.id == "running"
+        assert sm.current_state_value == "running"
 
     def test_running_to_stopped_via_stop(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.stop()
-        assert sm.current_state.id == "stopped"
+        assert sm.current_state_value == "stopped"
 
     def test_sleeping_to_stopped_via_stop(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.sleep()
         sm.stop()
-        assert sm.current_state.id == "stopped"
+        assert sm.current_state_value == "stopped"
 
     def test_errored_to_stopped_via_stop(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.error()
         sm.stop()
-        assert sm.current_state.id == "stopped"
+        assert sm.current_state_value == "stopped"
 
     def test_stopped_to_destroyed_via_destroy(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.stop()
         sm.destroy()
-        assert sm.current_state.id == "destroyed"
+        assert sm.current_state_value == "destroyed"
 
     def test_errored_to_destroyed_via_destroy(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.error()
         sm.destroy()
-        assert sm.current_state.id == "destroyed"
+        assert sm.current_state_value == "destroyed"
 
 
 class TestInvalidTransitions:
@@ -133,7 +133,7 @@ class TestStringBasedDispatch:
     def test_send_event_start_from_creating(self):
         sm = ContainerLifecycle()
         sm.send_event("start")
-        assert sm.current_state.id == "running"
+        assert sm.current_state_value == "running"
 
 
 class TestAfterTransitionCallback:
