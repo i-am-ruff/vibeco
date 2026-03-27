@@ -121,7 +121,7 @@ Plans:
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Container Foundation** - AgentContainer base with lifecycle state machine, context, memory store, health self-reporting, child specs, and communication contract *(completed 2026-03-27)*
-- [ ] **Phase 2: Supervision Tree** - Two-level supervision hierarchy with Erlang-style restart policies, escalation, and 10-minute restart windows
+- [x] **Phase 2: Supervision Tree** - Two-level supervision hierarchy with Erlang-style restart policies, escalation, and 10-minute restart windows *(completed 2026-03-27)*
 - [ ] **Phase 3: GsdAgent** - Phase-driven agent type absorbing WorkflowOrchestrator with nested FSM and checkpoint-based crash recovery
 - [ ] **Phase 4: Remaining Agent Types and Scheduler** - ContinuousAgent, FulltimeAgent (PM), CompanyAgent (Strategist), and scheduler for wake cycles
 - [ ] **Phase 5: Health Tree** - Health aggregation across the supervision tree with Discord /health rendering and state-change notifications
