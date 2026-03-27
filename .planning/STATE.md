@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
-status: Ready to execute
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-03-27T20:51:00.907Z"
+status: Ready to plan
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-03-27T21:05:21.212Z"
 progress:
   total_phases: 8
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 3
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 ## Current Position
 
-Phase: 01 (container-foundation) — EXECUTING
-Plan: 2 of 3
+Phase: 2
+Plan: Not started
 
 ## Performance Metrics
 
@@ -47,6 +47,8 @@ Plan: 2 of 3
 
 *Updated after each plan completion*
 | Phase 01 P01 | 2min | 1 tasks | 10 files |
+| Phase 01 P02 | 2min | 2 tasks | 5 files |
+| Phase 01 P03 | 3min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -63,6 +65,9 @@ Recent decisions affecting current work:
 - [Roadmap v2 rev2]: MIGR-* all in Phase 8 (last) -- v1 MonitorLoop stays as safety net until v2 passes regression tests
 - [Phase 01]: Used current_state_value instead of deprecated current_state.id for python-statemachine 3.0.0
 - [Phase 01]: CommunicationPort uses typing.Protocol with @runtime_checkable, Message is a dataclass
+- [Phase 01]: MemoryStore uses assert for db open guard instead of custom exception
+- [Phase 01]: ChildSpecRegistry is plain class (not Pydantic) - dict-based with no validation overhead
+- [Phase 01]: Used state_field=_fsm_state to avoid property collision with python-statemachine model binding
 
 ### Pending Todos
 
@@ -77,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T20:51:00.904Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-03-27T21:02:01.257Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
