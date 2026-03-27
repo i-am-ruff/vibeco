@@ -144,7 +144,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- Types, state machine, data models (ContainerLifecycle, ContainerContext, HealthReport, CommunicationPort)
+- [x] 01-01-PLAN.md -- Types, state machine, data models (ContainerLifecycle, ContainerContext, HealthReport, CommunicationPort)
 - [ ] 01-02-PLAN.md -- MemoryStore (async SQLite persistence) + ChildSpec registry
 - [ ] 01-03-PLAN.md -- AgentContainer class wiring all modules together
 

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
-status: Ready to plan
-stopped_at: null
-last_updated: "2026-03-27T15:00:00.000Z"
+status: Ready to execute
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-03-27T20:51:00.907Z"
 progress:
   total_phases: 8
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,16 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 1 - Container Foundation (v2.0)
+**Current focus:** Phase 01 — container-foundation
 
 ## Current Position
 
-Phase: 1 of 8 (Container Foundation)
-Plan: 0 of 0 in current phase (plans TBD)
-Status: Ready to plan
-Last activity: 2026-03-27 -- Roadmap revised for v2.0 (8 phases, more granular split)
-
-Progress: [░░░░░░░░░░] 0%
+Phase: 01 (container-foundation) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
@@ -50,6 +46,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01 P01 | 2min | 1 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -64,6 +61,8 @@ Recent decisions affecting current work:
 - [Roadmap v2 rev2]: New resilience phase (Phase 6) for RESL-01/02/03 -- rate limiting, outage detection, degraded mode
 - [Roadmap v2 rev2]: HLTH-01 (self-reporting) stays in Phase 1 with container base; HLTH-02/03/04 in Phase 5
 - [Roadmap v2 rev2]: MIGR-* all in Phase 8 (last) -- v1 MonitorLoop stays as safety net until v2 passes regression tests
+- [Phase 01]: Used current_state_value instead of deprecated current_state.id for python-statemachine 3.0.0
+- [Phase 01]: CommunicationPort uses typing.Protocol with @runtime_checkable, Message is a dataclass
 
 ### Pending Todos
 
@@ -78,6 +77,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27
-Stopped at: Roadmap revised for v2.0 (8 phases)
+Last session: 2026-03-27T20:51:00.904Z
+Stopped at: Completed 01-01-PLAN.md
 Resume file: None

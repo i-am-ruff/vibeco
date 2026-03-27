@@ -9,12 +9,12 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 
 ### Container Foundation
 
-- [ ] **CONT-01**: Every agent is wrapped in an AgentContainer with a validated lifecycle state machine (CREATING→RUNNING→SLEEPING→ERRORED→STOPPED→DESTROYED)
-- [ ] **CONT-02**: State transitions are validated — impossible transitions (e.g., STOPPED→RUNNING) are rejected with errors
-- [ ] **CONT-03**: Each container carries its own context (agent_id, type, parent_id, project_id, owned dirs, GSD mode, system prompt)
+- [x] **CONT-01**: Every agent is wrapped in an AgentContainer with a validated lifecycle state machine (CREATING→RUNNING→SLEEPING→ERRORED→STOPPED→DESTROYED)
+- [x] **CONT-02**: State transitions are validated — impossible transitions (e.g., STOPPED→RUNNING) are rejected with errors
+- [x] **CONT-03**: Each container carries its own context (agent_id, type, parent_id, project_id, owned dirs, GSD mode, system prompt)
 - [ ] **CONT-04**: Each agent has a persistent memory_store (per-agent SQLite file) for checkpoints, seen items, decisions, and config
 - [ ] **CONT-05**: Child specification registry declares how to create each container (type, config, restart policy) — supervisors read specs to spawn children
-- [ ] **CONT-06**: All container communication flows through Discord — no hidden file-based IPC, no in-memory callbacks between agents
+- [x] **CONT-06**: All container communication flows through Discord — no hidden file-based IPC, no in-memory callbacks between agents
 
 ### Supervision
 
@@ -35,7 +35,7 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 
 ### Health Reporting
 
-- [ ] **HLTH-01**: Each container self-reports a HealthReport (state, inner_state, uptime, last_heartbeat, error_count, last_activity)
+- [x] **HLTH-01**: Each container self-reports a HealthReport (state, inner_state, uptime, last_heartbeat, error_count, last_activity)
 - [ ] **HLTH-02**: Supervisors aggregate children's health into a tree — queryable at any level (company-wide, project, individual)
 - [ ] **HLTH-03**: Discord slash command `/health` renders the full status tree with state indicators
 - [ ] **HLTH-04**: State transitions (RUNNING→ERRORED, etc.) push notifications to Discord automatically
@@ -98,13 +98,13 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONT-01 | Phase 1 | Pending |
-| CONT-02 | Phase 1 | Pending |
-| CONT-03 | Phase 1 | Pending |
+| CONT-01 | Phase 1 | Complete |
+| CONT-02 | Phase 1 | Complete |
+| CONT-03 | Phase 1 | Complete |
 | CONT-04 | Phase 1 | Pending |
 | CONT-05 | Phase 1 | Pending |
-| CONT-06 | Phase 1 | Pending |
-| HLTH-01 | Phase 1 | Pending |
+| CONT-06 | Phase 1 | Complete |
+| HLTH-01 | Phase 1 | Complete |
 | SUPV-01 | Phase 2 | Pending |
 | SUPV-02 | Phase 2 | Pending |
 | SUPV-03 | Phase 2 | Pending |
