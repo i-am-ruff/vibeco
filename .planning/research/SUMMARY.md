@@ -1,209 +1,199 @@
 # Project Research Summary
 
-**Project:** vCompany
-**Domain:** Autonomous multi-agent software development orchestration (Python CLI + Discord bot + tmux + Claude Code)
-**Researched:** 2026-03-25
+**Project:** vCompany — Autonomous Multi-Agent Development System (v2.0 Container Architecture)
+**Domain:** Supervision trees, agent container lifecycle, self-healing orchestration
+**Researched:** 2026-03-27
 **Confidence:** HIGH
 
 ## Executive Summary
 
-vCompany is a single-machine orchestrator that manages multiple Claude Code agents working in parallel on the same codebase, coordinated through a CLI (`vco`), a Discord bot, and a filesystem-based monitor loop. Experts in this domain converge on a clear pattern: isolate agents in separate repo clones with branch-per-agent, coordinate through shared artifacts (not direct messaging), and supervise with a polling-based monitor that handles liveness, crash recovery, and plan gating. The recommended stack is Python 3.12 with click (CLI), discord.py (bot), libtmux (process management), and Pydantic (config validation), managed by uv. No database is needed -- all state lives on the filesystem, which is both the correct architectural choice and a massive simplification.
+vCompany v2.0 is a migration from a flat, externally-monitored agent model to a self-supervising container hierarchy modeled on Erlang/OTP supervision trees. The v1 system relies on three loosely-coupled externals — `MonitorLoop` (60s poll watchdog), `CrashTracker` (backoff/circuit breaker), and `WorkflowOrchestrator` (phase state machine) — that operate in parallel without a single authority. v2 replaces this with a tree where each agent is an `AgentContainer` (lifecycle state machine + self-reported health + persistent memory), supervisors own restart policy, and a two-level hierarchy (`CompanyRoot` -> `ProjectSupervisor` -> agents) scopes restart blast radius correctly. The pattern is well-understood from Erlang, Kubernetes, and systemd, and maps cleanly to Python asyncio. The entire container tree runs as asyncio Tasks inside the existing VcoBot process, keeping inter-container communication zero-cost and the system single-process.
 
-The recommended approach is a layered build: foundation (config models, git operations, tmux wrappers), then agent lifecycle (dispatch, kill, relaunch with crash recovery), then the monitor loop (liveness, stuck detection, status generation), then Discord bot and hooks (commands, alerts, AskUserQuestion routing), then the Strategist/PM bot and plan gate (the highest-value differentiator), then the integration pipeline (merge, test, PR), and finally quality-of-life features like structured standups. This ordering follows the strict dependency chain uncovered in architecture research: you cannot monitor agents you cannot dispatch, you cannot gate plans without a bot to post them to, and you cannot integrate without branches to merge.
+The recommended approach adds only two new PyPI dependencies (`python-statemachine 3.0.x` for declarative state machines, `aiosqlite 0.21.x` for per-agent persistent memory) on top of the existing validated stack. All scheduling and event communication use stdlib asyncio primitives — no scheduler library, no event bus library. The existing modules (`MonitorLoop`, `CrashTracker`, `WorkflowOrchestrator`) are absorbed incrementally with a mandatory coexistence period before deletion, making this a safe in-place migration rather than a risky rewrite.
 
-The top risks are: (1) crash recovery loops burning resources when failures are persistent rather than transient -- mitigate with crash classification before relaunch, (2) merge conflicts discovered late because branches diverge too long -- mitigate with frequent integration checks and strict file ownership enforcement, (3) the monitor loop as a single point of failure -- mitigate with independent try/except per check and a watchdog supervisor, and (4) Discord gateway disconnects leaving agents unsupervised -- mitigate with async-only operations in the bot event loop and a connectivity health check in the monitor.
+The primary risk is migration complexity: three existing state machines simultaneously tracking the same agent will diverge (split-brain), the 30-60 second Claude Code bootstrap time breaks Erlang's instant-process-creation assumption and will trigger false circuit-breakers, and the existing callback chain in `VcoBot.on_ready()` is wired directly between Cogs and services with no abstraction — inserting the supervision tree silently breaks these wires. The mitigation is strict sequencing: establish single state ownership in Phase 1, build supervision before integrating with the bot, and run ALL existing Phase 7 interaction regression tests after every migration step. The v1 MonitorLoop runs alongside v2 as a safety net until v2 supervision passes integration tests.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The stack is Python-centric with no database, no web server, and no task queue. This is correct for a single-machine orchestrator where state is inherently file-based. The key technology choices are well-established with high-confidence version pins. The only dependency risk is libtmux (pre-1.0, API instability) -- mitigate by wrapping it in a thin abstraction layer from day one.
+The existing stack requires only two additions for v2. `python-statemachine 3.0.0` (released Feb 2026, zero runtime dependencies, native async, SCXML compound states) replaces hand-rolled enums for the five distinct state machine types needed. `aiosqlite 0.21.x` wraps stdlib `sqlite3` for non-blocking async access to per-agent memory stores — each agent gets its own `.db` file in its clone directory, preserving v1's isolation model while gaining ACID guarantees for checkpoint writes. APScheduler and event bus libraries are explicitly rejected as overkill for single-machine interval-based wake and tree-shaped (not pub/sub) communication. Full rationale in [STACK.md](.planning/research/STACK.md).
 
-**Core technologies:**
-- **Python 3.12+ / uv** -- runtime and package management. uv replaces pip/venv/pip-tools entirely.
-- **click 8.2.x** -- CLI framework for `vco` commands. Decorator-based command groups match the subcommand structure perfectly.
-- **discord.py 2.7.x** -- Discord bot framework. Async-native, Cog-based modularity, built-in rate limit handling.
-- **libtmux 0.55.x** -- Python API for tmux session/pane management. Pin tightly; wrap in abstraction layer.
-- **Pydantic 2.11.x + pydantic-settings** -- Config validation (agents.yaml) and environment variable loading (.env).
-- **httpx 0.28.x** -- Single HTTP client for both sync (CLI) and async (bot) contexts.
-- **Rich 14.2.x** -- Terminal output formatting for `vco status` and monitoring.
-- **anthropic 0.86.x** -- Anthropic SDK for the PM/Strategist bot.
-- **watchfiles 0.24.x** -- Filesystem monitoring for plan gate detection.
-
-**What to avoid:** GitPython (maintenance mode), requests (sync-only), nextcord/disnake (dead-end forks), any database, any web framework, any task queue.
+**Core new technologies:**
+- `python-statemachine 3.0.x`: Declarative state machines for all container types — covers compound states (GsdAgent's inner phase machine nested inside RUNNING), auto-detected async callbacks, validated transitions. Zero transitive dependencies.
+- `aiosqlite 0.21.x`: Non-blocking async wrapper for per-agent SQLite memory stores. Schema is two tables (`memory`, `checkpoints`). One file per agent in the agent's clone directory. Not a shared database.
+- `asyncio (stdlib)`: All scheduling (`asyncio.sleep` loops owned by CompanyRoot) and all event communication (tree-shaped `asyncio.Queue` + method calls, not pub/sub fan-out).
 
 ### Expected Features
 
-**Must have (table stakes):**
-- Agent spawning with isolated repo clones and directory ownership
-- Agent liveness monitoring (60s poll cycle) with stuck detection (30min no-commit threshold)
-- Crash recovery with circuit breaker (3 restarts/hour, alert on 4th)
-- Branch-per-agent with integration pipeline (merge + test + PR)
-- Discord bot with operator commands (!dispatch, !status, !kill, !relaunch, !integrate)
-- AskUserQuestion hook routing through Discord with 10-min timeout and fallback
-- Plan review gate (monitor detects PLAN.md, pauses agent, posts to Discord for approval)
-- PROJECT-STATUS.md generation and cross-clone distribution
-- INTERFACES.md contract system for cross-agent coordination
-- Declarative agents.yaml with per-agent GSD configuration injection
+The feature set follows a strict dependency chain documented in [FEATURES.md](.planning/research/FEATURES.md): nothing works without `AgentContainer` base, supervision tree requires containers to supervise, agent types require the base class, health reporting requires self-reporting containers.
 
-**Should have (differentiators):**
-- PM/Strategist bot as autonomous decision layer (highest-value differentiator -- no competitor has this)
-- Discord-native operation (async, multi-device, breaks the "must be at terminal" constraint)
-- Contract-driven coordination via INTERFACES.md (higher-level than message passing)
-- Filesystem-level plan gating (more robust than in-session hooks, survives context loss)
-- Context-aware crash recovery using /gsd:resume-work + status injection
-- Structured standup and checkin rituals for synchronization
+**Must have (table stakes — Phases 1-2):**
+- `AgentContainer` base with lifecycle state machine (CREATING -> RUNNING -> SLEEPING -> ERRORED -> STOPPED -> DESTROYED) — without this, no container architecture exists
+- State transition validation — prevents impossible states, enables trustworthy supervision
+- Context management per container — centralizes config currently scattered across dispatch, agents.yaml parsing, and clone commands
+- Two-level supervision hierarchy (CompanyRoot -> ProjectSupervisor -> agents) — scopes restart blast radius so a crashed BACKEND agent does not restart the Strategist
+- `one_for_one` restart strategy — covers 80% of agent crash scenarios
+- Max restart intensity at supervisor level — circuit breaker to prevent crash loops, must use {3, 600} windows (10 min) not {3, 60} (Erlang default) due to slow Claude Code bootstrap
+- `GsdAgent` type with internal phase FSM absorbing WorkflowOrchestrator — makes agent self-authoritative for phase state
+- Self-reported `HealthReport` per container — replaces external 60s polling with instant state-change events
 
-**Defer (v2+):**
-- Strategist context summarization for large projects
-- Sophisticated crash analysis (why, not just that)
-- Agent performance metrics and analytics
-- Multi-project concurrent orchestration
-- Multi-machine distribution
-- Dynamic agent spawning
-- Automatic merge conflict resolution
-- Web UI
+**Should have (differentiators — Phases 3-5):**
+- `ContinuousAgent` with scheduled wake/sleep cycles — enables QA monitor as a first-class agent, not a hack on top of GsdAgent
+- `FulltimeAgent` (PM) as event-driven container — PM becomes part of the supervision tree, not bolted to the Discord bot
+- Health tree aggregation + Discord `!health` command — "docker ps" view of the full system
+- Living milestone backlog (PM-managed mutable queue) — dynamic work ordering without stopping agents
+- Delegation protocol (ContinuousAgent requests task spawns through supervisor) — self-healing beyond process restarts
+- Decoupled project/agent lifecycles with cascade termination guarantees
+
+**Defer to v3+:**
+- Hot agent replacement (live reconfiguration without container destroy/recreate)
+- Graceful degradation hardening (explicit test suite; implicit in design)
+- Agent performance metrics and historical query dashboards
+- Dynamic auto-scaling (anti-feature on single machine with API cost constraints)
+- Agent-to-agent direct messaging (anti-feature: hidden coupling, breaks debug/replay)
+- Distributed supervision across multiple machines
 
 ### Architecture Approach
 
-The system is organized into four layers: Human (owner on Discord), Discord (bot + channels), Orchestration (CLI + monitor + plan gate), and Agent (tmux panes with Claude Code + GSD). Communication between layers is deliberately simple: CLI and bot both call into a shared orchestrator library, agents coordinate through filesystem artifacts (never directly), and the hook system bridges agent questions to Discord via webhook POST and REST polling. All critical state lives on the filesystem and survives crashes. The only in-memory state is rebuilt from disk on restart.
+The v2 architecture inserts a supervision tree between `VcoBot` and the raw tmux/Claude Code layer. Containers are asyncio Tasks (not OS processes) inside the existing VcoBot process — no IPC, shared discord.py client reference, simple lifecycle via task cancel. Each container owns its tmux pane, self-reports health on every state transition, and checkpoints to a per-agent SQLite file. Supervisors manage children via `asyncio.Task` done callbacks, applying Erlang-style restart policies with 150-200 lines of asyncio code (no library needed). The `MonitorLoop` is demoted from health authority to thin HealthTree poller during migration, then removed after v2 passes regression tests. Full component map, data flow diagrams, and 8-phase build order in [ARCHITECTURE.md](.planning/research/ARCHITECTURE.md).
 
 **Major components:**
-1. **vco CLI (click)** -- Project init, agent dispatch, integration trigger, standup, context sync
-2. **Monitor Loop (asyncio)** -- Liveness checks, stuck detection, plan gate trigger, status regeneration, crash recovery
-3. **Discord Bot (discord.py Cogs)** -- Owner commands, alert routing, plan review UI, strategist question handling
-4. **PM/Strategist Bot (Anthropic SDK)** -- Autonomous plan review, agent question answering, confidence-based escalation
-5. **AskUserQuestion Hook** -- Standalone script bridging Claude Code agents to Discord via webhook
-6. **Integration Pipeline** -- Branch merge, test execution, PR creation, fix dispatch
-7. **Context Distribution** -- Keeps PROJECT-STATUS.md and INTERFACES.md current across all clones
+1. `containers/base.py` (AgentContainer) — lifecycle state machine, health reporting, memory store, event inbox
+2. `containers/gsd_agent.py` (GsdAgent) — absorbs WorkflowOrchestrator; phase FSM (IDLE->DISCUSS->PLAN->EXECUTE->VERIFY->SHIP) nested inside RUNNING
+3. `containers/continuous_agent.py` (ContinuousAgent) — scheduled WAKE/GATHER/ANALYZE/ACT/REPORT/SLEEP cycles with persistent memory
+4. `containers/fulltime_agent.py` (FulltimeAgent) — event-driven PM container; alive for project duration
+5. `containers/company_agent.py` (CompanyAgent) — event-driven Strategist container; cross-project lifetime
+6. `supervision/supervisor.py` (Supervisor) — asyncio.Task management, restart policies (one/all/rest_for_one), absorbed CrashTracker logic
+7. `supervision/company_root.py` (CompanyRoot) — top-level supervisor; owns Scheduler + ProjectSupervisors + CompanyAgents
+8. `supervision/project_supervisor.py` (ProjectSupervisor) — per-project supervisor; scopes restart blast radius
+9. `health/tree.py` (HealthTree) — aggregates self-reported HealthReports; drives Discord `!health` embed
+10. `coordination/backlog.py` (MilestoneBacklog) — PM-managed mutable work queue with Pydantic-validated mutations
+11. `coordination/delegation.py` (DelegationProtocol) — mediated task spawn requests through supervisor with depth counter and caps
 
 ### Critical Pitfalls
 
-1. **Crash recovery loops drain resources** -- Classify crashes before retrying. Persistent errors (bad git state, corrupted clone) should alert immediately, not retry 3 times. Use exponential backoff (30s, 2min, 10min) between retries.
-2. **Merge conflicts discovered only at integration time** -- Integrate frequently (every 2-3 hours, not just at milestone end). Enforce strict directory ownership. Designate shared files (package.json, lock files) to a single agent or the orchestrator.
-3. **Monitor loop as single point of failure** -- Wrap each check in independent try/except. Run under a watchdog (systemd or heartbeat-file checker). Set timeouts on all subprocess calls.
-4. **Discord gateway disconnects** -- Never block the discord.py event loop. Use asyncio.to_thread() for all I/O. Monitor bot connectivity from the monitor loop. Buffer messages during disconnects.
-5. **Filesystem plan gate reads partial writes** -- Use atomic write (write to .tmp, rename) or a completion marker. Never read PLAN.md on detection; wait for the ready signal.
-6. **AskUserQuestion hook silently fails** -- Wrap the entire hook in try/except with guaranteed fallback response. Use OS-level timeout as backstop. Log every invocation.
-7. **tmux zombie processes** -- Check actual process PID inside panes, not just tmux session existence. Reconcile expected PIDs every monitor cycle.
+Full analysis with phase-by-phase prevention strategies and a "looks done but isn't" checklist in [PITFALLS.md](.planning/research/PITFALLS.md). Top five for roadmap planning:
+
+1. **Dual state tracking creates split-brain during migration** — Three existing systems (agents.json, AgentMonitorState, AgentWorkflowState) will conflict with the new container state machine if not explicitly resolved. Prevent by declaring `AgentContainer.state` as the single source of truth from the start of Phase 1 and building a `ContainerRegistry` adapter that translates old/new representations. Delete the old representations only after all consumers are migrated.
+
+2. **Supervisor cascade from slow Claude Code bootstrap** — Erlang assumes process creation takes microseconds. vCompany agent restart takes 30-60 seconds. Standard Erlang restart intensity limits ({3, 60}) will trigger false circuit-breakers after one crash. Use {3, 600} windows (10 minutes), track intensity at restart *completion* not initiation, and add a `RESTARTING` state visible in health reports.
+
+3. **Broken callback wiring when supervision tree inserts between VcoBot and Cogs** — AlertsCog, PlanReviewCog, and WorkflowOrchestratorCog are wired via direct function references from MonitorLoop. Inserting the supervision tree silently breaks these chains. Prevent by running ALL existing Phase 7 interaction regression tests after every migration step. Zero regressions allowed.
+
+4. **Triple state machine confusion** — Three machines tracking the same agent phase (outer container RUNNING/ERRORED, inner GsdAgent DISCUSS/PLAN/EXECUTE, separate WorkflowOrchestrator tracking) will diverge. Prevent by absorbing WorkflowOrchestrator state tracking INTO GsdAgent during Phase 2. Expose `lifecycle_state` vs `work_state` as orthogonal dimensions, not competing authorities.
+
+5. **ContinuousAgent scheduled wakes lost on bot restart** — `asyncio.sleep()` is not persistent; asyncio tasks cancel on event loop shutdown. Prevent by persisting scheduled wake times to a JSON file, and using a `discord.ext.tasks.loop(seconds=60)` that checks the schedule file rather than long per-agent sleeps.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+Based on the dependency chain from FEATURES.md and the 8-phase build order from ARCHITECTURE.md, the suggested phase structure is:
 
-### Phase 1: Foundation and Configuration
-**Rationale:** Everything depends on config parsing, file operations, git operations, and tmux session management. These are the leaf dependencies in the architecture's build order.
-**Delivers:** Pydantic models for agents.yaml, git operations wrapper, tmux session/pane abstraction, `vco init` and `vco clone` commands, project directory structure.
-**Addresses:** Declarative agent roster, per-agent GSD injection, process isolation setup.
-**Avoids:** tmux zombie processes (Pitfall 7) by building proper PID-based liveness checking from the start. Partial plan reads (Pitfall 1) by establishing atomic file write patterns.
+### Phase 1: Container Foundation
+**Rationale:** The single most critical phase. Everything else depends on this, and state ownership must be resolved here or split-brain (Pitfall 1) corrupts every subsequent phase. Zero v1 dependencies — pure new code with no integration risk. Tests are pure unit tests.
+**Delivers:** `AgentContainer` base class, `ContainerState` enum, `ContainerEvent` types, `AgentMemoryStore` (SQLite per-agent, WAL mode), `HealthReport` Pydantic model, `ContainerRegistry` adapter declaring container state as the single source of truth.
+**Addresses:** AgentContainer base abstraction, state transition validation, context management, memory_store (FEATURES.md table stakes Phase 1)
+**Avoids:** Split-brain state (Pitfall 1) — establishes single truth source before anything else touches agent state
 
-### Phase 2: Agent Lifecycle Management
-**Rationale:** Before building monitoring or Discord, agents must be dispatchable, killable, and relaunchable. This is the first phase where the system does something useful (runs Claude Code agents).
-**Delivers:** Agent spawn/kill/relaunch via CLI, crash tracking with circuit breaker, `vco dispatch`, `vco kill`, `vco relaunch` commands.
-**Addresses:** Agent spawning with isolation, crash recovery, agent termination (graceful and forced).
-**Avoids:** Crash recovery loops (Pitfall 2) by implementing crash classification and exponential backoff from the start.
+### Phase 2: Supervisor Foundation + GsdAgent
+**Rationale:** Supervisors need containers to supervise (Phase 1 dependency). GsdAgent is the highest-priority agent type and the riskiest absorption target (WorkflowOrchestrator). Combining supervisor foundation with GsdAgent means restart policy can be immediately tested against a real agent type. `python-statemachine 3.0.x` compound states make the nested FSM (outer RUNNING contains inner DISCUSS/PLAN/EXECUTE) clean.
+**Delivers:** `Supervisor` base with `one_for_one`, `all_for_one`, `rest_for_one` strategies and absorbed CrashTracker backoff/circuit breaker logic, `GsdAgent` with nested phase FSM, checkpoint-based crash recovery from `memory_store`, supervisor-level circuit breaker with {3, 600} restart intensity windows.
+**Uses:** `python-statemachine 3.0.x` for compound state machines
+**Avoids:** Triple state machine confusion (Pitfall 5), cascade restart from slow bootstrap (Pitfall 2 — configure intensity windows in the supervisor base, not per agent type)
 
-### Phase 3: Monitor Loop and Status
-**Rationale:** Depends on agent lifecycle (Phase 2). The monitor is the heartbeat -- without it, agents run unsupervised. Build this before Discord so it can be validated with terminal output alone.
-**Delivers:** 60s poll loop with liveness checks, stuck detection, PROJECT-STATUS.md generation and distribution, context sync to clones, `vco monitor` and `vco status` commands.
-**Addresses:** Liveness monitoring, stuck detection, shared status awareness, alert system (to log/terminal initially).
-**Avoids:** Monitor as SPOF (Pitfall 8) by using independent try/except per check and a heartbeat-file watchdog.
+### Phase 3: Remaining Agent Types + Health Tree
+**Rationale:** With containers and supervisor running, health reporting can be wired end-to-end. Remaining agent types (FulltimeAgent PM, ContinuousAgent, CompanyAgent Strategist) are independent of each other and lower integration risk than GsdAgent. Scheduler and health tree can be built and tested in isolation.
+**Delivers:** `HealthTree` aggregation with staggered-interval collection, Discord `!health` embed with color-coded status, `FulltimeAgent` (PM as container), `ContinuousAgent` (scheduled cycles with persistent schedule file), `CompanyAgent` (Strategist as container), `Scheduler` in CompanyRoot using ext.tasks loop pattern.
+**Avoids:** Thundering herd health aggregation (Pitfall 3 — stagger report intervals with jitter, debounce Discord pushes to 30s batches), lost scheduled wakes on bot restart (Pitfall 8 — persist schedule to disk, use ext.tasks loop not bare asyncio.sleep)
 
-### Phase 4: Discord Bot Core
-**Rationale:** Can be partially developed in parallel with Phase 2-3 since it reads from filesystem. But functionally depends on having agents and a monitor to command and observe. Establishes the communication channel needed for all subsequent features.
-**Delivers:** discord.py bot with Cogs, owner commands (!dispatch, !status, !kill, !relaunch, !integrate), #alerts channel integration, webhook posting utility.
-**Addresses:** Discord-native operation (differentiator), alert system (upgraded from terminal to Discord), operator control surface.
-**Avoids:** Discord gateway disconnects (Pitfall 4) by using async-only operations from day one.
+### Phase 4: CompanyRoot + ProjectSupervisor Integration
+**Rationale:** The highest integration-risk phase — modifies `VcoBot.on_ready()` entry point and requires v1/v2 coexistence. Comes after all container types are working and health tree is proven. The v1 MonitorLoop must continue running as safety net during this phase.
+**Delivers:** `CompanyRoot` (top-level supervisor), `ProjectSupervisor` (per-project), modified `VcoBot.on_ready()` creating CompanyRoot instead of flat component wiring. MonitorLoop demoted to HealthTree poller (safety net, no longer health authority). CLI dispatch commands route through CompanyRoot.
+**Avoids:** Broken callback wiring (Pitfall 4 — run ALL Phase 7 interaction regression tests before this phase lands; keep MonitorLoop safety net running)
 
-### Phase 5: Hooks and Plan Gate
-**Rationale:** Depends on Discord bot (Phase 4) for question routing and plan posting. This is where the system becomes autonomous -- agents can ask questions and get answers, plans are gated before execution.
-**Delivers:** AskUserQuestion hook (ask_discord.py), plan gate in monitor (detect PLAN.md, pause agent, post to Discord), plan approval/rejection UI in Discord.
-**Addresses:** Plan review gate (table stakes), question routing to humans, AskUserQuestion hook.
-**Avoids:** Hook silent failures (Pitfall 6) with defense-in-depth: try/except wrapper, OS-level timeout, guaranteed fallback. Partial plan reads (Pitfall 1) with completion markers.
+### Phase 5: Autonomy Features (Delegation + Living Backlog)
+**Rationale:** Highest-value differentiators but require the full supervision hierarchy and all agent types to be operational. Delegation without supervisor mediation would create uncontrolled spawning. Cap enforcement and depth counters must be in the protocol from the start.
+**Delivers:** `DelegationProtocol` (ContinuousAgent -> Supervisor -> spawn GsdAgent, with max_concurrent_agents cap from agents.yaml, depth counter rejecting depth >= 2), `MilestoneBacklog` (PM-managed with Pydantic-validated mutations, backlog diffs posted to #decisions), decoupled project/agent lifecycles with cascade termination (ProjectSupervisor.destroy() cascades to tmux panes, not just Python objects).
+**Avoids:** Unbounded agent spawning (Pitfall 6 — hard cap enforced at supervisor, PM-approval for cap+1 spawns), orphaned agents on teardown (Pitfall 7 — cascade destroy verified with `tmux list-panes` check in tests)
 
-### Phase 6: PM/Strategist Bot
-**Rationale:** Depends on Discord bot infrastructure (Phase 4) and hook system (Phase 5). This is the highest-value differentiator but also the most complex feature. Build after the manual-approval path works to provide a fallback.
-**Delivers:** Anthropic SDK integration, autonomous question answering with confidence scoring, automated plan review, owner escalation for low-confidence decisions.
-**Addresses:** PM/Strategist bot (top differentiator), confidence-based escalation, autonomous operation.
-**Avoids:** Strategist context saturation (Pitfall 5) by designing hierarchical context management with token budgets per section.
+### Phase 6: Event Bus + Callback Migration
+**Rationale:** Formalizes the event communication pattern that v1 callback chains need. The direct-reference callback pattern is already strained after Phase 4 integration; this phase replaces it cleanly. PROJECT-STATUS.md derivation from HealthTree eliminates status drift.
+**Delivers:** `ContainerEvent` typed event bus replacing MonitorLoop callbacks. AlertsCog, PlanReviewCog, WorkflowOrchestratorCog converted to event subscribers. PROJECT-STATUS.md derived from HealthTree (single source, multiple renderers — Discord embed, markdown file, CLI table).
+**Avoids:** Broken callback wiring (Pitfall 4, full resolution), triple state machine (Pitfall 5, full elimination of regex-based signal detection in WorkflowOrchestrator)
 
-### Phase 7: Integration Pipeline
-**Rationale:** Depends on agent lifecycle (Phase 2) and monitor (Phase 3) for knowing when agents complete. Used least frequently (only at milestone boundaries), so build after the continuous operation features.
-**Delivers:** Branch merge pipeline (ordered by dependency), automated test execution, conflict detection and reporting, PR creation via gh CLI, fix dispatch to responsible agent.
-**Addresses:** Branch-per-agent integration, automated test execution, merge conflict detection.
-**Avoids:** Late merge conflicts (Pitfall 3) by supporting frequent integration checks, not just milestone-end merges.
+### Phase 7: Discord UX Polish
+**Rationale:** All backend behavior is working by this phase. UX refinements are low-risk, high-visibility, and can be developed incrementally. Alert deduplication and three-tier delegation approval are needed before calling v2 "complete" from a usability standpoint.
+**Delivers:** Color-coded health embeds (green/yellow/red, collapsible per supervisor), single-alert-with-message-edits pattern for restart lifecycle events, three-tier delegation approval (auto-approve up to cap / PM-approve for cap+1 to cap+3 / owner-approve beyond), backlog diff notifications to #decisions.
+**Avoids:** Health tree Discord dump as unreadable raw text (UX pitfall), alert flooding from supervision events (UX pitfall)
 
-### Phase 8: Standup System and Polish
-**Rationale:** Quality-of-life features that enhance the system but are not required for core operation. Build last.
-**Delivers:** Structured standup command with threaded Discord output, /vco:checkin fire-and-forget reporting, per-agent Discord channels, INTERFACES.md contract management workflow.
-**Addresses:** Structured standups/checkins, per-agent channels, contract-driven coordination workflow.
+### Phase 8: Migration Cleanup
+**Rationale:** Delete v1 modules fully absorbed by v2, only after all integration tests pass for v2 equivalents. Low risk if previous phases have coverage; high risk without it.
+**Delivers:** Deletion of `orchestrator/workflow_orchestrator.py` (absorbed by GsdAgent), `orchestrator/crash_tracker.py` (absorbed by Supervisor), removal or simplification of `monitor/loop.py`. Full regression suite passing with zero v1 fallbacks active.
 
 ### Phase Ordering Rationale
 
-- **Phases 1-3 form the non-Discord core.** These can be fully tested from the terminal. An operator can dispatch agents, monitor them, and see status without Discord. This gives a working (if manual) system early.
-- **Phase 4 adds the communication channel.** Discord is the UI, but the system must work without it first. If the bot goes down, the CLI still works.
-- **Phases 5-6 add autonomy progressively.** Phase 5 enables plan gating with human review. Phase 6 upgrades to PM-automated review. This progression lets you validate the human-in-the-loop path before trusting the AI-in-the-loop path.
-- **Phase 7 is deliberately late.** Integration is infrequent and high-stakes. Building it after the continuous operation features (monitoring, gating, recovery) are solid means you have a safety net when integration fails.
-- **Phase 8 is polish.** Standups and checkins are valuable but not critical. The system is fully functional without them.
+- The FEATURES.md dependency chain dictates Phases 1-3: AgentContainer base first, supervisor + GsdAgent together (each is useless without the other), then specialized agent types.
+- Phase 4 (VcoBot integration) is deliberately placed after all container types are proven, maximizing coexistence time with v1. The safety net (MonitorLoop) should not be removed until v2 has survived real crashes.
+- Phases 5-7 are autonomy and polish — they require the full tree to be working but add no foundational dependencies on each other.
+- Phase 8 (cleanup) is always last. Deleting v1 before v2 is proven is the primary risk in any in-place migration.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 5 (Hooks and Plan Gate):** Claude Code hook system specifics (stdin/stdout JSON format, hook types available, elicitation support) need validation against current Claude Code documentation. The hook runs in the agent clone's environment, which creates execution context challenges.
-- **Phase 6 (PM/Strategist Bot):** Context management strategy needs detailed design. Token budgeting, rolling summarization, and confidence calibration are novel problems without established patterns. The Anthropic SDK's streaming API for Discord message editing needs prototyping.
+- **Phase 2 (GsdAgent + Supervisor):** WorkflowOrchestrator absorption is the highest-risk module boundary. Before implementation, map every state transition and callback in `orchestrator/workflow_orchestrator.py` to its GsdAgent equivalent. Walk the codebase to identify all consumers of WorkflowOrchestrator state.
+- **Phase 4 (CompanyRoot + Bot Integration):** `VcoBot.on_ready()` callback wiring is complex. Before implementation, audit every callback registered in `on_ready()` and trace its consumers. Missing one callback causes silent failures with no error in logs.
+- **Phase 5 (Delegation + Backlog):** The PM confidence scoring thresholds for auto-approve vs PM-approve vs owner-approve are not specified in existing code. Needs design work before implementation.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1 (Foundation):** Pydantic models, click CLI, git subprocess, tmux via libtmux -- all well-documented with abundant examples.
-- **Phase 2 (Agent Lifecycle):** Process spawning and management is standard. Circuit breaker pattern is well-established (Kubernetes CrashLoopBackOff).
-- **Phase 4 (Discord Bot Core):** discord.py Cog architecture is extensively documented with official examples.
-- **Phase 7 (Integration Pipeline):** Git merge operations via subprocess are straightforward. gh CLI for PR creation is well-documented.
+- **Phase 1 (Container Foundation):** Pure new code, no integration. asyncio.Queue patterns and per-agent SQLite are well-understood patterns with no ambiguity.
+- **Phase 3 (Health Tree):** Additive feature. HealthReport as Pydantic model + Rich terminal rendering + discord.py embed is standard and well-documented.
+- **Phase 7 (Discord UX):** discord.py embed patterns are established. UX decisions are product design, not technical research.
+- **Phase 8 (Cleanup):** Deletion is straightforward given integration tests. No research needed.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All packages verified on PyPI with current versions. Versions confirmed. No speculative choices. |
-| Features | HIGH | Feature landscape validated against 4 competing systems (Agent Teams, Overstory, Agent-MCP, OmniDaemon) and academic research on multi-agent error amplification. |
-| Architecture | HIGH | Layered architecture with filesystem-as-IPC and supervisor-process patterns are battle-tested in production systems. Build order derived from clear dependency analysis. |
-| Pitfalls | HIGH | Pitfalls cross-referenced against official documentation (Discord gateway, inotify manpage, Claude Code hooks) and production incident patterns (Kubernetes CrashLoopBackOff, tmux process lifecycle). |
+| Stack | HIGH | python-statemachine 3.0.0 verified (released Feb 2026, zero deps). aiosqlite 0.21.0 MEDIUM confidence on exact version (from training data — verify at implementation). All other additions are stdlib. Existing stack unchanged. |
+| Features | HIGH | Dependency graph is complete and grounded in existing codebase analysis. Four-phase MVP roadmap maps directly to the dependency chain. Anti-features are correctly identified with specific rationale. |
+| Architecture | HIGH | Component map is specific (named files, named classes, named methods). Build order grounded in dependency chains. Patterns are direct translations of Erlang/OTP to asyncio with concrete code examples. |
+| Pitfalls | HIGH | Pitfalls reference specific existing class/method names from the v1 codebase (not generic). Prevention strategies are concrete, phased, and include a "looks done but isn't" verification checklist. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Claude Code hook system behavior under crash:** What happens to a running hook (ask_discord.py) when the Claude Code session crashes? Does it become a zombie? Does Claude Code kill child processes on exit? Needs testing during Phase 5.
-- **libtmux API stability at 0.55.x:** The library is pre-1.0 with documented breaking changes between minor versions. The thin abstraction layer mitigates this, but the exact API surface needed (create session, create pane, send keys, get PID, capture output) should be validated against 0.55.x specifically during Phase 1.
-- **Discord rate limits under real agent load:** Theoretical analysis suggests 8+ agents will hit webhook rate limits, but the exact threshold depends on checkin frequency, question volume, and status update cadence. Needs empirical validation during Phase 4 with multiple agents.
-- **Strategist confidence calibration:** No established methodology for calibrating an LLM's self-assessed confidence on code review decisions. This will require iterative tuning during Phase 6. Start with a simple high/medium/low threshold and adjust based on owner override frequency.
-- **GSD resume-work reliability:** The /gsd:resume-work command is the linchpin of crash recovery. Its behavior when GSD state files are partially written or corrupt is unknown. Needs testing during Phase 2.
+- **Restart intensity defaults per agent type:** PITFALLS.md correctly identifies that GsdAgent (30-60s restart) and CompanyAgent (fast restart) need different `max_restart_intensity` configurations. Exact defaults not specified. Validate during Phase 2 planning by measuring actual Claude Code bootstrap time in the target environment.
+- **PM confidence scoring thresholds for delegation approval:** The three-tier approval system is conceptually specified but threshold values (what is "high confidence" for an auto-approve?) need design during Phase 5 planning.
+- **Scheduler persistence format and location:** PITFALLS.md recommends a JSON file for scheduled wake persistence but does not specify the schema or location (alongside agents.yaml? inside each agent's clone dir?). Decide during Phase 3 planning.
+- **aiosqlite current version:** STACK.md rates aiosqlite 0.21.0 as MEDIUM confidence (from training data). Verify with `pip index versions aiosqlite` at implementation time.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [discord.py 2.7.x](https://pypi.org/project/discord.py/) -- Bot framework, Cogs, gateway behavior
-- [anthropic 0.86.x](https://pypi.org/project/anthropic/) -- Strategist SDK
-- [libtmux 0.55.x](https://github.com/tmux-python/libtmux) -- tmux Python API
-- [click 8.2.x](https://pypi.org/project/click/) -- CLI framework
-- [Pydantic 2.11.x](https://pypi.org/project/pydantic/) -- Config validation
-- [uv 0.9.x](https://docs.astral.sh/uv/) -- Package management
-- [Discord Gateway docs](https://docs.discord.com/developers/events/gateway) -- Connection lifecycle, heartbeats
-- [Discord Rate Limits docs](https://discord.com/developers/docs/topics/rate-limits) -- Webhook and API rate limits
-- [inotify(7) manpage](https://man7.org/linux/man-pages/man7/inotify.7.html) -- Filesystem event pitfalls
-- [Claude Code Hooks reference](https://code.claude.com/docs/en/hooks) -- Hook system behavior
+- [python-statemachine PyPI](https://pypi.org/project/python-statemachine/) — version 3.0.0, zero deps, async support, StateChart compound states
+- [python-statemachine docs](https://python-statemachine.readthedocs.io/) — async auto-detection, compound states, SCXML compliance
+- [python-statemachine GitHub](https://github.com/fgmacedo/python-statemachine) — 3.0 release Feb 2026 confirmed
+- [Erlang OTP Design Principles](https://www.erlang.org/doc/system/design_principles.html) — supervision tree restart strategies, one_for_one/all_for_one/rest_for_one
+- [Learn You Some Erlang: Supervisors](https://learnyousomeerlang.com/supervisors) — restart intensity, escalation patterns, anti-patterns
+- [Elixir Supervisor documentation](https://hexdocs.pm/elixir/1.12/Supervisor.html) — strategy definitions and max_restarts semantics
+- [Kubernetes Health Probe patterns](https://www.oreilly.com/library/view/kubernetes-patterns-2nd/9781098131678/ch04.html) — self-reported liveness/readiness probes
+- Existing vCompany codebase — `bot/client.py`, `orchestrator/`, `monitor/`, `models/` (authoritative v1 baseline, HIGH confidence)
+- `VCO-ARCHITECTURE.md` — v1 design reference (HIGH confidence)
+- `.planning/PROJECT.md` — v2 milestone requirements (HIGH confidence)
+- Python asyncio stdlib — Task management, Queue, create_task patterns (HIGH confidence)
 
 ### Secondary (MEDIUM confidence)
-- [Anthropic: Building a C compiler with parallel Claudes](https://www.anthropic.com/engineering/building-c-compiler) -- Multi-agent coding patterns
-- [Chanl: Multi-Agent Patterns in Production](https://www.chanl.ai/blog/multi-agent-orchestration-patterns-production-2026) -- Hierarchical orchestration recommendation
-- [TDS: 17x Error Trap of Bag of Agents](https://towardsdatascience.com/why-your-multi-agent-system-is-failing-escaping-the-17x-error-trap-of-the-bag-of-agents/) -- Error amplification research
-- [Overstory](https://github.com/jayminwest/overstory) -- Tiered watchdog, SQLite mail patterns
-- [Agent-MCP](https://github.com/rinadelph/Agent-MCP) -- File locking, task assignment patterns
-- [Anthropic: Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) -- Context management strategies
-- [Azure: Scheduler Agent Supervisor pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/scheduler-agent-supervisor) -- Supervisor pattern reference
+- [Adopting Erlang: Supervision Trees](https://adoptingerlang.org/docs/development/supervision_trees/) — practical restart strategy guidance
+- [AI Agent Delegation Patterns](https://fast.io/resources/ai-agent-delegation-patterns/) — supervisor-worker delegation architectures
+- [Scheduling Agent Supervisor Pattern](https://www.geeksforgeeks.org/system-design/scheduling-agent-supervisor-pattern-system-design/) — scheduler + agent + supervisor coordination
+- [aiosqlite PyPI](https://pypi.org/project/aiosqlite/) — version 0.21.0 (training data; verify at implementation)
+- [httpx vs aiohttp comparison](https://www.speakeasy.com/blog/python-http-clients-requests-vs-httpx-vs-aiohttp) — dual sync/async capability
 
 ### Tertiary (LOW confidence)
-- [Clash: merge conflict detection](https://github.com/clash-sh/clash) -- Promising tool but unvalidated in this context
-- [Tmux orchestrator blog post](https://ktwu01.github.io/posts/2025/08/tmux-orchestrator/) -- Single author, limited detail
+- [bubus GitHub](https://github.com/browser-use/bubus) — reviewed and rejected as event bus option
+- [mode GitHub](https://github.com/ask/mode) — reviewed and rejected as supervision library (241 stars, unclear maintenance)
 
 ---
-*Research completed: 2026-03-25*
+*Research completed: 2026-03-27*
 *Ready for roadmap: yes*

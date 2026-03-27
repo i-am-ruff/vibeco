@@ -1,244 +1,230 @@
 # Feature Research
 
-**Domain:** Autonomous multi-agent software development orchestration
-**Researched:** 2026-03-25
-**Confidence:** HIGH
+**Domain:** Agent container architecture, supervision trees, and lifecycle management for autonomous multi-agent orchestration
+**Researched:** 2026-03-27
+**Confidence:** HIGH (core patterns well-established via Erlang/OTP, Kubernetes, systemd; applied to AI agent context with MEDIUM confidence)
 
 ## Feature Landscape
 
+This research targets the v2.0 milestone: replacing vCompany's flat agent model and external watchdog with a self-supervising container hierarchy. Features are evaluated against what exists (v1 flat dispatch + external monitor loop) and what the container architecture needs.
+
 ### Table Stakes (Users Expect These)
 
-Features that must work or the system is unusable. No credit for having them, but fatal if missing.
+Features that the container architecture MUST have or the refactor delivers no value over v1.
 
-#### Agent Lifecycle Management
+#### AgentContainer Base Abstraction
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Agent spawning with isolated workspaces | Agents editing the same files guarantees corruption. Isolation is the minimum viable coordination. | MEDIUM | Each agent gets its own repo clone with directory ownership defined in agents.yaml. Overstory and Agent-MCP both use this pattern. |
-| Agent liveness monitoring | Without liveness checks, a dead agent looks like a working one. The operator has no visibility. | MEDIUM | 60s poll cycle checking process status (tmux pane alive, PID running). Overstory uses a tiered watchdog: Tier 0 mechanical daemon, Tier 1 AI-assisted triage. |
-| Crash recovery with automatic relaunch | Claude Code sessions crash. Without auto-relaunch, a single crash stalls the entire pipeline until a human notices. | MEDIUM | Auto-restart with exponential backoff and a circuit breaker (max 3/hour, alert on 4th). Resume from last known state via /gsd:resume-work. Standard pattern across OmniDaemon, Kubernetes, systemd. |
-| Agent termination (graceful and forced) | Operator must be able to stop runaway agents immediately. No kill switch = no safety. | LOW | Graceful: signal agent to finish current task. Forced: kill tmux pane. Both must work. |
-| Process isolation | One agent crashing or looping must not affect others. Shared-process designs create cascading failures. | MEDIUM | Separate tmux panes, separate git clones, separate Claude Code sessions. OmniDaemon runs each agent in its own isolated process for exactly this reason. |
+| Feature | Why Expected | Complexity | Depends On (v1) |
+|---------|--------------|------------|------------------|
+| Lifecycle state machine (CREATING->RUNNING->SLEEPING->ERRORED->STOPPED->DESTROYED) | Without explicit states, the system guesses agent status from tmux pane liveness -- fragile and ambiguous. v1's `AgentEntry.status` has 5 ad-hoc strings; a proper FSM with validated transitions eliminates impossible states. | MEDIUM | `models/agent_state.py` AgentEntry (replace), `tmux/session.py` TmuxManager (wrap) |
+| State transition validation | Preventing invalid transitions (e.g., STOPPED->RUNNING without going through CREATING) catches bugs that silently corrupt agent state. Erlang supervisors enforce this; without it, the tree can't trust child state. | LOW | New code, no v1 dependency |
+| Context management per container | Each container must carry its own config (agent_id, owned dirs, GSD mode, system prompt path). v1 scatters this across agents.yaml parsing, dispatch_cmd, and clone_cmd. Centralizing it in the container means one place to query "what does this agent need?" | MEDIUM | `models/config.py` ProjectConfig/AgentConfig (reuse), `cli/dispatch_cmd.py` (absorb logic) |
+| Communication interface (send/receive messages) | Containers need a way to emit events (state changed, health report, task complete) and receive commands (stop, wake, new assignment). v1 uses callbacks on MonitorLoop -- works but couples everything to the monitor. Event-based decoupling is the whole point. | HIGH | `monitor/loop.py` callback pattern (replace with event bus) |
 
-#### Communication and Coordination
+#### Supervision Tree
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Shared status awareness (PROJECT-STATUS.md) | Agents working blind to each other's state produce contradictory or duplicate work -- the "passing ships problem." | MEDIUM | Monitor regenerates cross-agent status file and distributes to all clones every cycle. This is the shared scratchpad pattern identified as the structural fix for passing ships. |
-| Interface contracts (INTERFACES.md) | Without explicit API contracts between agent domains, integration is guaranteed to fail. Each agent invents its own assumptions. | MEDIUM | Single source of truth for boundaries. Change requests flow through PM approval before distribution. Mirrors the "context synchronization" pattern in production multi-agent systems. |
-| Agent-to-orchestrator status reporting | The orchestrator cannot make decisions (relaunch, reassign, integrate) without knowing agent state. | LOW | /vco:checkin command: fire-and-forget status post after each phase ships. Simple, unidirectional, low-overhead. |
+| Feature | Why Expected | Complexity | Depends On (v1) |
+|---------|--------------|------------|------------------|
+| Two-level hierarchy: CompanyRoot -> ProjectSupervisor -> agents | Flat supervision can't express "restart all agents in project X when the project supervisor dies" vs "restart just the crashed agent." Hierarchy encodes dependency scope. Without it, restart policies have no structure to operate on. | HIGH | `orchestrator/agent_manager.py` (replace), `monitor/loop.py` (absorb supervision duties) |
+| `one_for_one` restart strategy | The default: when one agent crashes, restart only that agent. This is what v1 does today via crash_tracker. Table stakes because most agents are independent (BACKEND doesn't need restart when FRONTEND crashes). | MEDIUM | `orchestrator/crash_tracker.py` (reuse backoff/circuit breaker logic, wrap in strategy) |
+| `all_for_one` restart strategy | When agents have tight coupling (e.g., shared state that becomes inconsistent if one agent restarts with stale context), restart all children. Required for the ProjectSupervisor level -- if the PM's context becomes stale, all agents under it may need fresh context injection. | MEDIUM | New code, but restart mechanics reuse crash_tracker |
+| `rest_for_one` restart strategy | When agents have ordered dependencies (B depends on A's output), restarting A should also restart B and everything after it. Encodes dependency ordering that v1 handles manually via "check PROJECT-STATUS.md." | MEDIUM | New code; dependency info comes from agents.yaml `consumes` field |
+| Max restart intensity (count/period) | Circuit breaker at the supervisor level: if a child crashes N times in M seconds, escalate to parent supervisor instead of looping. v1's crash_tracker has this (3 crashes/hour) but only at the agent level. The tree needs it at every level. | LOW | `orchestrator/crash_tracker.py` MAX_CRASHES_PER_HOUR (generalize) |
+| Child specification registry | The supervisor must know HOW to start each child (what type, what config, what restart policy). This replaces v1's implicit knowledge scattered across dispatch_cmd and agents.yaml parsing. | MEDIUM | `models/config.py` AgentConfig (extend with container type + restart policy) |
 
-#### Human-in-the-Loop
+#### Agent Type Specializations
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Plan review gate | Agents executing unreviewed plans can waste hours building the wrong thing. Plan gates are the minimum viable oversight. | HIGH | Monitor detects PLAN.md, pauses agent, posts to #plan-review, waits for PM/owner approval. This is the "calibrated autonomy" pattern: full autonomy for execution, human gate for strategy. LangGraph's checkpointing enables equivalent pause-resume. |
-| Question routing to humans | Agents that hang on unanswered questions block the entire pipeline. Questions must reach a human and return answers or timeouts. | MEDIUM | AskUserQuestion hook intercepts, routes through Discord, 10-min timeout with fallback. The PM/Strategist answers most questions autonomously; only low-confidence ones escalate to owner. |
-| Owner escalation for high-stakes decisions | Not all decisions are equal. Some require human judgment. Without escalation, the system either blocks on everything or lets bad decisions through. | MEDIUM | Strategist confidence scoring (high/medium/low) with automatic @Owner mention on low-confidence decisions. Maps to the "approval queue with threshold calibration" pattern from production HITL systems. |
+| Feature | Why Expected | Complexity | Depends On (v1) |
+|---------|--------------|------------|------------------|
+| GsdAgent: phase-driven lifecycle (IDLE->DISCUSS->PLAN->EXECUTE->UAT->SHIP) | The primary agent type. v1's WorkflowOrchestrator already tracks this state machine externally. Moving it INTO the agent container makes state authoritative (self-reported, not inferred from pane output). | HIGH | `orchestrator/workflow_orchestrator.py` WorkflowStage (absorb into GsdAgent internal FSM) |
+| GsdAgent: checkpoint at state transitions | If a GsdAgent crashes mid-execute, it should resume from the last checkpoint, not restart the entire phase. v1 has no checkpointing -- crash = restart from IDLE. | MEDIUM | New code; checkpoint data stored in agent's memory_store |
+| ContinuousAgent: scheduled wake/sleep cycles (WAKE->GATHER->ANALYZE->ACT->REPORT->SLEEP) | PM and monitor-like agents don't follow GSD phases. They wake on schedule, do a sweep, report, sleep. Without a distinct type, they'd be shoehorned into GsdAgent with hacks. | MEDIUM | `monitor/loop.py` cycle pattern (reuse as ContinuousAgent behavior) |
+| FulltimeAgent (PM): event-driven, alive for project duration | The PM reacts to plan submissions, escalations, health changes. It doesn't follow phases or cycles. It needs to stay alive and process an event queue. Without this type, PM logic stays bolted onto the Discord bot rather than being a first-class container. | HIGH | `strategist/pm.py` (wrap in container), `bot/cogs/plan_review.py` (becomes event source) |
+| CompanyAgent (Strategist): cross-project, event-driven | The Strategist spans projects and holds long-lived conversation context. It must survive project restarts. Without CompanyAgent, the Strategist's lifecycle is tangled with individual projects. | MEDIUM | `strategist/conversation.py` (wrap in container) |
 
-#### Monitoring and Observability
+#### Health Reporting
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Stuck agent detection | An agent spinning for 30+ minutes with no commits is wasting compute and blocking progress. Must be detected automatically. | MEDIUM | Monitor checks for commits in last 30 minutes. No commits = stuck. Alert + option to kill/relaunch. This catches infinite loops and context abandonment -- two top failure modes identified in agent observability research. |
-| Aggregate status dashboard | Operator needs a single view of all agents: who is working, who is stuck, who finished, what phase each is in. | MEDIUM | !status command in Discord assembles cross-agent state. PROJECT-STATUS.md serves as the persistent version. |
-| Alert system for failures | Silent failures are the worst failures. Crashes, stuck agents, repeated restarts must surface immediately. | LOW | Discord #alerts channel for crash notifications, stuck detection alerts, circuit breaker triggers. |
-
-#### Integration
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Branch-per-agent with merge pipeline | Agents must work on separate branches. Integration must be an explicit, orchestrated step -- not ad-hoc merges. | MEDIUM | Each agent commits to its own branch. Integration pipeline merges all branches, runs tests, identifies failures. This is the universal pattern -- Agent-MCP, Overstory, and every production system uses branch isolation. |
-| Automated test execution post-merge | Merging without testing is merging blind. Tests catch integration issues that no amount of contract design prevents. | MEDIUM | Run full test suite after merge. Report failures with attribution to specific agent branches. |
-| Merge conflict detection and reporting | When conflicts occur (and they will, despite file ownership), they must be surfaced clearly with enough context to resolve. | MEDIUM | Detect conflicts during merge, report to Discord with file list and conflict details. Human or PM decides resolution strategy. |
-
-#### Configuration
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Declarative agent roster (agents.yaml) | Hardcoded agent definitions make the system non-reusable. Configuration must be external and project-specific. | LOW | Agent ID, owned directories, shared_readonly, GSD mode, system prompts. Standard YAML config. |
-| Per-agent GSD configuration injection | Each agent needs appropriate autonomy settings. A research agent needs different GSD config than a frontend agent. | LOW | Inject yolo mode, assumption settings, system prompts into each clone's .gsd/ directory. |
+| Feature | Why Expected | Complexity | Depends On (v1) |
+|---------|--------------|------------|------------------|
+| Self-reported HealthReport per container | v1 infers health externally (is the pane alive? is the process stuck?). Self-reporting means the agent says "I'm healthy/degraded/failing" with structured data. Kubernetes proved this pattern: liveness + readiness probes from within the process are more reliable than external guessing. | MEDIUM | `monitor/checks.py` check_liveness/check_stuck (replace with self-report + fallback external check) |
+| Health tree aggregation | A ProjectSupervisor's health is the aggregate of its children's health. CompanyRoot's health is the aggregate of all ProjectSupervisors. This gives "docker ps for the whole system" -- the single-glance view that v1 lacks. | MEDIUM | New code; tree traversal aggregation |
+| Discord health status push | The owner needs to see health in Discord, not just terminal. v1 has AlertsCog for crashes; health tree extends this to show the full system state on demand (e.g., `!health` command). | LOW | `bot/cogs/alerts.py` (extend), `bot/embeds.py` (new embed format) |
 
 ### Differentiators (Competitive Advantage)
 
-Features that set vCompany apart from both Claude Code's built-in Agent Teams and manual multi-agent setups.
+Features that go beyond basic supervision and make vCompany's container architecture genuinely better than flat process management.
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| PM/Strategist bot as autonomous decision layer | Claude Code Agent Teams has a "team lead" but no persistent PM with project context that makes product decisions. The Strategist absorbs blueprint/milestone scope and answers agent questions without human involvement for high-confidence decisions. This is the "human-on-the-loop" pattern -- agents handle routine, humans handle edge cases. | HIGH | Requires Anthropic SDK integration, context management for large projects, confidence calibration. This is the hardest and highest-value feature. |
-| Discord-native operation | Competing approaches (Agent Teams, Overstory, oh-my-claudecode) are terminal-native. Discord means the owner can dispatch, monitor, and intervene from a phone. Async-first, not session-bound. | MEDIUM | Discord.py bot with structured channel layout. Not technically novel but operationally transformative -- breaks the "must be at your terminal" constraint. |
-| Contract-driven agent coordination | Most multi-agent systems use shared memory or message passing. INTERFACES.md is a higher-level abstraction: agents coordinate through explicit API contracts, not runtime messages. Changes require PM approval. This prevents the "cascading hallucination" problem where one agent's bad output propagates. | MEDIUM | The contract is a file, not a protocol. Simple to implement, powerful in effect. Agents read contracts at startup and when updated. |
-| Filesystem-level plan gating | Claude Code Agent Teams has no plan review mechanism. Plans execute immediately. vCompany's monitor detects PLAN.md creation and pauses the agent externally, which is more reliable than in-session hooks because it survives context loss. | MEDIUM | Monitor watches filesystem, creates a lock file or sends SIGSTOP, posts plan to Discord. Resumes on approval. More robust than hook-based gating. |
-| Project-agnostic orchestration | Most multi-agent coding tools are either framework-specific or require custom wiring per project. vCompany takes a blueprint + agents.yaml and orchestrates any project type. | LOW | This is a design constraint more than a feature -- but it becomes a differentiator when competing tools require per-project customization. |
-| Structured standup and checkin rituals | No competing system has formalized team rituals (standups, checkins) for AI agents. These create natural synchronization points and give the owner a narrative of progress, not just status. | LOW | /vco:standup triggers interactive group standup with threaded feedback. /vco:checkin is fire-and-forget after each phase. Lightweight but creates rhythm. |
-| Context-aware crash recovery | Basic crash recovery restarts the process. vCompany's recovery uses /gsd:resume-work to reload context and continue from the last phase -- not from scratch. Combined with PROJECT-STATUS.md distribution, a recovered agent knows what happened while it was down. | MEDIUM | Requires GSD's resume mechanism + fresh status injection. More sophisticated than simple process restart. |
+| Feature | Value Proposition | Complexity | Depends On |
+|---------|-------------------|------------|------------|
+| Living milestone backlog (PM-managed mutable queue) | v1 uses static ROADMAP.md -- agents consume phases in order, no runtime reordering. A mutable queue lets the PM insert urgent tasks, reorder priorities, and cancel stale work WITHOUT stopping agents. This is the difference between a build system and an autonomous development team. | HIGH | FulltimeAgent (PM) must be operational; needs AgentContainer communication interface |
+| Delegation protocol (continuous agents request task spawns) | A ContinuousAgent (e.g., QA monitor) discovers a regression and requests a fix-dispatch through its supervisor. v1 requires the human to dispatch fixes. Delegation makes the system self-healing for code issues, not just process issues. | HIGH | Supervision tree, ContinuousAgent type, child specification registry |
+| Decoupled project/agent lifecycles | In v1, killing an agent can leave project state inconsistent (half-written status, stale plan gate). Decoupling means: project state is owned by PM, agents read assignments and write completions via message passing. Agent crash never corrupts project state. | HIGH | FulltimeAgent (PM) as state owner, event-based communication |
+| Scheduler (timer-based WAKE for sleeping containers) | ContinuousAgents need to wake on schedule (e.g., every 30 min for monitoring sweeps). Without a scheduler, wake triggers are external cron jobs or manual -- defeating the self-contained tree model. | MEDIUM | CompanyRoot owns the scheduler; ContinuousAgent type must support SLEEPING state |
+| Agent memory_store (persistent per-agent key-value) | Agents lose all context on crash/restart. A persistent store lets them resume with memory of past decisions, checkpoints, learned patterns. Differentiator because most agent frameworks treat agents as stateless. | MEDIUM | AgentContainer base provides the interface; implementation is JSON file or SQLite per agent |
+| Graceful degradation with partial tree | If one ProjectSupervisor fails, other projects keep running. If one agent fails and circuit breaker opens, remaining agents continue. v1's monitor loop is a single point of failure -- if it crashes, all monitoring stops. The tree distributes supervision so no single failure is total. | MEDIUM | Two-level supervision hierarchy with independent supervisor loops |
+| Hot agent replacement | Swap an agent's configuration (new system prompt, different owned dirs) without destroying and recreating the entire container. Enables live reconfiguration during milestones. | MEDIUM | AgentContainer state machine must support CREATING->RUNNING transition with config reload |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that seem good but create problems. Deliberately NOT building these.
+Features that seem valuable but would add complexity without proportional benefit for vCompany's single-machine, Claude-Code-based context.
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Real-time agent-to-agent messaging | Feels natural -- "agents should talk to each other like team members." | Creates tight coupling, message storms, and the echo chamber effect where agents reinforce each other's errors. Research shows centralized designs contain errors better than decentralized "bag of agents" designs. Inter-agent chat also burns context tokens rapidly. | Indirect coordination through shared artifacts (PROJECT-STATUS.md, INTERFACES.md). Agents communicate through the orchestrator and shared files, not direct channels. |
-| Dynamic agent spawning based on workload | "The system should spin up more agents when there's more work." | Uncontrolled spawning exhausts machine resources (single-machine constraint), creates merge chaos with more branches, and makes the system unpredictable. Each new agent needs a clone, a tmux pane, and API quota. | Fixed agent roster in agents.yaml. The operator decides how many agents run. Scale is a human decision, not an automated one. |
-| Automatic merge conflict resolution | "AI should resolve its own merge conflicts." | LLM-resolved conflicts may compile but introduce subtle semantic errors. In multi-agent systems, conflicts often signal a contract violation -- the resolution is to fix the contract, not to guess at the merge. Auto-resolution hides the real problem. | Detect and report conflicts to Discord. Human or PM decides strategy. Fix the contract (INTERFACES.md) that allowed the conflict. |
-| Web UI / dashboard | "Discord is limiting -- build a proper web interface." | A web UI is a separate product. It doubles the surface area, requires hosting, authentication, state synchronization. Discord is already a real-time, multi-device, multi-user interface with threading, permissions, and notifications built in. | Discord is the interface. Invest in rich Discord messages (embeds, buttons, threads) rather than building a parallel UI. |
-| Multi-machine distributed agents | "Run agents across multiple machines for more parallelism." | Network partitions, distributed state, clock sync, SSH management -- each is a project unto itself. Single-machine is a massive simplification that eliminates entire categories of failure modes. | Single machine, v1. The architecture (agents.yaml, branch-per-agent) is compatible with future distribution, but don't build for it now. |
-| Full autonomy mode (no human gates) | "Remove the plan gate for speed -- trust the agents." | Without oversight, agents can waste hours on wrong approaches. The plan gate costs minutes but saves hours. Research consistently shows that "human-on-the-loop" outperforms full autonomy for complex tasks. The 17x error amplification in unsupervised multi-agent systems is well-documented. | Keep plan gate. Make PM/Strategist handle most approvals automatically. The human only sees low-confidence escalations. Speed comes from smarter automation, not removed oversight. |
-| Fine-grained task assignment by orchestrator | "The orchestrator should break down the milestone into specific tasks and assign them to agents." | This requires the orchestrator to understand the codebase deeply enough to decompose work -- which is the hard part of software engineering. Over-specifying tasks also removes agent autonomy, making them less effective. | Give agents ownership of directories/domains and milestone scope. Let GSD handle task decomposition within each agent's domain. The orchestrator coordinates, not micromanages. |
+| Dynamic agent auto-scaling | "Spawn more agents when work piles up" | Claude Code sessions are expensive ($), context-heavy, and compete for machine resources. Auto-scaling on a single machine hits CPU/memory limits fast. The PM should manage agent count explicitly, not an autoscaler. | PM decides agent count at milestone boundaries via living backlog; manual `!dispatch` for ad-hoc agents |
+| Agent-to-agent direct messaging | "Let BACKEND tell FRONTEND its API is ready" | Creates hidden coupling. Agent A's behavior now depends on messages from Agent B, making debugging and replay impossible. Erlang explicitly avoids this in supervision trees -- children communicate through the supervisor or shared state. | PROJECT-STATUS.md (existing), supervisor-mediated events, INTERFACES.md contract updates |
+| Distributed supervision across machines | "Run agents on multiple machines for more parallelism" | Adds network partitioning, clock sync, distributed consensus -- enormous complexity. vCompany v2 is explicitly single-machine. The supervision tree pattern works locally without any of this overhead. | Keep single-machine constraint; optimize agent count and scheduling instead |
+| Generic plugin/extension system for agent types | "Let users define custom agent types" | Four agent types (Gsd, Continuous, Fulltime, Company) cover all known use cases. A plugin system adds API surface to maintain, documentation burden, and backwards compatibility constraints before there's demand. | Hard-code the four types; add new types as needed in future milestones |
+| Real-time agent output streaming to Discord | "See what each agent is doing live" | Claude Code sessions produce enormous output. Streaming it to Discord would hit rate limits within seconds and flood channels with unreadable text. v1 learned this -- checkins and standups are the right granularity. | Periodic checkins (existing), `!status` command for on-demand snapshots, health tree for system view |
+| Centralized agent state database (SQLite/Postgres) | "Query agent history, build dashboards" | Adds a database dependency, migration tooling, and another failure mode. v1's filesystem state (agents.json, crash_log.json) works. The container model already gives structured state per container. | JSON files per container in a well-known directory; tree aggregation for queries; consider SQLite in v3 if query patterns demand it |
+| Preemptive task migration | "Move a task from a stuck agent to a healthy one" | Claude Code sessions carry accumulated context. You can't "move" a session -- you'd have to start fresh, losing all work. The correct response to a stuck agent is restart (with checkpoint) or escalate, not migrate. | Checkpoint-based restart within the same agent container; escalation to PM for reassignment |
 
 ## Feature Dependencies
 
 ```
-[Agent Spawning with Isolated Workspaces]
-    +--requires--> [Declarative Agent Roster (agents.yaml)]
-    +--requires--> [Per-agent GSD Configuration Injection]
+AgentContainer base (state machine, context, communication)
+    |
+    +---> Supervision tree (needs containers to supervise)
+    |         |
+    |         +---> Restart strategies (operate on supervised containers)
+    |         |
+    |         +---> Max restart intensity (supervisor-level circuit breaker)
+    |         |
+    |         +---> Child specification registry (how to create containers)
+    |
+    +---> Agent type specializations (extend AgentContainer)
+    |         |
+    |         +---> GsdAgent (needs base state machine + checkpoint)
+    |         |         |
+    |         |         +---> GsdAgent checkpoint (needs memory_store)
+    |         |
+    |         +---> ContinuousAgent (needs base + scheduler)
+    |         |         |
+    |         |         +---> Delegation protocol (ContinuousAgent requests spawns)
+    |         |
+    |         +---> FulltimeAgent/PM (needs base + event queue)
+    |         |         |
+    |         |         +---> Living milestone backlog (PM manages the queue)
+    |         |         |
+    |         |         +---> Decoupled lifecycles (PM owns project state)
+    |         |
+    |         +---> CompanyAgent/Strategist (needs base + cross-project scope)
+    |
+    +---> Health reporting (containers self-report)
+              |
+              +---> Health tree aggregation (supervisors aggregate children)
+              |
+              +---> Discord health push (display aggregated tree)
 
-[Crash Recovery]
-    +--requires--> [Agent Liveness Monitoring]
-    +--requires--> [Agent Spawning] (to relaunch)
+Scheduler (timer in CompanyRoot)
+    +---> ContinuousAgent WAKE triggers
 
-[Plan Review Gate]
-    +--requires--> [Agent Liveness Monitoring] (to detect PLAN.md)
-    +--requires--> [Discord Bot] (to post for review)
-    +--requires--> [PM/Strategist Bot] (to review plans)
-
-[PM/Strategist Bot]
-    +--requires--> [Discord Bot] (as communication channel)
-    +--requires--> [Question Routing] (to receive agent questions)
-
-[Integration Pipeline]
-    +--requires--> [Branch-per-Agent]
-    +--requires--> [Automated Test Execution]
-    +--requires--> [Merge Conflict Detection]
-
-[Shared Status Awareness]
-    +--requires--> [Agent Liveness Monitoring] (monitor generates status)
-    +--requires--> [Agent-to-Orchestrator Reporting] (agents report state)
-
-[Stuck Detection]
-    +--requires--> [Agent Liveness Monitoring]
-    +--enhances--> [Crash Recovery] (stuck = soft crash)
-
-[Structured Standups]
-    +--enhances--> [Shared Status Awareness]
-    +--requires--> [Discord Bot]
-
-[Owner Escalation]
-    +--requires--> [PM/Strategist Bot] (confidence scoring)
-    +--requires--> [Discord Bot] (@Owner mention)
-
-[Contract-Driven Coordination]
-    +--enhances--> [Integration Pipeline] (fewer conflicts)
-    +--enhances--> [Shared Status Awareness] (clearer boundaries)
+Agent memory_store
+    +---> GsdAgent checkpoint
+    +---> ContinuousAgent persistent memory
 ```
 
 ### Dependency Notes
 
-- **Plan Review Gate requires PM/Strategist Bot:** The PM reviews plans before they reach the owner. Without the PM, every plan needs human review, which defeats autonomous operation.
-- **Crash Recovery requires Liveness Monitoring:** You cannot recover what you cannot detect. The monitor loop is the foundation for all reactive features.
-- **Integration Pipeline requires Branch-per-Agent:** Integration is meaningless without branch isolation. The merge step assumes independent branches.
-- **PM/Strategist Bot requires Discord Bot:** The Strategist communicates entirely through Discord. No bot = no Strategist.
-- **Stuck Detection enhances Crash Recovery:** A stuck agent is a soft failure. Detection feeds into the same recovery pipeline as hard crashes.
+- **AgentContainer base is the foundation.** Nothing else works without it. Build first.
+- **Supervision tree requires AgentContainer** because supervisors manage container instances. Can't test restart policies without real containers to restart.
+- **Agent types require AgentContainer** because they extend the base class. GsdAgent is highest priority since it replaces the existing workflow.
+- **Health reporting requires AgentContainer** because containers self-report. External health checks (v1 pattern) can serve as fallback during migration.
+- **Living milestone backlog requires FulltimeAgent (PM)** because the PM manages the queue. Without PM-as-container, the backlog has no owner.
+- **Delegation protocol requires ContinuousAgent + supervision tree** because delegation flows through the supervisor. Needs both to be operational.
+- **memory_store is a cross-cutting concern** used by GsdAgent (checkpoints) and ContinuousAgent (persistent state). Build early as a simple abstraction; implementations can evolve.
+- **Scheduler is independent** but useless without ContinuousAgent to wake. Can be built alongside ContinuousAgent.
 
 ## MVP Definition
 
-### Launch With (v1)
+### Phase 1: Foundation (Build First)
 
-Minimum viable product -- what's needed to validate that multi-agent orchestration produces working integrated code.
+- [ ] AgentContainer base with lifecycle state machine -- without this, nothing else exists
+- [ ] State transition validation -- prevents impossible states from day one
+- [ ] Context management per container -- centralizes scattered config
+- [ ] Agent memory_store (simple JSON key-value) -- needed by checkpoints in Phase 2
+- [ ] Child specification registry -- supervisors need to know how to create children
 
-- [x] Agent spawning with isolated clones and directory ownership -- the foundation
-- [x] agents.yaml configuration with per-agent GSD injection -- makes it project-agnostic
-- [x] tmux session management (one pane per agent + monitor) -- process isolation
-- [x] Monitor loop: liveness check, stuck detection, status regeneration -- the heartbeat
-- [x] Crash recovery with circuit breaker (3 restarts/hour) -- resilience
-- [x] Branch-per-agent with integration pipeline (merge + test) -- the payoff
-- [x] Discord bot with !dispatch, !status, !kill, !relaunch, !integrate -- operator control
-- [x] AskUserQuestion hook routing through Discord -- prevents terminal hang
-- [x] Plan review gate with Discord posting -- minimum viable oversight
-- [x] PROJECT-STATUS.md generation and distribution -- agent coordination
-- [x] INTERFACES.md contract system -- prevents integration chaos
-- [x] #alerts channel for crashes and stuck agents -- failure visibility
+### Phase 2: Core Tree (Build Second)
 
-### Add After Validation (v1.x)
+- [ ] Two-level supervision hierarchy (CompanyRoot -> ProjectSupervisor -> agents) -- the structural backbone
+- [ ] `one_for_one` restart strategy -- the default, covers 80% of cases
+- [ ] Max restart intensity at supervisor level -- prevents crash loops at tree level
+- [ ] GsdAgent type with internal state machine -- replaces WorkflowOrchestrator's external tracking
+- [ ] GsdAgent checkpointing -- crash recovery that doesn't lose work
+- [ ] Self-reported HealthReport per container -- containers declare their own health
 
-Features to add once core orchestration is proven to work.
+### Phase 3: Specialized Types (Build Third)
 
-- [ ] PM/Strategist bot -- add when plan reviews and agent questions are overwhelming the human owner
-- [ ] Confidence-based owner escalation -- add alongside Strategist
-- [ ] Structured standups and checkins -- add when running multi-day milestones where progress narrative matters
-- [ ] Per-agent Discord channels (#agent-{id}) -- add when agent logs in #alerts become noisy
-- [ ] Role-based access control on Discord commands -- add when multiple humans interact with the system
-- [ ] Merge conflict detection with attribution -- add when file ownership boundaries prove insufficient
+- [ ] ContinuousAgent with wake/sleep cycles -- enables monitor-as-agent
+- [ ] FulltimeAgent (PM) with event queue -- PM becomes a first-class container
+- [ ] Scheduler in CompanyRoot -- drives ContinuousAgent WAKE triggers
+- [ ] Health tree aggregation + Discord push -- "docker ps" for the system
+- [ ] `all_for_one` and `rest_for_one` restart strategies -- handle coupled agents
 
-### Future Consideration (v2+)
+### Phase 4: Autonomy (Build Last)
 
-Features to defer until the core system is battle-tested.
+- [ ] Living milestone backlog (PM-managed mutable queue) -- dynamic work management
+- [ ] Delegation protocol -- continuous agents request task spawns
+- [ ] Decoupled project/agent lifecycles -- crash isolation guarantee
+- [ ] CompanyAgent (Strategist) as container -- cross-project lifecycle
+- [ ] Communication interface (event bus replacing MonitorLoop callbacks) -- clean decoupling
 
-- [ ] Strategist context summarization for large projects -- defer until context limits are actually hit
-- [ ] Sophisticated crash analysis (why did it crash, not just that it crashed) -- defer until crash patterns are understood
-- [ ] Agent performance metrics and analytics -- defer until there's enough history to analyze
-- [ ] Multi-project concurrent orchestration -- defer until single-project is solid
+### Defer to v3+
+
+- [ ] Hot agent replacement -- useful but not critical for initial container architecture
+- [ ] Graceful degradation with partial tree -- implicit in the design but explicit testing/hardening can wait
+- [ ] Agent performance metrics and historical tracking -- needs query patterns to emerge first
 
 ## Feature Prioritization Matrix
 
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| Agent spawning + isolation | HIGH | MEDIUM | P1 |
-| agents.yaml + GSD injection | HIGH | LOW | P1 |
-| Monitor loop (liveness, stuck, status) | HIGH | MEDIUM | P1 |
-| Crash recovery + circuit breaker | HIGH | MEDIUM | P1 |
-| Discord bot (core commands) | HIGH | MEDIUM | P1 |
-| Branch-per-agent + integration pipeline | HIGH | MEDIUM | P1 |
-| AskUserQuestion hook | HIGH | MEDIUM | P1 |
-| Plan review gate | HIGH | HIGH | P1 |
-| PROJECT-STATUS.md distribution | MEDIUM | MEDIUM | P1 |
-| INTERFACES.md contracts | MEDIUM | LOW | P1 |
-| PM/Strategist bot | HIGH | HIGH | P2 |
-| Owner escalation (confidence scoring) | MEDIUM | MEDIUM | P2 |
-| Structured standups/checkins | MEDIUM | LOW | P2 |
-| Per-agent Discord channels | LOW | LOW | P2 |
-| Role-based access control | LOW | MEDIUM | P2 |
-| Strategist context summarization | MEDIUM | HIGH | P3 |
-| Agent performance analytics | LOW | MEDIUM | P3 |
-
-**Priority key:**
-- P1: Must have for launch -- system does not function without these
-- P2: Should have, add when core is validated and working
-- P3: Nice to have, future consideration after battle-testing
+| Feature | User Value | Implementation Cost | Priority | Phase |
+|---------|------------|---------------------|----------|-------|
+| AgentContainer base + state machine | HIGH | MEDIUM | P1 | 1 |
+| State transition validation | HIGH | LOW | P1 | 1 |
+| Context management per container | HIGH | MEDIUM | P1 | 1 |
+| memory_store (JSON key-value) | MEDIUM | LOW | P1 | 1 |
+| Child specification registry | HIGH | MEDIUM | P1 | 1 |
+| Two-level supervision hierarchy | HIGH | HIGH | P1 | 2 |
+| `one_for_one` restart strategy | HIGH | MEDIUM | P1 | 2 |
+| Max restart intensity (tree-level) | HIGH | LOW | P1 | 2 |
+| GsdAgent with internal FSM | HIGH | HIGH | P1 | 2 |
+| GsdAgent checkpointing | MEDIUM | MEDIUM | P1 | 2 |
+| Self-reported HealthReport | HIGH | MEDIUM | P1 | 2 |
+| ContinuousAgent | MEDIUM | MEDIUM | P2 | 3 |
+| FulltimeAgent (PM) | HIGH | HIGH | P2 | 3 |
+| Scheduler | MEDIUM | LOW | P2 | 3 |
+| Health tree aggregation + Discord | MEDIUM | MEDIUM | P2 | 3 |
+| `all_for_one` / `rest_for_one` | LOW | MEDIUM | P2 | 3 |
+| Living milestone backlog | HIGH | HIGH | P2 | 4 |
+| Delegation protocol | MEDIUM | HIGH | P2 | 4 |
+| Decoupled lifecycles | HIGH | HIGH | P2 | 4 |
+| CompanyAgent (Strategist) | MEDIUM | MEDIUM | P2 | 4 |
+| Event bus (replace callbacks) | MEDIUM | HIGH | P2 | 4 |
 
 ## Competitor Feature Analysis
 
-| Feature | Claude Code Agent Teams | Overstory | Agent-MCP | vCompany Approach |
-|---------|------------------------|-----------|-----------|-------------------|
-| Agent isolation | Separate context windows, shared filesystem | Separate processes, tiered watchdog | File-level locking | Separate repo clones with directory ownership |
-| Communication | Direct teammate messaging | SQLite mail system (WAL mode) | Shared task board | Indirect via shared artifacts (STATUS, INTERFACES) |
-| Human oversight | None built-in | Not specified | Not specified | Plan gate + PM/Strategist + owner escalation |
-| Crash recovery | Session-level only | Auto-restart with crash protection | Not specified | Auto-relaunch with /gsd:resume-work + circuit breaker |
-| Integration | Not applicable (shared workspace) | Git-based with branch management | File locking prevents conflicts | Branch-per-agent + merge pipeline + test execution |
-| Operator interface | Terminal | Terminal/CLI | Terminal | Discord (async, multi-device) |
-| Configuration | Settings.json flag | YAML config | JSON config | agents.yaml + per-agent GSD injection |
-| Stuck detection | Not built-in | Tiered watchdog system | Not specified | Commit-based stuck detection (30min threshold) |
-| Project agnostic | Yes (general purpose) | Yes (pluggable adapters) | Partially (needs custom setup) | Yes (blueprint + agents.yaml) |
-| Autonomous PM | No | No | No | Yes (Strategist bot with confidence scoring) |
-
-**Key competitive insight:** No existing system combines an autonomous PM layer with Discord-native operation. Claude Code Agent Teams is the closest competitor but is terminal-bound and lacks plan oversight. Overstory has the best observability (tiered watchdog) but no human-in-the-loop patterns. vCompany's differentiator is the full loop: autonomous operation with calibrated human oversight, operable from anywhere.
+| Feature | Erlang/OTP | Kubernetes | systemd | vCompany v2 Approach |
+|---------|------------|------------|---------|---------------------|
+| Supervision hierarchy | Native -- supervisors supervise supervisors, unlimited depth | Controllers -> Pods, two-level | Unit dependencies, flat | Two-level: CompanyRoot -> ProjectSupervisor -> agents. Sufficient for single-machine multi-project. |
+| Restart strategies | one_for_one, all_for_one, rest_for_one, simple_one_for_one | Always restart (configurable backoff) | Restart=always/on-failure/no | All three OTP strategies. simple_one_for_one not needed (agents are heterogeneous). |
+| Health checking | Process links + monitors (crash propagation) | Liveness + readiness probes (HTTP/TCP/exec) | Watchdog timer | Self-reported HealthReport (like K8s probes) + fallback external tmux check (like systemd watchdog) |
+| State persistence | ETS/DETS/Mnesia | etcd, ConfigMaps, PersistentVolumes | Journal, state directory | Per-agent JSON memory_store. Simple, file-based, no external dependency. |
+| Dynamic children | DynamicSupervisor (simple_one_for_one) | ReplicaSet, HPA | Template units | Child spec registry + `!dispatch` command. PM requests, supervisor creates. |
+| Lifecycle states | Started/running/terminated | Pending/Running/Succeeded/Failed/Unknown | inactive/activating/active/deactivating/failed | CREATING/RUNNING/SLEEPING/ERRORED/STOPPED/DESTROYED -- richer than K8s, simpler than systemd |
+| Task delegation | gen_server:call/cast between processes | Job/CronJob resources, operator pattern | Socket activation, D-Bus | Delegation protocol: ContinuousAgent -> Supervisor -> spawn GsdAgent. Mediated, not direct. |
+| Scheduled execution | timer module, cron-like libraries | CronJob resource | Timer units | Scheduler in CompanyRoot triggers WAKE on sleeping ContinuousAgents |
 
 ## Sources
 
-- [Anthropic: Building a C compiler with parallel Claudes](https://www.anthropic.com/engineering/building-c-compiler) -- Anthropic's own multi-agent coding case study
-- [Claude Code Agent Teams Docs](https://code.claude.com/docs/en/agent-teams) -- Official documentation for competing built-in feature
-- [Chanl: Multi-Agent Patterns That Work in Production](https://www.chanl.ai/blog/multi-agent-orchestration-patterns-production-2026) -- Production pattern analysis, hierarchical orchestration recommendation
-- [Towards Data Science: 17x Error Trap of Bag of Agents](https://towardsdatascience.com/why-your-multi-agent-system-is-failing-escaping-the-17x-error-trap-of-the-bag-of-agents/) -- Error amplification in decentralized multi-agent systems
-- [Overstory: Multi-agent orchestration for AI coding agents](https://github.com/jayminwest/overstory) -- Tiered watchdog, SQLite mail system patterns
-- [Agent-MCP: Multi-agent via Model Context Protocol](https://github.com/rinadelph/Agent-MCP) -- File-level locking, task assignment patterns
-- [GoCodeo: Collaborative Coding with AI](https://www.gocodeo.com/post/collaborative-coding-with-ai-managing-multiple-agents-generating-code) -- Merge strategy, file ownership, coordination patterns
-- [MyEngineeringPath: Human-in-the-Loop Patterns 2026](https://myengineeringpath.dev/genai-engineer/human-in-the-loop/) -- Calibrated autonomy, threshold recalibration
-- [OmniDaemon: Event-Driven Runtime for AI Agents](https://github.com/omnirexflora-labs/OmniDaemon) -- Process isolation, auto-restart, crash protection patterns
-- [Deloitte: AI Agent Orchestration](https://www.deloitte.com/us/en/insights/industry/technology/technology-media-and-telecom-predictions/2026/ai-agent-orchestration.html) -- Human-in/on/out-of-the-loop autonomy spectrum
-- [Microsoft Multi-Agent Reference Architecture: Observability](https://microsoft.github.io/multi-agent-reference-architecture/docs/observability/Observability.html) -- Agent observability patterns
-- [Claude Code Hooks Multi-Agent Observability](https://github.com/disler/claude-code-hooks-multi-agent-observability) -- Hook-based monitoring for Claude Code agents
+- [Erlang OTP Design Principles](https://www.erlang.org/doc/system/design_principles.html) -- supervision tree fundamentals (HIGH confidence)
+- [Adopting Erlang -- Supervision Trees](https://adoptingerlang.org/docs/development/supervision_trees/) -- practical restart strategy guidance (HIGH confidence)
+- [Elixir Supervisor documentation](https://hexdocs.pm/elixir/1.12/Supervisor.html) -- strategy definitions and max_restarts (HIGH confidence)
+- [Kubernetes Health Probe patterns](https://www.oreilly.com/library/view/kubernetes-patterns-2nd/9781098131678/ch04.html) -- liveness/readiness self-reporting (HIGH confidence)
+- [Deloitte: AI Agent Orchestration](https://www.deloitte.com/us/en/insights/industry/technology/technology-media-and-telecom-predictions/2026/ai-agent-orchestration.html) -- supervision and autonomy spectrum (MEDIUM confidence)
+- [AI Agent Delegation Patterns](https://fast.io/resources/ai-agent-delegation-patterns/) -- supervisor-worker delegation architectures (MEDIUM confidence)
+- [Scheduling Agent Supervisor Pattern](https://www.geeksforgeeks.org/system-design/scheduling-agent-supervisor-pattern-system-design/) -- scheduler + agent + supervisor coordination (MEDIUM confidence)
+- [Learn You Some Erlang: Supervisors](https://learnyousomeerlang.com/supervisors) -- restart intensity and escalation (HIGH confidence)
 
 ---
-*Feature research for: Autonomous multi-agent software development orchestration*
-*Researched: 2026-03-25*
+*Feature research for: Agent container architecture (vCompany v2.0)*
+*Researched: 2026-03-27*

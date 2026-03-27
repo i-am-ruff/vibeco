@@ -1,215 +1,186 @@
-# Stack Research
+# Stack Research: Agent Container Architecture Additions
 
-**Domain:** Python CLI orchestrator + Discord bot for multi-agent Claude Code management
-**Researched:** 2026-03-25
+**Domain:** Supervision trees, state machines, persistent agent memory, scheduling, event-driven communication for Python asyncio orchestrator
+**Researched:** 2026-03-27
 **Confidence:** HIGH
 
-## Recommended Stack
+**Scope:** This document covers ONLY new stack additions/changes for v2.0 container architecture. The existing validated stack (discord.py, click, libtmux, pydantic, httpx, watchfiles, etc.) is unchanged and not re-evaluated here.
 
-### Core Technologies
+## New Dependencies
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| Python | 3.12+ | Runtime | 3.12 has significant performance improvements (up to 5% faster) and better error messages. 3.11 is the floor per PROJECT.md but 3.12 is the target. Xubuntu 24.04 ships 3.12. |
-| discord.py | 2.7.x | Discord bot framework | The standard Python Discord library. Async-native, actively maintained, supports slash commands, message components, threads, webhooks. No credible alternative exists for Python Discord bots. |
-| anthropic | 0.86.x | Claude API for PM/Strategist | Official Anthropic SDK. Required for the Strategist bot that answers agent questions and reviews plans. Pin to ~0.86 but expect frequent updates. |
-| click | 8.2.x | CLI framework for `vco` | Battle-tested, 38.7% market share in Python CLIs. Decorator-based command groups map perfectly to `vco init`, `vco dispatch`, `vco status`, etc. Mature plugin ecosystem. |
-| libtmux | 0.55.x | tmux session management | Typed Python API over tmux. Create/destroy sessions, send keys to panes, read pane output. Exactly what `vco dispatch` and `vco monitor` need for agent session lifecycle. **Pin tightly** -- pre-1.0 with breaking API changes. |
-| PyYAML | 6.0.x | agents.yaml parsing | Standard YAML parser for Python. agents.yaml is the core configuration format. Use `yaml.safe_load()` always. |
-| Rich | 14.2.x | Terminal output formatting | Tables, progress bars, colored output for `vco status`, `vco standup`, monitor logs. Makes CLI output readable without a web UI. |
-
-### Database / State
+### State Machines: python-statemachine 3.0.x
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| Filesystem (YAML/Markdown) | N/A | All state storage | vCompany state lives in files: agents.yaml, PROJECT-STATUS.md, ROADMAP.md, git logs. No database needed. This is correct -- adding SQLite or similar would add complexity with zero value for a single-machine orchestrator. |
+| python-statemachine | 3.0.0 | Agent lifecycle state machines (CREATING->RUNNING->SLEEPING->ERRORED->STOPPED->DESTROYED) and GsdAgent internal states (IDLE->DISCUSS->PLAN->EXECUTE->UAT->SHIP) | Native async support (auto-detects async callbacks), zero runtime dependencies, SCXML-compliant statechart support for compound/parallel states, declarative Pythonic API, Pydantic-compatible. Production-stable, released Feb 2026, Python 3.9+. |
 
-### Infrastructure / Runtime
+**Why python-statemachine over transitions:** `transitions` (0.9.3) still supports Python 2.7 which signals legacy-compatibility burden. Its async support exists but is bolted on via `AsyncMachine` subclass rather than auto-detected. python-statemachine 3.0 was redesigned from scratch with statechart semantics (compound states, parallel regions, history pseudo-states) which maps directly to the nested container/supervisor hierarchy. The declarative class-based API is cleaner for the 4+ distinct state machine types we need.
+
+**Why python-statemachine over hand-rolled:** The container architecture defines at least 5 state machines (AgentContainer base, GsdAgent, ContinuousAgent, FulltimeAgent, CompanyAgent) each with transition guards, side effects, and error handling. A library provides: validated transition logic, event queuing, error-as-event handling (StateChart catches exceptions and routes them as `error.execution` events -- exactly what supervision needs), and testability via `send("event")`. Hand-rolling 5 state machines means reimplementing all of this.
+
+**Key integration point:** State machine transitions emit events. These events drive the supervision tree (health changes, error states, completion signals). The library's callback system (`on_enter_state`, `on_exit_state`, `on_transition`) maps directly to supervisor notification hooks.
+
+### Persistent Agent Memory: SQLite (stdlib) + aiosqlite 0.21.x
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| tmux | 3.4+ | Agent session management | Each agent runs in a tmux pane. Monitor checks liveness via tmux. Ubuntu 24.04 ships tmux 3.4. |
-| Git | 2.43+ | Agent isolation and integration | Each agent gets a full clone. Branches for isolation, merging for integration. Ubuntu 24.04 ships 2.43. |
-| GitHub CLI (gh) | 2.x | GitHub operations | Used by agents and potentially by `vco integrate` for PR creation. Already a dependency of GSD. |
-| Node.js | 22 LTS | Claude Code / GSD runtime | Claude Code and GSD run on Node. Not a Python dependency but a system requirement. |
-| uv | 0.9.x | Python package/project management | 10-100x faster than pip. Handles venv creation, dependency resolution, lockfiles. Use `uv` for the project from day one instead of pip + venv + pip-tools. |
+| sqlite3 (stdlib) | N/A | Per-agent key-value store backing, checkpoint storage | Zero-dependency, ACID-compliant, single-file-per-agent, built into Python. Perfect for per-agent memory_store that survives restarts. |
+| aiosqlite | 0.21.0 | Async SQLite wrapper for use within asyncio event loop | Thin wrapper around stdlib sqlite3 using thread executor. Does not replace sqlite3 -- just makes it non-blocking in async contexts. Actively maintained, minimal API surface. |
 
-### Supporting Libraries
+**Why SQLite over JSON files:** PROJECT.md's v1 decision to avoid databases was correct for v1 (state = markdown files read by agents). v2 is different: agent memory_store needs atomic writes (checkpoint at state transitions), key-value lookups, and data that grows over time (decision history, learned patterns). JSON files require read-modify-write with file locking. SQLite gives ACID atomicity, concurrent read access, and built-in WAL mode for non-blocking reads -- all for zero additional dependencies (stdlib). Each agent gets its own `.db` file, maintaining the isolation model.
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| pydantic | 2.11.x | Data validation and config models | Model agents.yaml schema, Discord webhook payloads, monitor state. Type-safe configuration prevents runtime surprises. |
-| pydantic-settings | 2.13.x | Environment/dotenv config | Load Discord bot token, Anthropic API key, and other secrets from .env files. Validates on startup -- fail fast on missing config. |
-| httpx | 0.28.x | HTTP client (async + sync) | Discord webhook calls from agents (ask_discord.py). Prefer over aiohttp because vco CLI needs sync calls too, and httpx handles both. Prefer over requests because httpx is async-capable. |
-| watchfiles | 0.24.x | File system monitoring | Monitor loop watches for new PLAN.md files (plan gate trigger). Rust-backed, faster than watchdog, native async support. |
-| asyncio (stdlib) | N/A | Async orchestration | discord.py is async-native. The Strategist bot, monitor loop, and webhook handlers all benefit from asyncio. Part of stdlib -- no install needed. |
-| subprocess / asyncio.subprocess | N/A | Process spawning | Dispatch Claude Code sessions, run git commands, invoke GSD. Use `asyncio.create_subprocess_exec` in async contexts (bot, monitor), `subprocess.run` in sync CLI commands. |
-| pathlib (stdlib) | N/A | Path manipulation | All file path operations for clones, context files, config. Type-safe, cross-platform (though we only target Linux). |
-| dataclasses (stdlib) | N/A | Simple data containers | Internal state objects that don't need Pydantic validation overhead. Use for monitor state, agent status tracking. |
+**Why NOT a shared database:** Each agent's memory_store is its own SQLite file in the agent's directory. No shared database, no connection pooling, no schema migrations across agents. This preserves the isolation principle from v1. The supervisor reads agent state via the supervision tree API, not by querying agent databases.
 
-### Development Tools
-
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| uv | Package management + venv | `uv init`, `uv add`, `uv sync`. Replaces pip, pip-tools, virtualenv, pyproject.toml management. |
-| ruff | Linting + formatting | Single tool replaces flake8 + black + isort. Fast (Rust-based). Configure in pyproject.toml. |
-| pytest | Testing | Standard Python test runner. Use pytest-asyncio for testing async bot/monitor code. |
-| pytest-asyncio | Async test support | Required for testing discord.py bot handlers and async monitor functions. |
-| mypy | Type checking | Optional but recommended. Pydantic models + type hints catch bugs early. Use `--strict` mode. |
-
-## Project Structure
-
-```
-vcompany/
-  pyproject.toml          # uv project config, dependencies, tool settings
-  uv.lock                 # Locked dependency versions
-  src/
-    vco/
-      __init__.py
-      cli.py              # click CLI entry point
-      commands/            # One module per vco command group
-        init.py
-        clone.py
-        dispatch.py
-        monitor.py
-        integrate.py
-        status.py
-        standup.py
-      config/
-        models.py          # Pydantic models for agents.yaml, settings
-        settings.py        # pydantic-settings for env vars
-      agent/
-        session.py         # libtmux session management
-        dispatch.py        # Agent spawning logic
-        recovery.py        # Crash detection and relaunch
-      git/
-        operations.py      # Clone, branch, merge operations (subprocess)
-      discord/
-        bot.py             # Strategist bot (discord.py)
-        webhooks.py        # Webhook helpers
-        channels.py        # Channel management
-      hooks/
-        ask_discord.py     # AskUserQuestion hook (standalone script)
-        plan_gate.py       # Plan gate hook
-      monitor/
-        loop.py            # Main monitor loop
-        liveness.py        # Agent liveness checking
-        status_gen.py      # PROJECT-STATUS.md generation
-  tests/
-    ...
+**Schema is trivial:**
+```sql
+-- Per-agent memory store
+CREATE TABLE memory (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT);
+CREATE TABLE checkpoints (state TEXT, data TEXT, created_at TEXT);
 ```
 
-## Installation
+### Scheduling: No New Dependency (asyncio stdlib)
+
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| asyncio (stdlib) | N/A | Timer-based wake/sleep scheduling for ContinuousAgent | The scheduler requirements are simple: fire a WAKE event on sleeping ContinuousAgents at configured intervals. This is `asyncio.create_task` + `asyncio.sleep` in a loop, managed by CompanyRoot. No library needed. |
+
+**Why NOT APScheduler:** APScheduler (3.11.2 stable, 4.0 alpha) is designed for job scheduling with persistence, missed-job recovery, cron expressions, and multiple backends. vCompany's scheduler needs exactly one thing: "wake this container every N minutes." APScheduler adds 15+ transitive dependencies for cron parsing, timezone handling, and job stores that will never be used. A 20-line async loop does the same thing with zero dependencies and full control over the wake/cancel semantics the supervision tree needs.
+
+**Implementation pattern:**
+```python
+class Scheduler:
+    """Managed by CompanyRoot. Tracks wake timers for sleeping containers."""
+
+    async def schedule_wake(self, container_id: str, interval_seconds: int):
+        """Schedule periodic wake for a container."""
+        async def _wake_loop():
+            while True:
+                await asyncio.sleep(interval_seconds)
+                await self.supervisor.wake(container_id)
+        self._tasks[container_id] = asyncio.create_task(_wake_loop())
+
+    async def cancel(self, container_id: str):
+        self._tasks.pop(container_id, None)?.cancel()
+```
+
+### Event Communication: No New Dependency (asyncio stdlib)
+
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| asyncio (stdlib) | N/A | Internal event bus for container-to-supervisor and supervisor-to-container communication | The communication pattern is tree-shaped (child notifies parent, parent commands child), not pub/sub fan-out. asyncio primitives (Queue, Event, callbacks) handle this directly. |
+
+**Why NOT an event bus library:** Event bus libraries (bubus, lahja, aiopubsub) solve fan-out pub/sub across decoupled components. The supervision tree has a known, fixed topology: containers report UP to their supervisor, supervisors command DOWN to children. This is method calls + asyncio.Queue, not pub/sub. Adding an event bus would obscure the tree structure with indirection.
+
+**Implementation pattern:** Each container has an `event_queue: asyncio.Queue` for receiving commands from its supervisor. Containers call `self.supervisor.report(event)` to push events up. The supervisor processes child events in its own loop. This is the Erlang gen_server pattern translated to asyncio.
+
+## Updated Dependency: Filesystem State
+
+The v1 STACK.md stated "No database needed." For v2, this changes slightly:
+
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| Filesystem (YAML/Markdown) | N/A | Project-level state (agents.yaml, PROJECT-STATUS.md, milestone backlog) | Unchanged from v1. Human-readable, agent-readable, git-trackable. |
+| SQLite (stdlib) | N/A | Per-agent persistent memory, checkpoint storage | New for v2. One file per agent. Not a "database" in the traditional sense -- it's a structured file format with ACID guarantees. No shared state, no migrations, no ORM. |
+
+## No Changes Required
+
+These existing stack items need NO changes for v2:
+
+| Existing Tech | v2 Role | Notes |
+|---------------|---------|-------|
+| pydantic 2.11.x | HealthReport models, container config validation, event schemas | Already in stack. Use for all data structures crossing boundaries (health reports, delegation requests, milestone items). |
+| discord.py 2.7.x | Health tree display, delegation approval UI, milestone management commands | Already in stack. New Cogs for health/delegation, but no new discord dependency. |
+| libtmux 0.55.x | Still manages tmux sessions inside GsdAgent/ContinuousAgent | Container wraps the existing tmux lifecycle. libtmux usage moves inside container types rather than being called directly by dispatch. |
+| watchfiles 0.24.x | Monitor role partially absorbed by supervision tree | watchfiles still useful for file-based triggers (plan gate). The supervision tree handles liveness/health that the monitor loop previously owned. |
+| asyncio (stdlib) | Foundation for entire supervision tree | Already the async backbone. Containers are async context managers. Supervisors run async event loops. No new async library needed. |
+| dataclasses (stdlib) | Internal container state, lightweight event objects | Use for events and internal state where Pydantic validation overhead is unnecessary. |
+
+## Installation (New Dependencies Only)
 
 ```bash
-# Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# New for v2 container architecture
+uv add "python-statemachine>=3.0,<4" "aiosqlite>=0.21,<1"
 
-# Initialize project
-uv init vcompany
-cd vcompany
-
-# Core dependencies
-uv add "discord.py>=2.7,<3" "anthropic>=0.86,<1" "click>=8.2,<9" \
-       "libtmux>=0.55,<0.56" "PyYAML>=6.0,<7" "rich>=14.2,<15" \
-       "pydantic>=2.11,<3" "pydantic-settings>=2.13,<3" \
-       "httpx>=0.28,<1" "watchfiles>=0.24,<1"
-
-# Dev dependencies
-uv add --dev "pytest>=8" "pytest-asyncio>=0.24" "ruff>=0.9" "mypy>=1.14"
+# That's it. Everything else is stdlib or already installed.
 ```
+
+**Total new PyPI dependencies: 2** (python-statemachine has zero transitive deps, aiosqlite has zero transitive deps). This is intentional -- the container architecture should be built primarily on stdlib asyncio primitives with minimal external coupling.
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| click | typer | If team prefers type-hint-based CLI definition. Typer wraps Click anyway, so switching later is easy. Click chosen because PROJECT.md already specifies it and it has more community examples for complex subcommand patterns like `vco agent dispatch`. |
-| discord.py | nextcord, disnake | Never for this project. These are forks from when discord.py was temporarily abandoned (2021). discord.py is back and actively maintained. The forks fragment the ecosystem. |
-| httpx | aiohttp | If you need raw async performance for high-throughput HTTP. Not needed here -- webhook calls are low-volume. httpx's dual sync/async API is more valuable for a project that mixes sync CLI and async bot code. |
-| httpx | requests | Never. requests is sync-only. The Strategist bot needs async HTTP for webhook calls without blocking the event loop. |
-| libtmux | subprocess tmux calls | If libtmux's pre-1.0 API instability becomes painful. Fallback is to shell out to `tmux` directly via subprocess. Less ergonomic but zero dependency risk. |
-| watchfiles | watchdog | If you need Windows/macOS cross-platform support (we don't). watchfiles is faster and has native asyncio support, which matters for the monitor loop. |
-| uv | pip + venv | If uv has bugs with a specific dependency. Extremely unlikely in 2026 -- uv is production-ready and the direction Python packaging is heading. |
-| filesystem state | SQLite | If vCompany later needs queryable historical data (agent performance metrics, decision logs). Not needed for v1. |
-| pydantic | dataclasses + manual validation | Never for config/external data. Pydantic's validation-on-construction catches config errors at startup instead of at runtime. Use dataclasses only for internal-only data structures. |
+| python-statemachine 3.0 | transitions 0.9.3 | If you need graphviz diagram generation of state machines during development. transitions has more mature diagram tooling. python-statemachine 3.0 supports diagrams too but transitions has been doing it longer. |
+| python-statemachine 3.0 | Hand-rolled enums + match/case | If you only had 1-2 simple state machines. With 5+ state machine types, each with guards and side effects, a library pays for itself in correctness and testability. |
+| asyncio scheduler | APScheduler 3.11.x | If wake schedules later need cron expressions (e.g., "wake PM agent every weekday at 9am"). Currently unnecessary -- intervals suffice. Easy to add later if needed. |
+| asyncio Queue/callbacks | bubus (event bus) | If the communication pattern evolves from tree-shaped to mesh-shaped (agents talking to each other). Current architecture is strictly hierarchical. |
+| SQLite (stdlib) | JSON files + filelock | If agent memory is truly tiny (< 10 key-value pairs) and never queried. Once you need "find all checkpoints where state=ERRORED", SQLite is strictly better. |
+| aiosqlite | sqlite3 in thread executor | If aiosqlite has bugs. Fallback is `await asyncio.to_thread(sync_sqlite_function)`. aiosqlite is essentially this pattern packaged -- the fallback is trivial. |
 
-## What NOT to Use
+## What NOT to Add
 
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| GitPython | In maintenance mode (no new features, slow bug fixes). Adds a heavy dependency for something subprocess handles fine. | `subprocess.run(["git", ...])` or `asyncio.create_subprocess_exec("git", ...)`. Git CLI is always available and more reliable. |
-| nextcord / disnake | Dead-end forks of discord.py from 2021 abandonment era. discord.py is back and maintained. Using forks means fragmented community, fewer examples, slower updates. | discord.py 2.7.x |
-| requests | Sync-only HTTP client. Blocks the asyncio event loop used by discord.py and the monitor. | httpx (supports both sync and async) |
-| poetry | Slower dependency resolution, heavier tooling, Python-only resolver. uv is faster by orders of magnitude and handles everything poetry does. | uv |
-| argparse | Verbose, no built-in command groups, requires manual help formatting. click provides all of this with decorators. | click |
-| celery / dramatiq | Task queue overkill. vCompany runs on one machine, manages processes via tmux, and has a simple 60s monitor loop. No need for a message broker. | asyncio + libtmux + subprocess |
-| SQLAlchemy / any ORM | No database. State lives in files. Adding a database adds migration complexity, another failure mode, and zero value for v1. | YAML files + Pydantic models |
-| Flask / FastAPI | No web server needed. Discord is the UI. Webhook receiving (if needed) can be handled by discord.py's built-in HTTP server or a minimal httpx-based approach. | discord.py for all bot interaction |
+| Avoid | Why | What to Do Instead |
+|-------|-----|---------------------|
+| APScheduler | Massive overkill for interval-based wake timers. Adds cron parsing, job stores, timezone handling, 15+ transitive deps for a 20-line asyncio loop. | `asyncio.create_task` + `asyncio.sleep` loop managed by CompanyRoot. |
+| mode (ask/mode) | Unmaintained (241 GitHub stars, unclear last commit, stuck on older Python). Provides service supervision but with an opinionated service base class that conflicts with our container hierarchy design. | Build supervision tree on asyncio primitives. The Erlang supervisor pattern is ~200 lines of Python, not a library problem. |
+| celery / dramatiq | Task queue for distributed systems. vCompany is single-machine with known topology. Adding a message broker creates a dependency that provides zero value. | Direct asyncio method calls through the supervision tree. |
+| Redis / RabbitMQ | Message brokers for distributed pub/sub. No distributed components exist. | asyncio.Queue for container command channels. |
+| SQLAlchemy | ORM for relational databases. Agent memory is key-value, not relational. SQLAlchemy adds migration tooling, session management, and complexity for `CREATE TABLE memory (key, value)`. | Raw sqlite3/aiosqlite with 2 tables. |
+| pydantic-statemachine or similar | Pydantic integration for state machines. python-statemachine 3.0 already works with Pydantic models as state machine model data. No bridge library needed. | Use python-statemachine's built-in model support. |
+| Any "supervision framework" | No production-grade Python supervision library exists. mode is abandoned, and the concept maps cleanly to asyncio patterns. This is a 200-line module, not a framework adoption. | Implement `Supervisor` and `RestartPolicy` classes using asyncio.Task management. |
 
-## Stack Patterns by Variant
+## Stack Patterns for Container Architecture
 
-**If the Strategist bot needs streaming responses:**
-- Use `anthropic.AsyncAnthropic` with `stream=True`
-- discord.py supports editing messages in-place, so stream chunks can update a single Discord message
-- This improves perceived responsiveness for long Strategist answers
+**Pattern: State machine per container type**
+- Define a base `ContainerStateMachine(StateChart)` with CREATING/RUNNING/SLEEPING/ERRORED/STOPPED/DESTROYED
+- GsdAgent extends with compound states inside RUNNING (IDLE/DISCUSS/PLAN/EXECUTE/UAT/SHIP)
+- python-statemachine 3.0's compound states handle this natively -- no workaround needed
 
-**If libtmux API breaks on update:**
-- Fall back to `subprocess.run(["tmux", "new-session", ...])` pattern
-- Wrap in a thin abstraction layer from day one so the swap is painless
-- Pin libtmux to exact minor version (0.55.x)
+**Pattern: Supervision as asyncio Task management**
+- Each container runs as an `asyncio.Task` owned by its supervisor
+- Supervisor wraps child tasks with `try/except` + restart policy logic
+- `one_for_one`: restart only the failed child
+- `all_for_one`: cancel and restart all children
+- `rest_for_one`: cancel and restart children started after the failed one
+- This is 150-200 lines of clean asyncio code, not a library
 
-**If agent count exceeds ~10 concurrent:**
-- Monitor loop may need to parallelize liveness checks with `asyncio.gather`
-- tmux can handle many sessions but libtmux iteration may slow down
-- Consider grouping agents into tmux windows rather than sessions
+**Pattern: Health reporting as Pydantic models**
+- `HealthReport` is a Pydantic model (status, uptime, error_count, last_state_change, children)
+- Tree rendering uses Rich (already in stack) for terminal output
+- Discord push uses existing discord.py Cog pattern
 
-**If webhook volume hits Discord rate limits:**
-- discord.py handles rate limiting internally for bot API calls
-- For raw webhook POSTs (from ask_discord.py), implement exponential backoff in httpx
-- PROJECT.md already notes this as "address when it bites" -- correct approach
+**Pattern: Memory store isolation**
+- Each agent gets `{agent_clone_dir}/.vco/memory.db`
+- SQLite in WAL mode for non-blocking reads
+- Checkpoint writes happen in state machine `on_exit_state` callbacks
+- aiosqlite for async access within the event loop
+
+**Pattern: Event-driven not poll-driven**
+- v1 monitor polls every 60s. v2 containers push events up the tree on state changes
+- Supervisor reacts immediately to child events (health change, error, completion)
+- The 60s poll loop becomes a heartbeat/timeout detector only (if a container stops reporting, it's stuck)
+- watchfiles remains for file-system triggers (plan gate) that originate outside the container tree
 
 ## Version Compatibility
 
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| discord.py 2.7.x | Python 3.9+ | Uses aiohttp internally; do not install a conflicting aiohttp version |
-| anthropic 0.86.x | Python 3.9+ | Depends on httpx internally; compatible with our direct httpx usage |
-| libtmux 0.55.x | tmux 2.6+ | We target tmux 3.4+ so no issues. Pin tightly -- API changes between minor versions. |
-| pydantic 2.11.x | pydantic-settings 2.13.x | Must use pydantic v2, not v1. pydantic-settings is a separate package since pydantic v2. |
-| click 8.2.x | Python 3.9+ | No known conflicts. |
-| watchfiles 0.24.x | Python 3.9+ | Rust extension -- binary wheels available for Linux x86_64. |
-| ruff 0.9.x | Python 3.9+ | Standalone Rust binary, no Python dependency conflicts. |
-
-## Key Design Decisions
-
-### Why No Database
-vCompany's state is inherently file-based: agents.yaml, ROADMAP.md, PROJECT-STATUS.md, git logs, PLAN.md files. These are the same files agents read and the monitor parses. A database would duplicate state and create sync issues. If queryable history is needed later, append to a JSONL log file -- still no database.
-
-### Why subprocess Over GitPython
-Git operations in vCompany are: clone, checkout, branch, merge, log, diff, status. All are single CLI commands. subprocess is simpler, has zero dependencies, always matches the installed git version, and is trivially async-able. GitPython adds 15+ MB of dependency for no benefit and is in maintenance mode.
-
-### Why click Over typer
-PROJECT.md specifies click. click has 3x the adoption, more documentation, and is the foundation typer builds on. For a CLI with ~12 subcommands and relatively straightforward options, click's decorator model is cleaner than typer's function-signature model. If someone prefers typer, migration is mechanical since typer wraps click.
-
-### Why httpx as the Single HTTP Client
-The project has two HTTP contexts: sync (CLI commands posting to Discord webhooks) and async (bot/monitor making API calls). httpx handles both with the same API surface. Using requests + aiohttp would mean two libraries, two APIs, and two sets of error handling for the same thing.
-
-### Why uv Over pip
-In 2026, uv is the standard. 10-100x faster resolution, built-in venv management, lockfiles, and a single binary. Starting with uv avoids the inevitable migration later. pyproject.toml is the project config format regardless.
+| New Package | Compatible With | Notes |
+|-------------|-----------------|-------|
+| python-statemachine 3.0.0 | Python 3.9+ | Zero runtime dependencies. No conflicts with existing stack. |
+| aiosqlite 0.21.0 | Python 3.9+, sqlite3 (stdlib) | Wraps stdlib sqlite3. No conflicts. Uses thread pool executor internally. |
+| sqlite3 (stdlib) | Python 3.12 | Ships with Python. WAL mode available since SQLite 3.7 (Python 3.12 ships SQLite 3.41+). |
 
 ## Sources
 
-- [discord.py PyPI](https://pypi.org/project/discord.py/) -- version 2.7.1 confirmed (HIGH confidence)
-- [anthropic PyPI](https://pypi.org/project/anthropic/) -- version 0.86.0 confirmed (HIGH confidence)
-- [click PyPI](https://pypi.org/project/click/) -- version 8.2.x confirmed (HIGH confidence)
-- [libtmux GitHub releases](https://github.com/tmux-python/libtmux/releases) -- version 0.55.0, pre-1.0 API warning confirmed (HIGH confidence)
-- [PyYAML PyPI](https://pypi.org/project/PyYAML/) -- version 6.0.3 confirmed (HIGH confidence)
-- [Rich GitHub releases](https://github.com/Textualize/rich/releases) -- version 14.2.0 confirmed (HIGH confidence)
-- [pydantic-settings PyPI](https://pypi.org/project/pydantic-settings/) -- version 2.13.1 confirmed (HIGH confidence)
-- [uv documentation](https://docs.astral.sh/uv/) -- version ~0.9.x, production-ready (HIGH confidence)
-- [GitPython GitHub](https://github.com/gitpython-developers/GitPython) -- maintenance mode confirmed (HIGH confidence)
-- [httpx vs aiohttp comparison](https://www.speakeasy.com/blog/python-http-clients-requests-vs-httpx-vs-aiohttp) -- dual sync/async capability confirmed (MEDIUM confidence)
+- [python-statemachine PyPI](https://pypi.org/project/python-statemachine/) -- version 3.0.0, Python 3.9+, zero deps confirmed (HIGH confidence)
+- [python-statemachine docs](https://python-statemachine.readthedocs.io/) -- async support, StateChart class, compound states confirmed (HIGH confidence)
+- [python-statemachine GitHub](https://github.com/fgmacedo/python-statemachine) -- SCXML compliance, 3.0 release Feb 2026 confirmed (HIGH confidence)
+- [transitions PyPI](https://pypi.org/project/transitions/) -- version 0.9.3, AsyncMachine confirmed (HIGH confidence)
+- [APScheduler PyPI](https://pypi.org/project/APScheduler/) -- version 3.11.2 stable, 4.0.0a6 alpha confirmed (HIGH confidence)
+- [aiosqlite PyPI](https://pypi.org/project/aiosqlite/) -- version 0.21.0 confirmed (MEDIUM confidence, version from training data)
+- [mode GitHub](https://github.com/ask/mode) -- 241 stars, unclear maintenance status confirmed (MEDIUM confidence)
+- [Erlang Supervisor docs](https://www.erlang.org/doc/system/sup_princ.html) -- restart strategy semantics referenced (HIGH confidence)
+- [bubus GitHub](https://github.com/browser-use/bubus) -- event bus with Pydantic, WAL persistence noted (LOW confidence, not recommended)
 
 ---
-*Stack research for: Python CLI orchestrator + Discord bot for multi-agent Claude Code management*
-*Researched: 2026-03-25*
+*Stack research for: Agent container architecture additions (v2.0)*
+*Researched: 2026-03-27*
