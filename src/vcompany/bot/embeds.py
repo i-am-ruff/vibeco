@@ -15,7 +15,21 @@ import discord
 
 if TYPE_CHECKING:
     from vcompany.communication.checkin import CheckinData
+    from vcompany.container.health import CompanyHealthTree
     from vcompany.integration.models import IntegrationResult
+
+
+# ── Health tree state indicators (HLTH-03) ─────────────────────────
+STATE_INDICATORS: dict[str, str] = {
+    "running": "\U0001f7e2",    # green circle
+    "sleeping": "\U0001f535",   # blue circle
+    "errored": "\U0001f534",    # red circle
+    "stopped": "\u26ab",        # black circle
+    "creating": "\U0001f7e1",   # yellow circle
+    "destroyed": "\u2b1b",      # black square
+}
+
+_DEFAULT_INDICATOR = "\u2753"   # question mark for unknown states
 
 
 def build_status_embed(status_text: str) -> discord.Embed:
@@ -323,4 +337,85 @@ def build_checkin_embed(checkin: CheckinData) -> discord.Embed:
         value=checkin.dependency_status[:1024] or "None",
         inline=False,
     )
+    return embed
+
+
+def build_health_tree_embed(
+    tree: CompanyHealthTree,
+    *,
+    project_filter: str | None = None,
+    agent_filter: str | None = None,
+) -> discord.Embed:
+    """Build a Discord embed rendering the supervision health tree (HLTH-03).
+
+    Args:
+        tree: CompanyHealthTree from CompanyRoot.health_tree().
+        project_filter: If set, only include the project whose supervisor_id matches.
+        agent_filter: If set, only include children whose agent_id matches.
+
+    Returns:
+        discord.Embed with color-coded state indicators per agent.
+    """
+    # Determine embed color: green if all projects running, red otherwise
+    all_running = all(p.state == "running" for p in tree.projects) if tree.projects else True
+    color = discord.Color.green() if all_running else discord.Color.red()
+
+    embed = discord.Embed(
+        title="Health Tree",
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    projects = tree.projects
+    if project_filter is not None:
+        projects = [p for p in projects if p.supervisor_id == project_filter]
+
+    if not projects and not tree.projects:
+        embed.description = "No projects active"
+        return embed
+
+    if not projects and project_filter is not None:
+        embed.description = "No projects active"
+        return embed
+
+    field_count = 0
+    remaining = len(projects)
+
+    for project in projects:
+        if field_count >= 24:
+            embed.add_field(
+                name=f"... and {remaining} more projects",
+                value="Use project filter to see details",
+                inline=False,
+            )
+            break
+
+        # Build agent lines
+        children = project.children
+        if agent_filter is not None:
+            children = [c for c in children if c.report.agent_id == agent_filter]
+
+        if children:
+            lines: list[str] = []
+            for child in children:
+                r = child.report
+                emoji = STATE_INDICATORS.get(r.state, _DEFAULT_INDICATOR)
+                inner = f" ({r.inner_state})" if r.inner_state else ""
+                lines.append(f"{emoji} **{r.agent_id}**: {r.state}{inner}")
+            value = "\n".join(lines)
+        else:
+            value = "No agents"
+
+        # Truncate to Discord's 1024-char field value limit
+        if len(value) > 1024:
+            value = value[:1021] + "..."
+
+        embed.add_field(
+            name=f"Project: {project.supervisor_id}",
+            value=value,
+            inline=False,
+        )
+        field_count += 1
+        remaining -= 1
+
     return embed
