@@ -190,8 +190,8 @@ Plans:
 
 Plans:
 - [x] 04-01-PLAN.md -- Container factory registry + Supervisor._start_child() update
-- [ ] 04-02-PLAN.md -- ContinuousLifecycle FSM + ContinuousAgent with checkpoint recovery
-- [ ] 04-03-PLAN.md -- EventDrivenLifecycle FSM + FulltimeAgent + CompanyAgent
+- [x] 04-02-PLAN.md -- ContinuousLifecycle FSM + ContinuousAgent with checkpoint recovery
+- [x] 04-03-PLAN.md -- EventDrivenLifecycle FSM + FulltimeAgent + CompanyAgent
 - [ ] 04-04-PLAN.md -- Scheduler in CompanyRoot + factory registration for all agent types
 
 ### Phase 5: Health Tree

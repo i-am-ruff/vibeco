@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
 status: Ready to execute
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-03-27T22:46:45.862Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-03-27T22:48:30.749Z"
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 11
-  completed_plans: 8
+  completed_plans: 10
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 ## Current Position
 
 Phase: 04 (remaining-agent-types-and-scheduler) — EXECUTING
-Plan: 2 of 4
+Plan: 4 of 4
 
 ## Performance Metrics
 
@@ -54,6 +54,8 @@ Plan: 2 of 4
 | Phase 03 P01 | 3min | 2 tasks | 4 files |
 | Phase 03 P02 | 4min | 2 tasks | 3 files |
 | Phase 04 P01 | 2min | 2 tasks | 3 files |
+| Phase 04 P03 | 3min | 2 tasks | 7 files |
+| Phase 04 P02 | 4min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -85,6 +87,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Checkpoint before sleep/error (not after) to capture phase state before exiting running
 - [Phase 03]: Invalid checkpoint falls back silently to running.idle rather than raising
 - [Phase 04]: Factory uses module-level _REGISTRY dict for agent type dispatch
+- [Phase 04]: EventDrivenLifecycle is standalone StateMachine (not subclass) following GsdLifecycle compound state pattern
+- [Phase 04]: Cross-project state uses xp: prefix in memory_store to namespace company-scoped keys
+- [Phase 04]: Wake uses sleeping.to(running) for fresh cycle; recover uses errored.to(running.h) for mid-cycle resume
 
 ### Pending Todos
 
@@ -99,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T22:46:45.857Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-03-27T22:48:30.731Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
