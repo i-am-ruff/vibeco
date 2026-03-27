@@ -32,6 +32,7 @@ _COG_EXTENSIONS: list[str] = [
     "vcompany.bot.cogs.strategist",
     "vcompany.bot.cogs.question_handler",
     "vcompany.bot.cogs.workflow_master",
+    "vcompany.bot.cogs.workflow_orchestrator_cog",
 ]
 
 
@@ -60,6 +61,7 @@ class VcoBot(commands.Bot):
         self.agent_manager: AgentManager | None = None
         self.monitor_loop: MonitorLoop | None = None
         self.crash_tracker: CrashTracker | None = None
+        self.workflow_orchestrator: object | None = None
 
         # Guild ID as explicit constructor arg (D-21, D-22: single guild bot)
         self._guild_id: int = guild_id
@@ -233,6 +235,7 @@ class VcoBot(commands.Bot):
                 logger.exception("Failed to initialize orchestration components")
 
             # Initialize PM and PlanReviewer (project-dependent)
+            pm = None  # Track PM reference for WorkflowOrchestrator wiring below
             try:
                 from vcompany.strategist.plan_reviewer import PlanReviewer
                 from vcompany.strategist.pm import PMTier
@@ -267,6 +270,34 @@ class VcoBot(commands.Bot):
                 logger.info("PM/PlanReviewer initialized with Claude CLI")
             except Exception:
                 logger.exception("Failed to initialize PM/PlanReviewer")
+
+            # Initialize WorkflowOrchestrator (Phase 10: D-01)
+            try:
+                from vcompany.orchestrator.workflow_orchestrator import WorkflowOrchestrator
+
+                self.workflow_orchestrator = WorkflowOrchestrator(
+                    project_dir=self.project_dir,
+                    config=self.project_config,
+                    agent_manager=self.agent_manager,
+                )
+
+                # Wire into WorkflowOrchestratorCog
+                wo_cog = self.get_cog("WorkflowOrchestratorCog")
+                if wo_cog:
+                    wo_cog.set_orchestrator(
+                        self.workflow_orchestrator,
+                        pm,
+                        self.project_dir,
+                    )
+
+                # Wire plan approval/rejection notifications from PlanReviewCog
+                plan_review_cog_ref = self.get_cog("PlanReviewCog")
+                if plan_review_cog_ref and wo_cog:
+                    plan_review_cog_ref._workflow_cog = wo_cog
+
+                logger.info("WorkflowOrchestrator initialized and wired to Cog")
+            except Exception:
+                logger.exception("Failed to initialize WorkflowOrchestrator")
         else:
             logger.info("No project loaded -- running in Strategist-only mode")
 

@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
+    from vcompany.bot.cogs.workflow_orchestrator_cog import WorkflowOrchestratorCog
     from vcompany.strategist.plan_reviewer import PlanReviewer
 
 
@@ -41,6 +42,7 @@ class PlanReviewCog(commands.Cog):
         self._plan_review_channel: discord.TextChannel | None = None
         self._alerts_channel: discord.TextChannel | None = None
         self._plan_reviewer: PlanReviewer | None = None
+        self._workflow_cog: WorkflowOrchestratorCog | None = None
 
     def set_plan_reviewer(self, reviewer: PlanReviewer) -> None:
         """Inject PlanReviewer for PM review. Called from bot startup."""
@@ -344,9 +346,13 @@ class PlanReviewCog(commands.Cog):
         """Process plan approval per D-11/D-12.
 
         Updates state, checks if all plans for the phase are approved,
-        and triggers execution if so.
+        and triggers execution if so. Notifies WorkflowOrchestratorCog.
         """
         self._update_gate_state(agent_id, plan_path, status="approved")
+
+        # Notify WorkflowOrchestratorCog of plan approval
+        if self._workflow_cog is not None:
+            await self._workflow_cog.notify_plan_approved(agent_id)
 
         # Check if ALL pending plans are now approved (D-12)
         state = self._get_agent_state(agent_id)
@@ -362,9 +368,13 @@ class PlanReviewCog(commands.Cog):
     async def _handle_rejection(self, agent_id: str, plan_path: str, feedback: str) -> None:
         """Process plan rejection per D-09/GATE-04.
 
-        Sends feedback to agent tmux pane for replanning.
+        Sends feedback to agent tmux pane for replanning. Notifies WorkflowOrchestratorCog.
         """
         self._update_gate_state(agent_id, plan_path, status="rejected")
+
+        # Notify WorkflowOrchestratorCog of plan rejection
+        if self._workflow_cog is not None:
+            await self._workflow_cog.notify_plan_rejected(agent_id)
 
         # Send rejection feedback to agent tmux pane (D-09)
         if self.bot.agent_manager:

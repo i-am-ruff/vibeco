@@ -251,3 +251,118 @@ async def test_start_workflow_no_orchestrator():
     result = await c.start_workflow("alpha", 1)
 
     assert result is False
+
+
+# ── Verify gate review (D-07) ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_review_verify_gate_all_pass_advances(cog, mock_orchestrator, mock_pm):
+    """VERIFICATION.md with all PASS advances to PHASE_COMPLETE (D-07)."""
+    # Set agent state to VERIFY
+    mock_orchestrator.get_agent_state.return_value = MagicMock(
+        stage=WorkflowStage.VERIFY, current_phase=1
+    )
+
+    # Create a fake VERIFICATION.md with all PASS
+    verify_dir = Path("/tmp/test-project/clones/alpha/.planning/phases/01-test")
+    verify_dir.mkdir(parents=True, exist_ok=True)
+    verify_file = verify_dir / "01-VERIFICATION.md"
+    verify_file.write_text("# Verification\n- Test 1: PASS\n- Test 2: PASS\n")
+
+    try:
+        await cog._review_verify_gate("alpha")
+
+        # Should advance from gate (approved=True)
+        mock_orchestrator.advance_from_gate.assert_called_once_with("alpha", True)
+        # PM should NOT be consulted when all pass
+        mock_pm.evaluate_question.assert_not_called()
+    finally:
+        import shutil
+        shutil.rmtree("/tmp/test-project", ignore_errors=True)
+
+
+@pytest.mark.asyncio
+async def test_review_verify_gate_with_failures_pm_re_execute(cog, mock_orchestrator, mock_pm):
+    """VERIFICATION.md with FAIL triggers PM review; HIGH confidence re-executes."""
+    mock_orchestrator.get_agent_state.return_value = MagicMock(
+        stage=WorkflowStage.VERIFY, current_phase=1
+    )
+
+    # PM recommends re-execute (HIGH confidence)
+    mock_pm.evaluate_question.return_value = PMDecision(
+        answer="Re-execute to fix failures",
+        confidence=ConfidenceResult(score=0.95, level="HIGH", coverage=0.9, prior_match=1.0),
+        decided_by="PM",
+    )
+
+    verify_dir = Path("/tmp/test-project/clones/alpha/.planning/phases/01-test")
+    verify_dir.mkdir(parents=True, exist_ok=True)
+    verify_file = verify_dir / "01-VERIFICATION.md"
+    verify_file.write_text("# Verification\n- Test 1: PASS\n- Test 2: FAIL\n")
+
+    try:
+        await cog._review_verify_gate("alpha")
+
+        mock_pm.evaluate_question.assert_called_once()
+        # HIGH/MEDIUM PM sends back to EXECUTE (approved=False)
+        mock_orchestrator.advance_from_gate.assert_called_once_with("alpha", False)
+    finally:
+        import shutil
+        shutil.rmtree("/tmp/test-project", ignore_errors=True)
+
+
+@pytest.mark.asyncio
+async def test_review_verify_gate_no_verification_auto_advances(cog, mock_orchestrator):
+    """No VERIFICATION.md auto-advances the verify gate."""
+    mock_orchestrator.get_agent_state.return_value = MagicMock(
+        stage=WorkflowStage.VERIFY, current_phase=1
+    )
+    cog._project_dir = Path("/tmp/nonexistent-project")
+
+    await cog._review_verify_gate("alpha")
+
+    mock_orchestrator.advance_from_gate.assert_called_once_with("alpha", True)
+
+
+# ── Phase complete handling ───────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_handle_phase_complete_logs_and_checks_next(cog, mock_orchestrator):
+    """_handle_phase_complete logs completion and checks for next phase."""
+    mock_orchestrator.get_agent_state.return_value = MagicMock(
+        stage=WorkflowStage.PHASE_COMPLETE, current_phase=1
+    )
+
+    await cog._handle_phase_complete("alpha")
+
+    # Verify it checked agent state
+    mock_orchestrator.get_agent_state.assert_called_with("alpha")
+
+
+# ── Cog registration smoke tests ─────────────────────────────────────────────
+
+
+def test_workflow_orchestrator_cog_in_extensions():
+    """WorkflowOrchestratorCog is registered in _COG_EXTENSIONS."""
+    from vcompany.bot.client import _COG_EXTENSIONS
+
+    assert "vcompany.bot.cogs.workflow_orchestrator_cog" in _COG_EXTENSIONS
+
+
+def test_question_handler_cog_in_extensions():
+    """QuestionHandlerCog is registered in _COG_EXTENSIONS (D-09/D-10)."""
+    from vcompany.bot.client import _COG_EXTENSIONS
+
+    assert "vcompany.bot.cogs.question_handler" in _COG_EXTENSIONS
+
+
+def test_plan_review_cog_has_workflow_cog_attribute():
+    """PlanReviewCog has _workflow_cog attribute for notification wiring."""
+    from vcompany.bot.cogs.plan_review import PlanReviewCog
+
+    bot = MagicMock()
+    cog = PlanReviewCog(bot)
+    assert hasattr(cog, "_workflow_cog")
+    assert cog._workflow_cog is None
