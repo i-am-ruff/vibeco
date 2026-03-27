@@ -157,7 +157,11 @@ Plans:
   2. one_for_one restarts only the failed child, all_for_one restarts all siblings, and rest_for_one restarts the failed child plus all children started after it
   3. When a child crashes 3 times within a 10-minute window, the supervisor stops restarting and escalates to its parent
   4. When the top-level supervisor receives an escalation it cannot handle, it alerts the owner through Discord
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md -- Supervisor base class with restart strategies, intensity tracker, and escalation
+- [ ] 02-02-PLAN.md -- CompanyRoot, ProjectSupervisor, two-level hierarchy integration tests
 
 ### Phase 3: GsdAgent
 **Goal**: GsdAgent is the first real container type with an internal phase state machine that replaces WorkflowOrchestrator, with checkpoint-based crash recovery
