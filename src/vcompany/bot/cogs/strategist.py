@@ -5,6 +5,7 @@ Owner messages in #strategist are forwarded to StrategistConversation.
 Responses stream back with rate-limited edits (1/sec) per Pitfall 1.
 PM escalation supported via make_sync_callbacks().
 Owner escalation posts @mention and waits indefinitely per D-07.
+Uses routing framework for message filtering (D-07) with replied-to content fetch.
 """
 
 from __future__ import annotations
@@ -15,6 +16,8 @@ from pathlib import Path
 
 import discord
 from discord.ext import commands
+
+from vcompany.bot.routing import EntityRegistry, RouteResult, RouteTarget, route_message
 
 # Persistent directory for files sent to the Strategist via Discord
 _STRATEGIST_FILES_DIR = Path.home() / "vco-strategist-files"
@@ -89,38 +92,53 @@ class StrategistCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
-        """Process messages in #strategist from the owner.
+        """Process messages routed to the Strategist via routing framework.
 
-        Filters per Research Open Question 4:
-        - Skip webhook messages
-        - Skip bot's own messages
-        - Skip messages from non-strategist channels
-        - Skip messages from users without vco-owner role
+        Uses route_message() for filtering (D-07). Fetches replied-to message
+        content so route_message can correctly determine entity targets.
 
         If message is a reply to a pending escalation, resolves
         the escalation future instead of forwarding to conversation.
         """
-        # Filter: skip webhooks
-        if message.webhook_id is not None:
-            return
+        # Build registry for routing
+        registry = EntityRegistry(
+            bot_user_id=self.bot.user.id,
+            entity_prefixes={"pm": "[PM]"},
+            strategist_user_ids=set(),
+        )
 
-        # Filter: skip bot's own messages UNLESS it's a [system] notification
-        if message.author.id == self.bot.user.id:
-            if not message.content.startswith("[system]"):
-                return
+        # Fetch replied-to message content for correct routing (D-07)
+        replied_to_content: str | None = None
+        if message.reference is not None and getattr(message.reference, "message_id", None) is not None:
+            try:
+                replied_msg = await message.channel.fetch_message(
+                    message.reference.message_id
+                )
+                replied_to_content = replied_msg.content
+            except discord.NotFound:
+                pass  # Message deleted; route_message handles None gracefully
+            except Exception:
+                logger.debug("Failed to fetch replied-to message, routing with None")
 
-        # Filter: skip non-strategist channels
-        if (
-            self._strategist_channel is None
-            or message.channel.id != self._strategist_channel.id
-        ):
-            # Fall back to channel name comparison for cases where
-            # _strategist_channel is set but IDs differ (e.g., test mocks)
-            if not (
-                self._strategist_channel is not None
-                and message.channel is self._strategist_channel
+        route = route_message(
+            message,
+            channel_name=getattr(message.channel, "name", ""),
+            registry=registry,
+            replied_to_content=replied_to_content,
+        )
+
+        # D-07: Strategist only processes messages routed to it
+        if route.target != RouteTarget.STRATEGIST:
+            # Exception: check pending escalation replies (owner replying to escalation msg)
+            if (
+                message.reference is not None
+                and getattr(message.reference, "message_id", None) is not None
+                and message.reference.message_id in self._pending_escalations
             ):
-                return
+                future = self._pending_escalations.pop(message.reference.message_id)
+                if not future.done():
+                    future.set_result(message.content)
+            return
 
         # Filter: skip non-owners (but allow [system] messages from bot)
         is_system = (
@@ -130,9 +148,10 @@ class StrategistCog(commands.Cog):
         if not is_system and not self._has_owner_role(message.author):
             return
 
-        # Check for pending escalation replies first (D-07)
+        # Check for pending escalation replies routed to Strategist
         if (
             message.reference is not None
+            and getattr(message.reference, "message_id", None) is not None
             and message.reference.message_id in self._pending_escalations
         ):
             future = self._pending_escalations.pop(message.reference.message_id)
@@ -142,7 +161,7 @@ class StrategistCog(commands.Cog):
 
         # Check if conversation is initialized
         if self._conversation is None:
-            await message.reply("Strategist not initialized yet. Please wait for bot startup to complete.")
+            await message.reply("Strategist not initialized yet.")
             return
 
         # Build message content with attachments
@@ -272,29 +291,38 @@ class StrategistCog(commands.Cog):
         return full_response
 
     async def post_owner_escalation(
-        self, agent_id: str, question: str, confidence_score: float
+        self,
+        agent_id: str,
+        question: str,
+        confidence_score: float,
+        channel: discord.TextChannel | None = None,
     ) -> str:
-        """Post escalation to #strategist and wait indefinitely for owner reply.
+        """Post escalation and wait indefinitely for owner reply.
 
         Per D-07: LOW confidence escalations to the owner wait indefinitely --
-        no timeout fallback for strategic decisions. Posts @Owner mention in
-        #strategist and creates a Future that resolves when the owner replies
-        to the escalation message.
+        no timeout fallback for strategic decisions. Posts @Owner mention and
+        creates a Future that resolves when the owner replies to the escalation
+        message.
+
+        Per D-03: Supports posting in agent channels (not just #strategist)
+        via the optional channel parameter.
 
         Args:
             agent_id: ID of the agent needing a decision.
             question: The strategic question.
             confidence_score: Combined PM+Strategist confidence.
+            channel: Target channel for escalation. Defaults to #strategist.
 
         Returns:
             Owner's reply text.
         """
-        if self._strategist_channel is None:
-            raise RuntimeError("Strategist channel not available for owner escalation")
+        target_channel = channel or self._strategist_channel
+        if target_channel is None:
+            raise RuntimeError("No channel available for owner escalation")
 
         # Find the vco-owner role for @mention
         owner_role = discord.utils.get(
-            self._strategist_channel.guild.roles, name=self._owner_role_name
+            target_channel.guild.roles, name=self._owner_role_name
         )
         mention = owner_role.mention if owner_role else "@Owner"
 
@@ -307,7 +335,7 @@ class StrategistCog(commands.Cog):
             f"Please reply to this message with your decision."
         )
 
-        sent_msg = await self._strategist_channel.send(content=message_text)
+        sent_msg = await target_channel.send(content=message_text)
 
         # Create future and register for resolution by on_message
         future: asyncio.Future[str] = self.bot.loop.create_future()
@@ -337,10 +365,15 @@ class StrategistCog(commands.Cog):
             )
 
         def on_owner_escalation(
-            agent_id: str, question: str, confidence_score: float
+            agent_id: str,
+            question: str,
+            confidence_score: float,
+            channel: discord.TextChannel | None = None,
         ) -> asyncio.Future:
             return asyncio.run_coroutine_threadsafe(
-                self.post_owner_escalation(agent_id, question, confidence_score),
+                self.post_owner_escalation(
+                    agent_id, question, confidence_score, channel=channel
+                ),
                 loop,
             )
 

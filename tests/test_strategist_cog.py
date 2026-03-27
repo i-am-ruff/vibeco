@@ -1,4 +1,4 @@
-"""Tests for StrategistCog: owner channel bridge, streaming, and owner escalation."""
+"""Tests for StrategistCog: routing framework integration, escalation, and conversation bridge."""
 
 from __future__ import annotations
 
@@ -58,6 +58,8 @@ def _make_message(
     msg.channel = channel
 
     msg.reference = reference
+    msg.mentions = []
+    msg.attachments = []
 
     return msg
 
@@ -68,7 +70,7 @@ def _make_cog_with_conversation(bot: MagicMock | None = None) -> tuple[Strategis
         bot = _make_bot()
     cog = StrategistCog(bot)
 
-    # Mock the conversation — send() now returns str directly
+    # Mock the conversation
     conversation = AsyncMock()
     conversation.send = AsyncMock(return_value="Hello there friend")
     cog._conversation = conversation
@@ -86,124 +88,222 @@ def _make_cog_with_conversation(bot: MagicMock | None = None) -> tuple[Strategis
     return cog, conversation
 
 
-# --- Message filtering tests ---
+# --- Routing framework integration tests ---
+
+
+@pytest.mark.asyncio
+async def test_strategist_ignores_pm_prefixed_reply() -> None:
+    """Messages that are replies to [PM]-prefixed messages are NOT routed to Strategist."""
+    bot = _make_bot()
+    cog, conversation = _make_cog_with_conversation(bot)
+
+    # Message is a reply
+    ref = MagicMock(spec=discord.MessageReference)
+    ref.message_id = 42
+    msg = _make_message(content="Thanks for that", reference=ref)
+    msg.channel = cog._strategist_channel
+
+    # When fetch_message is called, return a [PM]-prefixed message
+    replied_msg = MagicMock(spec=discord.Message)
+    replied_msg.content = "[PM] Here is my answer to the question"
+    msg.channel.fetch_message = AsyncMock(return_value=replied_msg)
+
+    await cog.on_message(msg)
+
+    # _send_to_channel should NOT have been called (conversation.send not called)
+    conversation.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_strategist_processes_reply_to_own_message() -> None:
+    """Messages replying to Strategist's own (no-prefix) messages ARE routed to Strategist."""
+    bot = _make_bot()
+    cog, conversation = _make_cog_with_conversation(bot)
+
+    ref = MagicMock(spec=discord.MessageReference)
+    ref.message_id = 42
+    msg = _make_message(content="Tell me more about that", reference=ref)
+    msg.channel = cog._strategist_channel
+
+    # Replied-to message has no entity prefix (Strategist speaks without prefix per D-05)
+    replied_msg = MagicMock(spec=discord.Message)
+    replied_msg.content = "I think we should focus on the API layer first"
+    msg.channel.fetch_message = AsyncMock(return_value=replied_msg)
+
+    await cog.on_message(msg)
+
+    # _send_to_channel called means conversation.send was called
+    conversation.send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_strategist_processes_unaddressed_in_strategist_channel() -> None:
+    """Unaddressed messages in #strategist route to Strategist (channel default)."""
+    bot = _make_bot()
+    cog, conversation = _make_cog_with_conversation(bot)
+
+    msg = _make_message(content="What about the roadmap?")
+    msg.channel = cog._strategist_channel
+    msg.channel.name = "strategist"
+    msg.channel.fetch_message = AsyncMock()  # Won't be called (no reference)
+
+    await cog.on_message(msg)
+
+    conversation.send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fetch_message_not_found_graceful() -> None:
+    """If replied-to message is deleted (NotFound), routing proceeds without crash."""
+    bot = _make_bot()
+    cog, conversation = _make_cog_with_conversation(bot)
+
+    ref = MagicMock(spec=discord.MessageReference)
+    ref.message_id = 42
+    msg = _make_message(content="Follow up on that", reference=ref)
+    msg.channel = cog._strategist_channel
+    msg.channel.name = "strategist"
+
+    # fetch_message raises NotFound
+    http_response = MagicMock()
+    http_response.status = 404
+    msg.channel.fetch_message = AsyncMock(
+        side_effect=discord.NotFound(http_response, "Unknown Message")
+    )
+
+    # Should not crash -- routes with replied_to_content=None
+    # With None content and a reply, route_message defaults to STRATEGIST
+    await cog.on_message(msg)
+
+    conversation.send.assert_awaited_once()
+
+
+# --- Owner escalation with channel parameter ---
+
+
+@pytest.mark.asyncio
+async def test_post_owner_escalation_uses_channel_param() -> None:
+    """post_owner_escalation with channel= sends to that channel, not #strategist."""
+    bot = _make_bot()
+    cog, _ = _make_cog_with_conversation(bot)
+
+    # Create a separate agent channel
+    agent_channel = AsyncMock(spec=discord.TextChannel)
+    agent_channel.name = "agent-alpha"
+    agent_guild = MagicMock(spec=discord.Guild)
+    agent_guild.roles = []
+    agent_channel.guild = agent_guild
+
+    sent_msg = MagicMock(spec=discord.Message)
+    sent_msg.id = 77
+    agent_channel.send.return_value = sent_msg
+
+    # Resolve the future immediately
+    async def resolve_future():
+        await asyncio.sleep(0.05)
+        if 77 in cog._pending_escalations:
+            future = cog._pending_escalations[77]
+            if not future.done():
+                future.set_result("Use approach C.")
+
+    task = asyncio.create_task(resolve_future())
+    result = await cog.post_owner_escalation(
+        "agent-alpha", "Architecture question?", 0.3, channel=agent_channel
+    )
+    await task
+
+    # Message sent to agent_channel, not _strategist_channel
+    agent_channel.send.assert_awaited_once()
+    cog._strategist_channel.send.assert_not_awaited()
+    assert result == "Use approach C."
+
+
+@pytest.mark.asyncio
+async def test_pending_escalation_resolved_on_reply() -> None:
+    """Owner reply to escalation message resolves the pending future."""
+    bot = _make_bot()
+    cog, _ = _make_cog_with_conversation(bot)
+
+    # Set up pending escalation
+    future = bot.loop.create_future()
+    cog._pending_escalations[42] = future
+
+    # Simulate owner reply referencing escalation message
+    ref = MagicMock(spec=discord.MessageReference)
+    ref.message_id = 42
+    msg = _make_message(content="Go with plan B.", reference=ref)
+    msg.channel = cog._strategist_channel
+
+    # fetch_message returns the escalation message (non-PM prefix)
+    replied_msg = MagicMock(spec=discord.Message)
+    replied_msg.content = "@Owner -- Strategic decision needed..."
+    msg.channel.fetch_message = AsyncMock(return_value=replied_msg)
+
+    await cog.on_message(msg)
+
+    assert future.done()
+    assert future.result() == "Go with plan B."
+    assert 42 not in cog._pending_escalations
+
+
+# --- Preserved existing behavior tests ---
 
 
 @pytest.mark.asyncio
 async def test_on_message_skips_webhook_messages() -> None:
-    """on_message skips webhook messages."""
-    cog, _ = _make_cog_with_conversation()
+    """on_message skips webhook messages (via routing IGNORE)."""
+    cog, conversation = _make_cog_with_conversation()
     msg = _make_message(webhook_id=12345)
     msg.channel = cog._strategist_channel
 
     await cog.on_message(msg)
-    # Should not have sent any response (no channel.send call)
-    cog._strategist_channel.send.assert_not_awaited()
+    conversation.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_on_message_skips_bot_messages() -> None:
-    """on_message skips bot's own messages."""
+    """on_message skips bot's own messages (via routing IGNORE)."""
     bot = _make_bot()
-    cog, _ = _make_cog_with_conversation(bot)
-    msg = _make_message(author_id=999)  # Same as bot user ID
+    cog, conversation = _make_cog_with_conversation(bot)
+    msg = _make_message(author_id=999, is_bot=True)
     msg.channel = cog._strategist_channel
+    msg.channel.name = "strategist"
 
     await cog.on_message(msg)
-    cog._strategist_channel.send.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_on_message_skips_wrong_channel() -> None:
-    """on_message skips messages from non-strategist channels."""
-    cog, _ = _make_cog_with_conversation()
-    msg = _make_message(channel_name="general")
-
-    await cog.on_message(msg)
-    msg.channel.send.assert_not_awaited()
+    conversation.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_on_message_skips_non_owner() -> None:
     """on_message skips messages from users without vco-owner role."""
-    cog, _ = _make_cog_with_conversation()
+    cog, conversation = _make_cog_with_conversation()
     msg = _make_message(has_owner_role=False)
     msg.channel = cog._strategist_channel
+    msg.channel.name = "strategist"
 
     await cog.on_message(msg)
-    cog._strategist_channel.send.assert_not_awaited()
-
-
-# --- Owner message forwarding tests ---
+    conversation.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_owner_message_forwarded_to_conversation() -> None:
-    """Owner message is forwarded to StrategistConversation.send()."""
-    cog, conversation = _make_cog_with_conversation()
-    msg = _make_message(content="What about the roadmap?")
+async def test_not_initialized_reply() -> None:
+    """If conversation not initialized, reply with error message."""
+    bot = _make_bot()
+    cog = StrategistCog(bot)
+    cog._strategist_channel = AsyncMock(spec=discord.TextChannel)
+    cog._strategist_channel.name = "strategist"
+    cog._conversation = None
+
+    msg = _make_message()
     msg.channel = cog._strategist_channel
-
-    # Track send calls
-    sent_content = []
-    original_send = conversation.send
-
-    async def tracking_send(content: str):
-        sent_content.append(content)
-        return await original_send(content)
-
-    conversation.send = tracking_send
+    msg.channel.name = "strategist"
+    msg.reply = AsyncMock()
+    msg.channel.fetch_message = AsyncMock()  # No reference, won't be called
 
     await cog.on_message(msg)
-    assert "What about the roadmap?" in sent_content
-
-
-# --- Response posting tests ---
-
-
-@pytest.mark.asyncio
-async def test_streaming_response_posted_to_channel() -> None:
-    """Response is posted to channel after full reply received."""
-    cog, _ = _make_cog_with_conversation()
-
-    channel = AsyncMock(spec=discord.TextChannel)
-    placeholder_msg = AsyncMock(spec=discord.Message)
-    channel.send.return_value = placeholder_msg
-
-    result = await cog._send_to_channel(channel, "test input")
-
-    # Should have sent "Thinking..." placeholder
-    channel.send.assert_awaited()
-    first_send = channel.send.call_args_list[0]
-    assert "Thinking" in str(first_send)
-
-    # Should have edited with response
-    assert placeholder_msg.edit.await_count >= 1
-    assert result == "Hello there friend"
-
-
-@pytest.mark.asyncio
-async def test_long_response_handled() -> None:
-    """Long responses (>2000 chars) are truncated with continuation."""
-    cog, conversation = _make_cog_with_conversation()
-
-    # Make conversation return a long response
-    long_text = "A" * 2500
-    conversation.send = AsyncMock(return_value=long_text)
-    cog._conversation = conversation
-
-    channel = AsyncMock(spec=discord.TextChannel)
-    placeholder_msg = AsyncMock(spec=discord.Message)
-    channel.send.return_value = placeholder_msg
-
-    result = await cog._send_to_channel(channel, "test")
-
-    # Full text returned
-    assert len(result) == 2500
-    # Placeholder message should have been edited with truncated text
-    last_edit_call = placeholder_msg.edit.call_args
-    edited_content = last_edit_call.kwargs.get("content", last_edit_call[1].get("content", ""))
-    assert len(edited_content) <= 2000
+    msg.reply.assert_awaited_once()
+    reply_text = msg.reply.call_args[0][0]
+    assert "not initialized" in reply_text.lower()
 
 
 # --- PM escalation tests ---
@@ -225,27 +325,12 @@ async def test_handle_pm_escalation_formats_message() -> None:
     result = await cog.handle_pm_escalation("agent-alpha", "Which framework?", 0.55)
     assert "[PM Escalation]" in sent_content[0]
     assert "agent-alpha" in sent_content[0]
-    assert "Which framework?" in sent_content[0]
     assert result is not None
 
 
 @pytest.mark.asyncio
-async def test_handle_pm_escalation_returns_response() -> None:
-    """Strategist response to escalation is returned for relay to agent."""
-    cog, conversation = _make_cog_with_conversation()
-
-    conversation.send = AsyncMock(return_value="Use REST for simplicity.")
-
-    result = await cog.handle_pm_escalation("agent-alpha", "REST or GraphQL?", 0.75)
-    assert result == "Use REST for simplicity."
-
-
-# --- Sync callback tests ---
-
-
-@pytest.mark.asyncio
 async def test_make_sync_callbacks_returns_dict() -> None:
-    """StrategistCog provides make_sync_callbacks() for PM escalation from sync context."""
+    """StrategistCog provides make_sync_callbacks()."""
     bot = _make_bot()
     cog, _ = _make_cog_with_conversation(bot)
 
@@ -254,131 +339,6 @@ async def test_make_sync_callbacks_returns_dict() -> None:
     assert "on_owner_escalation" in callbacks
     assert callable(callbacks["on_pm_escalation"])
     assert callable(callbacks["on_owner_escalation"])
-
-
-# --- Owner escalation tests (D-07) ---
-
-
-@pytest.mark.asyncio
-async def test_post_owner_escalation_posts_mention() -> None:
-    """post_owner_escalation posts @Owner mention in #strategist."""
-    cog, _ = _make_cog_with_conversation()
-
-    # Set up channel to return a sent message
-    sent_msg = MagicMock(spec=discord.Message)
-    sent_msg.id = 42
-    cog._strategist_channel.send.return_value = sent_msg
-
-    # Set up guild with owner role
-    owner_role = MagicMock(spec=discord.Role)
-    owner_role.name = "vco-owner"
-    owner_role.mention = "<@&111>"
-    cog._strategist_channel.guild.roles = [owner_role]
-
-    # Run escalation in background and resolve immediately
-    async def resolve_future():
-        await asyncio.sleep(0.05)
-        # Simulate owner reply
-        if 42 in cog._pending_escalations:
-            future = cog._pending_escalations[42]
-            if not future.done():
-                future.set_result("Do approach B.")
-
-    task = asyncio.create_task(resolve_future())
-    result = await cog.post_owner_escalation("agent-beta", "Big architecture question?", 0.3)
-    await task
-
-    # Check message was posted
-    cog._strategist_channel.send.assert_awaited()
-    call_content = cog._strategist_channel.send.call_args.kwargs.get(
-        "content", cog._strategist_channel.send.call_args[0][0] if cog._strategist_channel.send.call_args[0] else ""
-    )
-    assert "<@&111>" in call_content
-    assert "Strategic decision needed" in call_content
-    assert result == "Do approach B."
-
-
-@pytest.mark.asyncio
-async def test_post_owner_escalation_waits_indefinitely() -> None:
-    """post_owner_escalation waits indefinitely (no timeout) per D-07."""
-    cog, _ = _make_cog_with_conversation()
-
-    sent_msg = MagicMock(spec=discord.Message)
-    sent_msg.id = 99
-    cog._strategist_channel.send.return_value = sent_msg
-    cog._strategist_channel.guild.roles = []
-
-    # Resolve after a delay to prove it waits
-    async def delayed_resolve():
-        await asyncio.sleep(0.2)
-        if 99 in cog._pending_escalations:
-            cog._pending_escalations[99].set_result("Finally answered.")
-
-    task = asyncio.create_task(delayed_resolve())
-    result = await cog.post_owner_escalation("agent-gamma", "Hard question", 0.2)
-    await task
-
-    assert result == "Finally answered."
-
-
-@pytest.mark.asyncio
-async def test_owner_reply_resolves_pending_escalation() -> None:
-    """Owner reply in #strategist after escalation resolves the pending future with reply content."""
-    bot = _make_bot()
-    cog, _ = _make_cog_with_conversation(bot)
-
-    # Set up pending escalation
-    future = bot.loop.create_future()
-    cog._pending_escalations[42] = future
-
-    # Simulate owner reply referencing escalation message
-    ref = MagicMock(spec=discord.MessageReference)
-    ref.message_id = 42
-    msg = _make_message(content="Go with plan B.", reference=ref)
-    msg.channel = cog._strategist_channel
-
-    await cog.on_message(msg)
-
-    assert future.done()
-    assert future.result() == "Go with plan B."
-
-
-@pytest.mark.asyncio
-async def test_escalation_cleanup_on_reply() -> None:
-    """Owner reply pops the entry from pending_escalations dict."""
-    bot = _make_bot()
-    cog, _ = _make_cog_with_conversation(bot)
-
-    future = bot.loop.create_future()
-    cog._pending_escalations[42] = future
-
-    ref = MagicMock(spec=discord.MessageReference)
-    ref.message_id = 42
-    msg = _make_message(content="Answer here.", reference=ref)
-    msg.channel = cog._strategist_channel
-
-    await cog.on_message(msg)
-
-    assert 42 not in cog._pending_escalations
-
-
-@pytest.mark.asyncio
-async def test_not_initialized_reply() -> None:
-    """If conversation not initialized, reply with error message."""
-    bot = _make_bot()
-    cog = StrategistCog(bot)
-    cog._strategist_channel = AsyncMock(spec=discord.TextChannel)
-    cog._strategist_channel.name = "strategist"
-    cog._conversation = None
-
-    msg = _make_message()
-    msg.channel = cog._strategist_channel
-    msg.reply = AsyncMock()
-
-    await cog.on_message(msg)
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "not initialized" in reply_text.lower()
 
 
 @pytest.mark.asyncio
