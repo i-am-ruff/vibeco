@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
-status: Ready to execute
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-27T22:48:30.749Z"
+status: Ready to plan
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-03-27T22:59:17.871Z"
 progress:
   total_phases: 8
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 ## Current Position
 
-Phase: 04 (remaining-agent-types-and-scheduler) — EXECUTING
-Plan: 4 of 4
+Phase: 5
+Plan: Not started
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Plan: 4 of 4
 | Phase 04 P01 | 2min | 2 tasks | 3 files |
 | Phase 04 P03 | 3min | 2 tasks | 7 files |
 | Phase 04 P02 | 4min | 2 tasks | 6 files |
+| Phase 04 P04 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,8 @@ Recent decisions affecting current work:
 - [Phase 04]: EventDrivenLifecycle is standalone StateMachine (not subclass) following GsdLifecycle compound state pattern
 - [Phase 04]: Cross-project state uses xp: prefix in memory_store to namespace company-scoped keys
 - [Phase 04]: Wake uses sleeping.to(running) for fresh cycle; recover uses errored.to(running.h) for mid-cycle resume
+- [Phase 04]: Scheduler uses MemoryStore KV with JSON array for schedule persistence
+- [Phase 04]: register_defaults() uses lazy imports to avoid circular deps between factory and agent modules
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T22:48:30.731Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-27T22:55:26.227Z
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None
