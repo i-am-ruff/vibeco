@@ -12,18 +12,18 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 - [x] **CONT-01**: Every agent is wrapped in an AgentContainer with a validated lifecycle state machine (CREATING→RUNNING→SLEEPING→ERRORED→STOPPED→DESTROYED)
 - [x] **CONT-02**: State transitions are validated — impossible transitions (e.g., STOPPED→RUNNING) are rejected with errors
 - [x] **CONT-03**: Each container carries its own context (agent_id, type, parent_id, project_id, owned dirs, GSD mode, system prompt)
-- [ ] **CONT-04**: Each agent has a persistent memory_store (per-agent SQLite file) for checkpoints, seen items, decisions, and config
-- [ ] **CONT-05**: Child specification registry declares how to create each container (type, config, restart policy) — supervisors read specs to spawn children
+- [x] **CONT-04**: Each agent has a persistent memory_store (per-agent SQLite file) for checkpoints, seen items, decisions, and config
+- [x] **CONT-05**: Child specification registry declares how to create each container (type, config, restart policy) — supervisors read specs to spawn children
 - [x] **CONT-06**: All container communication flows through Discord — no hidden file-based IPC, no in-memory callbacks between agents
 
 ### Supervision
 
-- [ ] **SUPV-01**: Two-level supervision hierarchy: CompanyRoot → ProjectSupervisor → agent containers
-- [ ] **SUPV-02**: `one_for_one` restart strategy — only restart the failed child (covers independent agents)
-- [ ] **SUPV-03**: `all_for_one` restart strategy — restart all children when one fails (coupled agents)
-- [ ] **SUPV-04**: `rest_for_one` restart strategy — restart failed child and all children started after it (ordered deps)
-- [ ] **SUPV-05**: Max restart intensity at supervisor level with 10-minute windows (not 60s) to account for slow Claude Code bootstrap
-- [ ] **SUPV-06**: When max restarts exceeded, supervisor escalates to parent (ProjectSupervisor → CompanyRoot → Owner alert)
+- [x] **SUPV-01**: Two-level supervision hierarchy: CompanyRoot → ProjectSupervisor → agent containers
+- [x] **SUPV-02**: `one_for_one` restart strategy — only restart the failed child (covers independent agents)
+- [x] **SUPV-03**: `all_for_one` restart strategy — restart all children when one fails (coupled agents)
+- [x] **SUPV-04**: `rest_for_one` restart strategy — restart failed child and all children started after it (ordered deps)
+- [x] **SUPV-05**: Max restart intensity at supervisor level with 10-minute windows (not 60s) to account for slow Claude Code bootstrap
+- [x] **SUPV-06**: When max restarts exceeded, supervisor escalates to parent (ProjectSupervisor → CompanyRoot → Owner alert)
 
 ### Agent Types
 
@@ -101,16 +101,16 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 | CONT-01 | Phase 1 | Complete |
 | CONT-02 | Phase 1 | Complete |
 | CONT-03 | Phase 1 | Complete |
-| CONT-04 | Phase 1 | Pending |
-| CONT-05 | Phase 1 | Pending |
+| CONT-04 | Phase 1 | Complete |
+| CONT-05 | Phase 1 | Complete |
 | CONT-06 | Phase 1 | Complete |
 | HLTH-01 | Phase 1 | Complete |
-| SUPV-01 | Phase 2 | Pending |
-| SUPV-02 | Phase 2 | Pending |
-| SUPV-03 | Phase 2 | Pending |
-| SUPV-04 | Phase 2 | Pending |
-| SUPV-05 | Phase 2 | Pending |
-| SUPV-06 | Phase 2 | Pending |
+| SUPV-01 | Phase 2 | Complete |
+| SUPV-02 | Phase 2 | Complete |
+| SUPV-03 | Phase 2 | Complete |
+| SUPV-04 | Phase 2 | Complete |
+| SUPV-05 | Phase 2 | Complete |
+| SUPV-06 | Phase 2 | Complete |
 | TYPE-01 | Phase 3 | Pending |
 | TYPE-02 | Phase 3 | Pending |
 | TYPE-03 | Phase 4 | Pending |

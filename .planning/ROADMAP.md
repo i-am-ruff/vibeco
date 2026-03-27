@@ -160,8 +160,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Supervisor base class with restart strategies, intensity tracker, and escalation
-- [ ] 02-02-PLAN.md -- CompanyRoot, ProjectSupervisor, two-level hierarchy integration tests
+- [x] 02-01-PLAN.md -- Supervisor base class with restart strategies, intensity tracker, and escalation
+- [x] 02-02-PLAN.md -- CompanyRoot, ProjectSupervisor, two-level hierarchy integration tests
 
 ### Phase 3: GsdAgent
 **Goal**: GsdAgent is the first real container type with an internal phase state machine that replaces WorkflowOrchestrator, with checkpoint-based crash recovery
@@ -236,7 +236,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Container Foundation | 0/0 | Not started | - |
-| 2. Supervision Tree | 0/0 | Not started | - |
+| 2. Supervision Tree | 0/2 | Planned    |  |
 | 3. GsdAgent | 0/0 | Not started | - |
 | 4. Remaining Agent Types and Scheduler | 0/0 | Not started | - |
 | 5. Health Tree | 0/0 | Not started | - |
