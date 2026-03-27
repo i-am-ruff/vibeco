@@ -183,7 +183,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 **Plans:** 3 plans
 
 Plans:
-- [ ] 09-01-PLAN.md -- Message routing framework + dispatch env var fix + hook timeout bump
+- [x] 09-01-PLAN.md -- Message routing framework + dispatch env var fix + hook timeout bump
 - [ ] 09-02-PLAN.md -- Hook rewrite (Discord REST API posting + reply polling)
 - [ ] 09-03-PLAN.md -- Bot-side rework (QuestionHandlerCog + StrategistCog routing adoption)
 
