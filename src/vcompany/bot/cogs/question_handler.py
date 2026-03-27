@@ -1,30 +1,23 @@
-"""QuestionHandlerCog: Bridges webhook-posted agent questions to interactive answer UIs.
+"""QuestionHandlerCog: Detects agent questions in #agent-{id} channels and delivers answers via Discord reply.
 
-Listens for webhook messages in #strategist (posted by ask_discord.py hook),
-extracts the request_id from the embed footer, and creates a follow-up message
-with option buttons. When user clicks a button, writes the answer file
-atomically to /tmp/vco-answers/{request_id}.json for the hook to poll.
+Listens for bot-posted question embeds in agent channels (posted by ask_discord.py hook
+using the bot token). PM auto-answers via Discord reply (D-09/D-11). Escalation uses
+non-reply Pattern B mentions (D-10). Owner escalation happens in agent channel (D-03).
 
-Implements the bot-side of the hook<->bot IPC per D-02 and Research Open Question 2.
+No file-based IPC -- all answer delivery is via Discord replies (D-04, D-13).
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
-import os
-import re
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 
 import discord
 from discord.ext import commands
 
-logger = logging.getLogger("vcompany.bot.cogs.question_handler")
+from vcompany.bot.routing import is_question_embed
 
-ANSWER_DIR = Path("/tmp/vco-answers")
+logger = logging.getLogger("vcompany.bot.cogs.question_handler")
 
 from typing import TYPE_CHECKING
 
@@ -33,212 +26,47 @@ if TYPE_CHECKING:
     from vcompany.strategist.pm import PMTier
 
 
-class AnswerView(discord.ui.View):
-    """Dynamic button view for answering agent questions.
-
-    Creates one button per option from the webhook embed fields,
-    plus an "Other" button for free text.
-    """
-
-    def __init__(
-        self,
-        request_id: str,
-        agent_id: str,
-        options: list[dict[str, str]],
-        *,
-        timeout: float = 600.0,
-    ) -> None:
-        super().__init__(timeout=timeout)
-        self.request_id = request_id
-        self.agent_id = agent_id
-        self.answered = False
-
-        # Dynamically add option buttons (max 5 per row, max 25 total)
-        for i, opt in enumerate(options[:20]):
-            button = discord.ui.Button(
-                label=opt.get("name", f"Option {i+1}")[:80],
-                style=discord.ButtonStyle.primary,
-                custom_id=f"answer_{request_id}_{i}",
-            )
-            button.callback = self._make_option_callback(
-                opt.get("name", ""), opt.get("value", "")
-            )
-            self.add_item(button)
-
-        # Add "Other" button for free text
-        other_btn = discord.ui.Button(
-            label="Other (type answer)",
-            style=discord.ButtonStyle.secondary,
-            custom_id=f"answer_{request_id}_other",
-        )
-        other_btn.callback = self._other_callback
-        self.add_item(other_btn)
-
-    def _make_option_callback(self, label: str, description: str):
-        async def callback(interaction: discord.Interaction) -> None:
-            answer_text = f"{label} - {description}" if description else label
-            await self._write_answer(answer_text, interaction)
-
-        return callback
-
-    async def _other_callback(self, interaction: discord.Interaction) -> None:
-        """Show a modal for free text answer."""
-        modal = OtherAnswerModal(request_id=self.request_id, agent_id=self.agent_id)
-        await interaction.response.send_modal(modal)
-        await modal.wait()
-        if modal.answer_text:
-            await self._write_answer_file(
-                modal.answer_text,
-                str(interaction.user),
-            )
-            self.answered = True
-            for child in self.children:
-                child.disabled = True  # type: ignore[union-attr]
-            if interaction.message:
-                await interaction.message.edit(view=self)
-            self.stop()
-
-    async def _write_answer(self, answer_text: str, interaction: discord.Interaction) -> None:
-        """Write answer file and update UI."""
-        await self._write_answer_file(answer_text, str(interaction.user))
-        self.answered = True
-        for child in self.children:
-            child.disabled = True  # type: ignore[union-attr]
-        await interaction.response.edit_message(view=self)
-        await interaction.followup.send(
-            f"Answer recorded for `{self.agent_id}`: {answer_text}",
-            ephemeral=True,
-        )
-        self.stop()
-
-    async def _write_answer_file(self, answer_text: str, answered_by: str) -> None:
-        """Write answer file atomically per Pitfall 3."""
-        import asyncio
-
-        await asyncio.to_thread(
-            _write_answer_file_sync,
-            self.request_id,
-            self.agent_id,
-            answer_text,
-            answered_by,
-        )
-
-
-class OtherAnswerModal(discord.ui.Modal, title="Type Your Answer"):
-    """Modal for free-text answers when predefined options don't fit."""
-
-    answer_input = discord.ui.TextInput(
-        label="Your answer",
-        style=discord.TextStyle.paragraph,
-        placeholder="Type your answer here...",
-        required=True,
-        max_length=2000,
-    )
-
-    def __init__(self, request_id: str, agent_id: str, **kwargs: object) -> None:
-        super().__init__(**kwargs)
-        self.request_id = request_id
-        self.agent_id = agent_id
-        self.answer_text: str = ""
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        self.answer_text = self.answer_input.value
-        await interaction.response.send_message(
-            f"Answer recorded for `{self.agent_id}`: {self.answer_text}",
-            ephemeral=True,
-        )
-
-
-def _write_answer_file_sync(
-    request_id: str, agent_id: str, answer: str, answered_by: str
-) -> None:
-    """Write answer JSON atomically (tmp+rename) per Pitfall 3 / D-02."""
-    ANSWER_DIR.mkdir(parents=True, exist_ok=True)
-    answer_path = ANSWER_DIR / f"{request_id}.json"
-    data = {
-        "request_id": request_id,
-        "agent_id": agent_id,
-        "answer": answer,
-        "answered_by": answered_by,
-        "answered_at": datetime.now(timezone.utc).isoformat(),
-    }
-    content = json.dumps(data)
-    fd, tmp_path = tempfile.mkstemp(dir=str(ANSWER_DIR), suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(content)
-        os.rename(tmp_path, str(answer_path))
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
-
-
 class QuestionHandlerCog(commands.Cog):
-    """Listens for webhook-posted questions in #strategist and provides answer UI.
+    """Detects question embeds in #agent-{id} channels and delivers answers via Discord reply.
 
-    Phase 6: PM intercept layer. When PM is injected via set_pm(), agent
-    questions route through PM evaluation before showing answer buttons.
-    HIGH confidence -> auto-answer. MEDIUM -> suggest + buttons for override.
-    LOW -> escalate to Strategist, then to Owner via post_owner_escalation
-    with indefinite wait per D-07.
+    Phase 9: Uses routing framework's is_question_embed() to detect questions posted by
+    the hook. PM evaluates and replies directly. Escalation uses non-reply Pattern B.
+    No file-based IPC remains.
     """
 
     def __init__(self, bot: VcoBot) -> None:
         self.bot = bot
-        self._strategist_channel: discord.TextChannel | None = None
         self._pm: PMTier | None = None
+        self._entity_prefixes = {"pm": "[PM]"}
 
     def set_pm(self, pm: PMTier) -> None:
         """Inject PMTier for question evaluation. Called from bot startup."""
         self._pm = pm
 
-    async def _resolve_channel(self) -> None:
-        """Find #strategist channel in the guild."""
-        guild = self.bot.get_guild(self.bot._guild_id)
-        if guild:
-            for channel in guild.text_channels:
-                if channel.name == "strategist":
-                    self._strategist_channel = channel
-                    break
-
-    @commands.Cog.listener()
-    async def on_ready(self) -> None:
-        await self._resolve_channel()
-
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
-        """Detect webhook questions in #strategist and create answer buttons."""
-        # Only process webhook messages in #strategist
-        if not message.webhook_id:
-            return
-        if not self._strategist_channel:
-            await self._resolve_channel()
-        if not self._strategist_channel or message.channel.id != self._strategist_channel.id:
+        """Detect question embeds in agent channels and auto-answer via PM.
+
+        1. Bot's own messages: check for question embed pattern.
+        2. Non-bot messages: check if it's an owner reply to a pending escalation.
+        """
+        # Question embeds are posted by the hook using the bot token,
+        # so message.author.id == bot.user.id
+        if message.author.id != self.bot.user.id:
+            # Not a bot message -- nothing for us to detect here.
+            # Owner replies to escalations are handled by StrategistCog's
+            # pending_escalations mechanism.
             return
 
-        # Extract request_id from embed footer
-        if not message.embeds:
+        # Check if this is a question embed from the hook
+        result = is_question_embed(message)
+        if result is None:
             return
+
+        agent_id, request_id = result
+
+        # Extract question text from embed description
         embed = message.embeds[0]
-        if not embed.footer or not embed.footer.text:
-            return
-
-        match = re.search(r"Request:\s*(\S+)", embed.footer.text)
-        if not match:
-            return
-        request_id = match.group(1)
-
-        # Extract agent_id from embed title
-        agent_id = "unknown"
-        if embed.title:
-            title_match = re.search(r"Question from (\S+)", embed.title)
-            if title_match:
-                agent_id = title_match.group(1)
-
-        # Extract question text from embed description for PM evaluation
         question_text = embed.description or ""
 
         # Extract options from embed fields
@@ -247,78 +75,87 @@ class QuestionHandlerCog(commands.Cog):
             for field in embed.fields
         ]
 
-        # Phase 6: PM intercept before answer buttons
-        if self._pm and question_text:
+        # PM intercept: evaluate question and reply
+        if self._pm is not None and question_text:
             try:
-                decision = await self._pm.evaluate_question(question_text, agent_id)
+                await self._handle_pm_evaluation(
+                    message, agent_id, request_id, question_text, options
+                )
+            except Exception:
+                logger.exception(
+                    "PM evaluation failed for %s, question will sit for manual reply",
+                    agent_id,
+                )
+                # Graceful degradation: question sits in channel for manual reply
+            return
 
-                if decision.confidence.level == "HIGH":
-                    # Auto-answer: write answer file directly, skip buttons
-                    await asyncio.to_thread(
-                        _write_answer_file_sync, request_id, agent_id, decision.answer or "", "PM (auto)"
+        # PM not injected: question sits in channel for manual human reply
+        # (graceful degradation when ANTHROPIC_API_KEY is not set)
+
+    async def _handle_pm_evaluation(
+        self,
+        message: discord.Message,
+        agent_id: str,
+        request_id: str,
+        question_text: str,
+        options: list[dict[str, str]],
+    ) -> None:
+        """Evaluate question via PM and deliver answer by Discord reply."""
+        decision = await self._pm.evaluate_question(question_text, agent_id)
+
+        if decision.confidence.level == "HIGH":
+            # Auto-answer: reply to the question message
+            await message.reply(f"[PM] {decision.answer}")
+            # D-19: Do NOT log routine HIGH-confidence PM answers
+            return
+
+        elif decision.confidence.level == "MEDIUM":
+            # Answer with note, reply to the question message
+            await message.reply(f"[PM] {decision.answer}\n*{decision.note}*")
+            # D-19: Log escalation-worthy event
+            await self._log_decision(
+                agent_id, question_text, decision.answer or "", "MEDIUM", "PM"
+            )
+            return
+
+        else:  # LOW
+            # Escalate to Strategist -- non-reply Pattern B (D-10)
+            await message.channel.send(
+                f"[PM] Escalating to @Strategist -- confidence too low for: {question_text[:200]}"
+            )
+
+            strategist_cog = self.bot.get_cog("StrategistCog")
+            if strategist_cog is not None:
+                strat_answer = await strategist_cog.handle_pm_escalation(
+                    agent_id, question_text, decision.confidence.score
+                )
+                if strat_answer:
+                    # Strategist answered -- reply to original question
+                    # Strategist speaks without prefix per D-05
+                    await message.reply(strat_answer)
+                    await self._log_decision(
+                        agent_id, question_text, strat_answer, "MEDIUM", "Strategist"
                     )
-                    await message.reply(f"PM auto-answered for **{agent_id}**: {decision.answer}")
-                    # Log decision
-                    await self._log_decision(agent_id, question_text, decision.answer or "", "HIGH", "PM")
+                    return
+                else:
+                    # Strategist also unsure -- escalate to Owner in agent channel (D-03)
+                    await message.channel.send(
+                        f"[PM] @Owner -- strategic decision needed for {agent_id}: {question_text[:200]}"
+                    )
+                    owner_answer = await strategist_cog.post_owner_escalation(
+                        agent_id,
+                        question_text,
+                        decision.confidence.score,
+                        channel=message.channel,
+                    )
+                    # Reply to original question with owner's decision
+                    await message.reply(f"Owner decided: {owner_answer}")
+                    await self._log_decision(
+                        agent_id, question_text, owner_answer, "OWNER", "Owner"
+                    )
                     return
 
-                elif decision.confidence.level == "MEDIUM":
-                    # Answer but show buttons for override
-                    await message.reply(f"PM suggests: {decision.answer}\n*{decision.note}*")
-                    # Log decision
-                    await self._log_decision(agent_id, question_text, decision.answer or "", "MEDIUM", "PM")
-                    # Fall through to show answer buttons for owner override
-
-                else:  # LOW
-                    # Escalate to Strategist per D-05
-                    strategist_cog = self.bot.get_cog("StrategistCog")
-                    if strategist_cog:
-                        strat_answer = await strategist_cog.handle_pm_escalation(
-                            agent_id, question_text, decision.confidence.score
-                        )
-                        if strat_answer:
-                            # Strategist answered confidently
-                            await asyncio.to_thread(
-                                _write_answer_file_sync, request_id, agent_id, strat_answer, "Strategist"
-                            )
-                            await message.reply(f"Strategist answered for **{agent_id}**: {strat_answer}")
-                            await self._log_decision(
-                                agent_id, question_text, strat_answer, "MEDIUM", "Strategist"
-                            )
-                            return
-                        else:
-                            # Strategist also not confident -- escalate to Owner per D-07
-                            # Use post_owner_escalation which waits INDEFINITELY (no timeout)
-                            # This bypasses the Phase 5 AnswerView 10-minute timeout entirely
-                            owner_answer = await strategist_cog.post_owner_escalation(
-                                agent_id, question_text, decision.confidence.score
-                            )
-                            await asyncio.to_thread(
-                                _write_answer_file_sync, request_id, agent_id, owner_answer, "Owner"
-                            )
-                            await message.reply(f"Owner answered for **{agent_id}**: {owner_answer}")
-                            await self._log_decision(
-                                agent_id, question_text, owner_answer, "OWNER", "Owner"
-                            )
-                            return
-                    # If StrategistCog not initialized, fall through to standard AnswerView buttons
-                    # (graceful degradation when ANTHROPIC_API_KEY is not set)
-            except Exception:
-                logger.exception("PM evaluation failed for %s, falling through to buttons", agent_id)
-                # Fall through to standard buttons on any PM error
-
-        # Create answer view and post follow-up (standard Phase 5 flow)
-        view = AnswerView(
-            request_id=request_id,
-            agent_id=agent_id,
-            options=options,
-        )
-
-        await message.reply(
-            f"Select an answer for **{agent_id}** (Request: `{request_id}`):",
-            view=view,
-        )
-
+            # StrategistCog not available -- question sits for manual reply
 
     async def _log_decision(
         self,
@@ -328,7 +165,10 @@ class QuestionHandlerCog(commands.Cog):
         confidence_level: str,
         decided_by: str,
     ) -> None:
-        """Log a decision via StrategistCog's DecisionLogger if available."""
+        """Log a decision via StrategistCog's DecisionLogger if available.
+
+        Only called for escalated decisions per D-19 (not routine HIGH-confidence).
+        """
         strategist_cog = self.bot.get_cog("StrategistCog")
         if strategist_cog and strategist_cog.decision_logger:
             from vcompany.strategist.models import DecisionLogEntry
