@@ -1,7 +1,7 @@
 # Requirements: vCompany
 
 **Defined:** 2026-03-27
-**Core Value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code — all operable from Discord.
+**Core Value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
 
 ## v2 Requirements
 
@@ -49,6 +49,12 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 - [ ] **AUTO-05**: Project state owned by PM — agents read assignments and write completions. Agent crash never corrupts project state
 - [ ] **AUTO-06**: Scheduler in CompanyRoot triggers WAKE on sleeping ContinuousAgents per their configured schedule
 
+### Resilience
+
+- [ ] **RESL-01**: Communication layer queues outbound Discord messages with rate-aware batching — health reports debounced, supervisor commands prioritized over status updates, exponential backoff on 429s
+- [ ] **RESL-02**: Supervisor distinguishes upstream outage (all children failing simultaneously within a short window) from individual agent failure — bulk failure triggers global backoff instead of per-agent restart loops
+- [ ] **RESL-03**: System enters degraded mode when Claude servers are unreachable — existing containers stay alive, no new dispatches, owner notified, automatic recovery when service returns
+
 ### Integration & Migration
 
 - [ ] **MIGR-01**: CompanyRoot replaces flat VcoBot.on_ready() — supervision tree initializes all containers
@@ -92,43 +98,46 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONT-01 | — | Pending |
-| CONT-02 | — | Pending |
-| CONT-03 | — | Pending |
-| CONT-04 | — | Pending |
-| CONT-05 | — | Pending |
-| CONT-06 | — | Pending |
-| SUPV-01 | — | Pending |
-| SUPV-02 | — | Pending |
-| SUPV-03 | — | Pending |
-| SUPV-04 | — | Pending |
-| SUPV-05 | — | Pending |
-| SUPV-06 | — | Pending |
-| TYPE-01 | — | Pending |
-| TYPE-02 | — | Pending |
-| TYPE-03 | — | Pending |
-| TYPE-04 | — | Pending |
-| TYPE-05 | — | Pending |
-| HLTH-01 | — | Pending |
-| HLTH-02 | — | Pending |
-| HLTH-03 | — | Pending |
-| HLTH-04 | — | Pending |
-| AUTO-01 | — | Pending |
-| AUTO-02 | — | Pending |
-| AUTO-03 | — | Pending |
-| AUTO-04 | — | Pending |
-| AUTO-05 | — | Pending |
-| AUTO-06 | — | Pending |
-| MIGR-01 | — | Pending |
-| MIGR-02 | — | Pending |
-| MIGR-03 | — | Pending |
-| MIGR-04 | — | Pending |
+| CONT-01 | Phase 1 | Pending |
+| CONT-02 | Phase 1 | Pending |
+| CONT-03 | Phase 1 | Pending |
+| CONT-04 | Phase 1 | Pending |
+| CONT-05 | Phase 1 | Pending |
+| CONT-06 | Phase 1 | Pending |
+| HLTH-01 | Phase 1 | Pending |
+| SUPV-01 | Phase 2 | Pending |
+| SUPV-02 | Phase 2 | Pending |
+| SUPV-03 | Phase 2 | Pending |
+| SUPV-04 | Phase 2 | Pending |
+| SUPV-05 | Phase 2 | Pending |
+| SUPV-06 | Phase 2 | Pending |
+| TYPE-01 | Phase 3 | Pending |
+| TYPE-02 | Phase 3 | Pending |
+| TYPE-03 | Phase 4 | Pending |
+| TYPE-04 | Phase 4 | Pending |
+| TYPE-05 | Phase 4 | Pending |
+| AUTO-06 | Phase 4 | Pending |
+| HLTH-02 | Phase 5 | Pending |
+| HLTH-03 | Phase 5 | Pending |
+| HLTH-04 | Phase 5 | Pending |
+| RESL-01 | Phase 6 | Pending |
+| RESL-02 | Phase 6 | Pending |
+| RESL-03 | Phase 6 | Pending |
+| AUTO-01 | Phase 7 | Pending |
+| AUTO-02 | Phase 7 | Pending |
+| AUTO-03 | Phase 7 | Pending |
+| AUTO-04 | Phase 7 | Pending |
+| AUTO-05 | Phase 7 | Pending |
+| MIGR-01 | Phase 8 | Pending |
+| MIGR-02 | Phase 8 | Pending |
+| MIGR-03 | Phase 8 | Pending |
+| MIGR-04 | Phase 8 | Pending |
 
 **Coverage:**
-- v2 requirements: 31 total
-- Mapped to phases: 0
-- Unmapped: 31 ⚠️
+- v2 requirements: 34 total
+- Mapped to phases: 34
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after initial definition*
+*Last updated: 2026-03-27 after roadmap revision (8 phases)*
