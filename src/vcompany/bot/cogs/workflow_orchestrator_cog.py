@@ -45,6 +45,38 @@ class WorkflowOrchestratorCog(commands.Cog):
         self._pm: PMTier | None = None
         self._project_dir: Path | None = None
 
+    def _get_project_category_name(self) -> str | None:
+        """Get the Discord category name for the current project."""
+        if self.bot.project_config is not None:
+            return f"vco-{self.bot.project_config.project}"
+        return None
+
+    def _find_agent_channel(self, guild: discord.Guild, agent_id: str) -> discord.TextChannel | None:
+        """Find #agent-{id} scoped to the current project's category."""
+        category_name = self._get_project_category_name()
+        channel_name = f"agent-{agent_id}"
+        for ch in guild.text_channels:
+            if ch.name == channel_name:
+                if category_name is None:
+                    return ch
+                if ch.category and ch.category.name == category_name:
+                    return ch
+        return None
+
+    async def _send_system_event(self, agent_id: str, message: str) -> None:
+        """Post a [system] event message in the agent's Discord channel (project-scoped)."""
+        if not hasattr(self.bot, '_guild_id') or not self.bot._guild_id:
+            return
+        guild = self.bot.get_guild(self.bot._guild_id)
+        if not guild:
+            return
+        channel = self._find_agent_channel(guild, agent_id)
+        if channel:
+            try:
+                await channel.send(f"[system] {message}")
+            except Exception:
+                logger.exception("Failed to send system event to #agent-%s", agent_id)
+
     def set_orchestrator(
         self,
         orchestrator: WorkflowOrchestrator,
@@ -76,8 +108,10 @@ class WorkflowOrchestratorCog(commands.Cog):
         if not message.channel.name.startswith("agent-"):
             return
 
-        # Skip bot's own messages
-        if message.author.id == self.bot.user.id:
+        # vco report posts as the bot (via REST API with bot token), so we
+        # MUST check bot messages for stage signals. Skip [system] messages
+        # (our own event posts) to avoid infinite loops.
+        if message.content.startswith("[system]"):
             return
 
         # Detect stage completion signal
@@ -107,16 +141,16 @@ class WorkflowOrchestratorCog(commands.Cog):
             "Agent %s stage signal '%s' -> %s", agent_id, stage, new_stage.value
         )
 
+        await self._send_system_event(
+            agent_id,
+            f"Stage '{stage}' complete → entering {new_stage.value.upper().replace('_', ' ')}",
+        )
+
         # Handle gate reviews based on new stage
         if new_stage == WorkflowStage.DISCUSSION_GATE:
             await self._review_discussion_gate(agent_id)
         elif new_stage == WorkflowStage.PM_PLAN_REVIEW_GATE:
-            # PlanReviewCog handles plan review. Orchestrator waits for
-            # notify_plan_approved/rejected callback.
-            logger.info(
-                "Agent %s at PM_PLAN_REVIEW_GATE, waiting for PlanReviewCog",
-                agent_id,
-            )
+            await self._review_plan_gate(agent_id)
         elif new_stage == WorkflowStage.VERIFY:
             await self._review_verify_gate(agent_id)
         elif new_stage == WorkflowStage.PHASE_COMPLETE:
@@ -155,6 +189,10 @@ class WorkflowOrchestratorCog(commands.Cog):
                 "No CONTEXT.md found for %s, auto-advancing discussion gate",
                 agent_id,
             )
+            await self._send_system_event(
+                agent_id,
+                "DISCUSSION GATE — no CONTEXT.md found, auto-advancing to PLAN stage",
+            )
             await asyncio.to_thread(
                 self._orchestrator.advance_from_gate, agent_id, True
             )
@@ -176,6 +214,10 @@ class WorkflowOrchestratorCog(commands.Cog):
                         agent_id,
                         decision.confidence.level,
                     )
+                    await self._send_system_event(
+                        agent_id,
+                        f"DISCUSSION GATE passed (PM confidence: {decision.confidence.level}) → advancing to PLAN stage",
+                    )
                     await asyncio.to_thread(
                         self._orchestrator.advance_from_gate, agent_id, True
                     )
@@ -189,17 +231,10 @@ class WorkflowOrchestratorCog(commands.Cog):
                         agent_id,
                         f"Discussion gate: PM confidence LOW on CONTEXT.md review",
                     )
-                    # Post to agent channel for owner visibility
-                    guild = self.bot.get_guild(self.bot._guild_id)
-                    if guild:
-                        channel = discord.utils.get(
-                            guild.text_channels, name=f"agent-{agent_id}"
-                        )
-                        if channel:
-                            await channel.send(
-                                f"[PM] CONTEXT.md review for {agent_id}: LOW confidence. "
-                                f"@Owner please review and approve/reject."
-                            )
+                    await self._send_system_event(
+                        agent_id,
+                        "DISCUSSION GATE blocked — PM confidence LOW on CONTEXT.md. @Owner please review.",
+                    )
                 return
             except Exception:
                 logger.exception(
@@ -209,6 +244,87 @@ class WorkflowOrchestratorCog(commands.Cog):
         # No PM available -- auto-advance
         logger.info(
             "No PM available, auto-advancing discussion gate for %s", agent_id
+        )
+        await self._send_system_event(
+            agent_id,
+            "DISCUSSION GATE — no PM available, auto-advancing to PLAN stage",
+        )
+        await asyncio.to_thread(
+            self._orchestrator.advance_from_gate, agent_id, True
+        )
+
+    async def _review_plan_gate(self, agent_id: str) -> None:
+        """Review plans at the PM plan review gate.
+
+        Reads PLAN.md files from the agent's clone and asks PM to evaluate.
+        HIGH/MEDIUM confidence auto-approves; LOW blocks for owner.
+        """
+        if self._orchestrator is None or self._project_dir is None:
+            return
+
+        clone_dir = self._project_dir / "clones" / agent_id
+        phases_dir = clone_dir / ".planning" / "phases"
+
+        # Find plan files
+        plan_content = ""
+        plan_count = 0
+        if phases_dir.exists():
+            plan_files = sorted(phases_dir.rglob("*-PLAN.md"))
+            for pf in plan_files[-5:]:  # Last 5 plans max
+                try:
+                    raw = await asyncio.to_thread(pf.read_text)
+                    plan_content += f"\n--- {pf.name} ---\n{raw[:1000]}\n"
+                    plan_count += 1
+                except Exception:
+                    pass
+
+        if not plan_content:
+            logger.warning("No plans found for %s, auto-advancing plan gate", agent_id)
+            await self._send_system_event(
+                agent_id,
+                "PM PLAN REVIEW GATE — no plans found, auto-advancing to EXECUTE stage",
+            )
+            await asyncio.to_thread(
+                self._orchestrator.advance_from_gate, agent_id, True
+            )
+            return
+
+        # PM review
+        if self._pm is not None:
+            try:
+                review_prompt = (
+                    f"Review these {plan_count} plan(s) from agent '{agent_id}'. "
+                    f"Are they reasonable and aligned with the project? "
+                    f"Answer YES to approve or NO with reason to reject.\n\n{plan_content}"
+                )
+                decision = await self._pm.evaluate_question(review_prompt, agent_id)
+
+                if decision.confidence.level in ("HIGH", "MEDIUM"):
+                    await self._send_system_event(
+                        agent_id,
+                        f"PM PLAN REVIEW GATE passed — {plan_count} plan(s) approved (PM confidence: {decision.confidence.level}) → advancing to EXECUTE stage",
+                    )
+                    await asyncio.to_thread(
+                        self._orchestrator.advance_from_gate, agent_id, True
+                    )
+                else:
+                    await self._send_system_event(
+                        agent_id,
+                        "PM PLAN REVIEW GATE blocked — PM confidence LOW. @Owner please review plans.",
+                    )
+                    self._orchestrator.handle_unknown_prompt(
+                        agent_id,
+                        "Plan gate: PM confidence LOW on plan review",
+                    )
+                return
+            except Exception:
+                logger.exception("PM evaluation failed for %s plan gate", agent_id)
+
+        # No PM — auto-advance
+        logger.info("No PM available, auto-advancing plan gate for %s", agent_id)
+        await self._send_system_event(
+            agent_id,
+            f"PM PLAN REVIEW GATE — no PM available, auto-advancing to EXECUTE stage",
         )
         await asyncio.to_thread(
             self._orchestrator.advance_from_gate, agent_id, True
@@ -247,14 +363,19 @@ class WorkflowOrchestratorCog(commands.Cog):
             state.stage = WorkflowStage.VERIFY_GATE
 
         if not verification_content:
-            # No VERIFICATION.md -- auto-advance
+            # No VERIFICATION.md -- auto-advance (verifier likely disabled)
             logger.warning(
                 "No VERIFICATION.md found for %s, auto-advancing verify gate",
                 agent_id,
             )
+            await self._send_system_event(
+                agent_id,
+                "VERIFY GATE — no VERIFICATION.md (verifier disabled), auto-advancing to PHASE COMPLETE",
+            )
             await asyncio.to_thread(
                 self._orchestrator.advance_from_gate, agent_id, True
             )
+            await self._handle_phase_complete(agent_id)
             return
 
         # Check for pass/fail patterns
@@ -268,9 +389,14 @@ class WorkflowOrchestratorCog(commands.Cog):
                 "VERIFICATION.md for %s shows all PASS, advancing to PHASE_COMPLETE",
                 agent_id,
             )
+            await self._send_system_event(
+                agent_id,
+                "VERIFY GATE passed — all checks PASS → advancing to PHASE COMPLETE",
+            )
             await asyncio.to_thread(
                 self._orchestrator.advance_from_gate, agent_id, True
             )
+            await self._handle_phase_complete(agent_id)
             return
 
         # Failures found -- PM evaluates
@@ -291,6 +417,10 @@ class WorkflowOrchestratorCog(commands.Cog):
                         agent_id,
                         decision.confidence.level,
                     )
+                    await self._send_system_event(
+                        agent_id,
+                        f"VERIFY GATE — failures found, PM recommends re-execute (confidence: {decision.confidence.level})",
+                    )
                     await asyncio.to_thread(
                         self._orchestrator.advance_from_gate, agent_id, False
                     )
@@ -304,16 +434,10 @@ class WorkflowOrchestratorCog(commands.Cog):
                         agent_id,
                         "Verify gate: PM confidence LOW on VERIFICATION.md review",
                     )
-                    guild = self.bot.get_guild(self.bot._guild_id)
-                    if guild:
-                        channel = discord.utils.get(
-                            guild.text_channels, name=f"agent-{agent_id}"
-                        )
-                        if channel:
-                            await channel.send(
-                                f"[PM] VERIFICATION.md for {agent_id} has failures. "
-                                f"LOW confidence on resolution. @Owner please review."
-                            )
+                    await self._send_system_event(
+                        agent_id,
+                        "VERIFY GATE blocked — verification failures, PM confidence LOW. @Owner please review.",
+                    )
                 return
             except Exception:
                 logger.exception(
@@ -344,16 +468,10 @@ class WorkflowOrchestratorCog(commands.Cog):
             "Agent %s completed phase %s", agent_id, phase
         )
 
-        # Post completion message to agent channel
-        guild = self.bot.get_guild(self.bot._guild_id)
-        if guild:
-            channel = discord.utils.get(
-                guild.text_channels, name=f"agent-{agent_id}"
-            )
-            if channel:
-                await channel.send(
-                    f"[Orchestrator] Agent {agent_id} completed phase {phase}."
-                )
+        await self._send_system_event(
+            agent_id,
+            f"PHASE {phase} COMPLETE ✓ — all stages passed",
+        )
 
         # Check if there's a next phase (simple increment)
         if state and isinstance(phase, int):
@@ -369,6 +487,10 @@ class WorkflowOrchestratorCog(commands.Cog):
                             next_phase,
                             agent_id,
                         )
+                        await self._send_system_event(
+                            agent_id,
+                            f"Starting Phase {next_phase} → entering DISCUSS stage",
+                        )
                         await asyncio.to_thread(
                             self._orchestrator.start_agent, agent_id, next_phase
                         )
@@ -382,6 +504,10 @@ class WorkflowOrchestratorCog(commands.Cog):
                 logger.info(
                     "No next phase found for %s, setting to IDLE", agent_id
                 )
+                await self._send_system_event(
+                    agent_id,
+                    "All phases complete — agent is now IDLE",
+                )
 
     async def notify_plan_approved(self, agent_id: str) -> None:
         """Called by PlanReviewCog after plan approval.
@@ -393,6 +519,10 @@ class WorkflowOrchestratorCog(commands.Cog):
 
         state = self._orchestrator.get_agent_state(agent_id)
         if state and state.stage == WorkflowStage.PM_PLAN_REVIEW_GATE:
+            await self._send_system_event(
+                agent_id,
+                "PM PLAN REVIEW GATE passed — plans approved → advancing to EXECUTE stage",
+            )
             await asyncio.to_thread(
                 self._orchestrator.advance_from_gate, agent_id, True
             )
@@ -411,6 +541,10 @@ class WorkflowOrchestratorCog(commands.Cog):
 
         state = self._orchestrator.get_agent_state(agent_id)
         if state and state.stage == WorkflowStage.PM_PLAN_REVIEW_GATE:
+            await self._send_system_event(
+                agent_id,
+                "PM PLAN REVIEW GATE rejected — plans sent back for replanning",
+            )
             await asyncio.to_thread(
                 self._orchestrator.advance_from_gate, agent_id, False
             )
@@ -434,6 +568,10 @@ class WorkflowOrchestratorCog(commands.Cog):
             logger.error("Cannot start workflow: orchestrator not initialized")
             return False
 
+        await self._send_system_event(
+            agent_id,
+            f"Workflow started — Phase {phase}, entering DISCUSS stage",
+        )
         result = await asyncio.to_thread(
             self._orchestrator.start_agent, agent_id, phase
         )

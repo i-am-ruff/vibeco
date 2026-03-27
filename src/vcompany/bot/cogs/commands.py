@@ -174,7 +174,64 @@ class CommandsCog(commands.Cog):
                 guild_id=str(_bot_config.discord_guild_id),
             )
 
-            # Start monitor loop with full callbacks
+            # Step 5: Dispatch agents BEFORE starting monitor to avoid
+            # false-dead alerts from stale agents.json PIDs
+            results = await asyncio.to_thread(self.bot.agent_manager.dispatch_all)
+            ok = sum(1 for r in results if r.success)
+            await interaction.channel.send(
+                f"Dispatched {ok}/{len(results)} agents. Waiting for Claude to start..."
+            )
+
+            # Step 6: Wait for all Claude instances to boot, then wire orchestrator
+            # and send work commands. All agents boot in parallel — wait once
+            # instead of polling each sequentially.
+            await interaction.channel.send(
+                f"Waiting 30s for {len(config.agents)} Claude instances to boot..."
+            )
+            await asyncio.sleep(30)
+
+            try:
+                from vcompany.orchestrator.workflow_orchestrator import WorkflowOrchestrator
+                from vcompany.strategist.pm import PMTier
+
+                pm = PMTier(project_dir=project_dir)
+                self.bot.workflow_orchestrator = WorkflowOrchestrator(
+                    project_dir=project_dir,
+                    config=config,
+                    agent_manager=self.bot.agent_manager,
+                )
+
+                wo_cog = self.bot.get_cog("WorkflowOrchestratorCog")
+                if wo_cog:
+                    wo_cog.set_orchestrator(self.bot.workflow_orchestrator, pm, project_dir)
+
+                    # Wire PlanReviewCog notifications
+                    plan_review_cog_ref = self.bot.get_cog("PlanReviewCog")
+                    if plan_review_cog_ref:
+                        plan_review_cog_ref._workflow_cog = wo_cog
+
+                    # Kick off all agents on Phase 1 via the orchestrator
+                    await interaction.channel.send(
+                        "Starting agent workflows via WorkflowOrchestrator..."
+                    )
+                    for agent in config.agents:
+                        started = await wo_cog.start_workflow(agent.id, 1)
+                        if started:
+                            await interaction.channel.send(
+                                f"Agent **{agent.id}** started on Phase 1 (discuss stage)."
+                            )
+                        else:
+                            await interaction.channel.send(
+                                f"Failed to start workflow for **{agent.id}**."
+                            )
+            except Exception:
+                logger.exception("Failed to initialize WorkflowOrchestrator in /new-project")
+                await interaction.channel.send(
+                    "WorkflowOrchestrator initialization failed. Agents dispatched but not orchestrated."
+                )
+
+            # Step 7: Start monitor AFTER agents have work commands
+            # This avoids false dead alerts during Claude startup
             from vcompany.monitor.loop import MonitorLoop
 
             alerts_cog = self.bot.get_cog("AlertsCog")
@@ -198,28 +255,7 @@ class CommandsCog(commands.Cog):
             self.bot._monitor_task = asyncio.create_task(
                 self.bot.monitor_loop.run(), name="monitor-loop"
             )
-            await interaction.channel.send("Project loaded into bot. Monitor started.")
-
-            # Step 5: Dispatch agents
-            import time
-            results = await asyncio.to_thread(self.bot.agent_manager.dispatch_all)
-            ok = sum(1 for r in results if r.success)
-            await interaction.channel.send(
-                f"Dispatched {ok}/{len(results)} agents. Waiting for Claude to start..."
-            )
-
-            # Wait for Claude to boot (polls pane output), then send work command
-            await interaction.channel.send("Waiting for Claude Code to be ready in each agent...")
-            sent = await asyncio.to_thread(
-                self.bot.agent_manager.send_work_command_all,
-                "/gsd:plan-phase 1",
-                wait_for_ready=True,
-            )
-            ok_sent = sum(1 for v in sent.values() if v)
-            await interaction.channel.send(
-                f"Sent work command to {ok_sent} agents. They're planning Phase 1 now.\n"
-                f"PM will review plans before execution starts."
-            )
+            await interaction.channel.send("All agents running. Monitor started.")
 
         except Exception as exc:
             logger.exception("Error in /new-project")

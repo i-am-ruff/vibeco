@@ -110,10 +110,23 @@ async def test_on_message_ignores_no_signal(cog, mock_orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_on_message_ignores_bot_own_messages(cog, mock_orchestrator, mock_bot):
-    """on_message ignores messages from the bot itself."""
+async def test_on_message_processes_bot_vco_report(cog, mock_orchestrator, mock_bot):
+    """on_message processes bot messages (vco report posts as bot via REST API)."""
     msg = _make_message(
         "2026-03-27T00:00:00Z alpha: discuss-phase complete",
+        author_id=mock_bot.user.id,
+    )
+
+    await cog.on_message(msg)
+
+    mock_orchestrator.on_stage_complete.assert_called_once_with("alpha", "discuss")
+
+
+@pytest.mark.asyncio
+async def test_on_message_ignores_system_messages(cog, mock_orchestrator, mock_bot):
+    """on_message ignores [system] event messages to avoid loops."""
+    msg = _make_message(
+        "[system] Stage 'discuss' complete",
         author_id=mock_bot.user.id,
     )
 

@@ -61,7 +61,16 @@ def up(project_dir: str | None, log_level: str) -> None:
     Launches the Discord bot + Strategist tmux pane + monitor tmux pane.
     Works without a project -- Strategist is always available in #strategist.
     """
-    logging.basicConfig(level=getattr(logging, log_level))
+    log_file = Path.home() / "vco.log"
+    logging.basicConfig(
+        level=getattr(logging, log_level),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(str(log_file), mode="w"),
+        ],
+    )
+    logging.getLogger().info("Logging to %s", log_file)
 
     from vcompany.bot.client import VcoBot
     from vcompany.bot.config import BotConfig

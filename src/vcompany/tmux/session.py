@@ -7,6 +7,7 @@ changes, only this file needs updating.
 
 import logging
 import os
+import subprocess
 
 import libtmux
 
@@ -113,8 +114,38 @@ class TmuxManager:
         return False
 
     def get_output(self, pane: libtmux.Pane, lines: int = 50) -> list[str]:
-        """Capture recent output lines from a pane."""
-        return pane.capture_pane()
+        """Capture recent output lines from a pane.
+
+        Uses libtmux capture_pane first. If that returns empty, falls back to
+        raw `tmux capture-pane -p` subprocess as a resilience measure.
+        """
+        try:
+            result = pane.capture_pane()
+            if result:
+                return result
+        except Exception:
+            logger.debug("libtmux capture_pane failed for %s, trying subprocess fallback",
+                         getattr(pane, "pane_id", "?"))
+
+        # Fallback: raw subprocess capture
+        pane_id = getattr(pane, "pane_id", None)
+        if pane_id:
+            try:
+                proc = subprocess.run(
+                    ["tmux", "capture-pane", "-t", pane_id, "-p"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if proc.returncode == 0 and proc.stdout.strip():
+                    lines_out = proc.stdout.splitlines()
+                    logger.debug(
+                        "Subprocess fallback captured %d lines for %s",
+                        len(lines_out), pane_id,
+                    )
+                    return lines_out
+            except Exception:
+                logger.debug("Subprocess capture fallback also failed for %s", pane_id)
+
+        return []
 
     def kill_pane(self, pane: libtmux.Pane) -> None:
         """Kill a specific pane."""

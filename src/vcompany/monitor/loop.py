@@ -71,6 +71,15 @@ class MonitorLoop:
         self._cycle_interval = cycle_interval if cycle_interval is not None else self.CYCLE_INTERVAL
         self._running = False
 
+        # Deduplication: track which alerts have already fired
+        self._alerted_stuck: set[str] = set()
+        self._alerted_dead: set[str] = set()
+
+        # Per-agent grace period: suppress alerts for 5 min after first seen
+        import time as _time
+        self._agent_first_seen: dict[str, float] = {}
+        self._grace_period: float = 300.0  # 5 minutes
+
         # Per-agent state persists between cycles
         self._agent_states: dict[str, AgentMonitorState] = {}
         for agent in config.agents:
@@ -175,21 +184,36 @@ class MonitorLoop:
             agent_pid = entry.pid if entry else None
             clone_dir = self._project_dir / "clones" / agent_id
 
+            # Per-agent grace period: suppress alerts for 5 min after first seen
+            import time as _time
+            now_mono = _time.monotonic()
+            if agent_id not in self._agent_first_seen:
+                self._agent_first_seen[agent_id] = now_mono
+            in_grace = (now_mono - self._agent_first_seen[agent_id]) < self._grace_period
+
             # Liveness check — pass agent_pid for full PID validation per MON-02/D-02
             liveness = await asyncio.to_thread(
                 check_liveness, agent_id, self._tmux, pane, agent_pid=agent_pid
             )
-            if not liveness.passed and self._on_agent_dead:
-                self._on_agent_dead(agent_id)
-            if not liveness.passed and self._on_advisory:
-                await self._on_advisory(agent_id, f"agent {agent_id} appears dead: {liveness.detail}")
+            if not liveness.passed and agent_id not in self._alerted_dead and not in_grace:
+                self._alerted_dead.add(agent_id)
+                if self._on_agent_dead:
+                    self._on_agent_dead(agent_id)
+                if self._on_advisory:
+                    await self._on_advisory(agent_id, f"agent {agent_id} appears dead: {liveness.detail}")
+            elif liveness.passed:
+                self._alerted_dead.discard(agent_id)
 
             # Stuck check
             stuck = await asyncio.to_thread(check_stuck, agent_id, clone_dir)
-            if not stuck.passed and self._on_agent_stuck:
-                self._on_agent_stuck(agent_id)
-            if not stuck.passed and self._on_advisory:
-                await self._on_advisory(agent_id, f"agent {agent_id} appears stuck: {stuck.detail}")
+            if not stuck.passed and agent_id not in self._alerted_stuck and not in_grace:
+                self._alerted_stuck.add(agent_id)
+                if self._on_agent_stuck:
+                    self._on_agent_stuck(agent_id)
+                if self._on_advisory:
+                    await self._on_advisory(agent_id, f"agent {agent_id} appears stuck: {stuck.detail}")
+            elif stuck.passed:
+                self._alerted_stuck.discard(agent_id)
 
             # Plan gate check with persisted mtimes
             state = self._agent_states.get(agent_id)

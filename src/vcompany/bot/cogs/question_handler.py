@@ -105,13 +105,15 @@ class QuestionHandlerCog(commands.Cog):
 
         if decision.confidence.level == "HIGH":
             # Auto-answer: reply to the question message
-            await message.reply(f"[PM] {decision.answer}")
+            answer_text = (decision.answer or "")[:1900]
+            await message.reply(f"[PM] {answer_text}")
             # D-19: Do NOT log routine HIGH-confidence PM answers
             return
 
         elif decision.confidence.level == "MEDIUM":
             # Answer with note, reply to the question message
-            await message.reply(f"[PM] {decision.answer}\n*{decision.note}*")
+            answer_text = (decision.answer or "")[:1800]
+            await message.reply(f"[PM] {answer_text}\n*{decision.note}*")
             # D-19: Log escalation-worthy event
             await self._log_decision(
                 agent_id, question_text, decision.answer or "", "MEDIUM", "PM"

@@ -68,6 +68,23 @@ class PMTier:
 
         confidence = self._scorer.score(question, context_docs, decision_log)
 
+        # For discussion/design questions (AskUserQuestion), the PM should
+        # always attempt to answer rather than escalate. These are preference
+        # questions that Claude can answer reasonably. Only escalate if we
+        # have literally zero project context.
+        has_any_context = any(v.strip() for v in context_docs.values())
+        if confidence.level == "LOW" and has_any_context:
+            logger.info(
+                "PM boosting LOW->MEDIUM for %s (has project context, will attempt answer)",
+                agent_id,
+            )
+            confidence = ConfidenceResult(
+                score=0.6,
+                level="MEDIUM",
+                coverage=confidence.coverage,
+                prior_match=confidence.prior_match,
+            )
+
         if confidence.level == "LOW":
             return PMDecision(
                 answer=None,
@@ -117,6 +134,16 @@ class PMTier:
                 "--tools", "",
             ]
 
+            # Frame the question so Claude picks an option concisely
+            framed_question = (
+                "You are the PM for a software project. An agent is asking you a question "
+                "during a GSD workflow discussion. Pick the best option and respond with ONLY "
+                "the option label (e.g., 'Option Name') and a brief 1-2 sentence reason. "
+                "Do NOT write code, do NOT execute commands, do NOT write long explanations. "
+                "Just pick an option.\n\n"
+                f"Question:\n{question}"
+            )
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
@@ -124,7 +151,7 @@ class PMTier:
                 stderr=asyncio.subprocess.PIPE,
             )
 
-            stdout, _ = await proc.communicate(input=question.encode())
+            stdout, _ = await proc.communicate(input=framed_question.encode())
 
             if proc.returncode != 0:
                 logger.error("Claude CLI exited with code %d for PM question", proc.returncode)

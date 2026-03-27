@@ -225,8 +225,8 @@ def test_post_question_embed_format() -> None:
     embed = payload["embeds"][0]
     assert embed["title"] == "Question from agent-1"
     assert embed["footer"]["text"] == "Request: req-123"
-    assert len(embed["fields"]) == 1
-    assert embed["fields"][0]["name"] == "Red"
+    assert "Red" in embed["description"]
+    assert "Warm color" in embed["description"]
     assert embed["color"] == 0x3498DB
 
 

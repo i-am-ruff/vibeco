@@ -119,6 +119,13 @@ class AgentManager:
 
         self._tmux.send_command(pane, chained_cmd)
 
+        # Auto-accept workspace trust prompt ("Yes, I trust this folder")
+        # Claude shows this on first use of a directory. Send Enter after
+        # a brief delay to select the default option (1. Yes).
+        time.sleep(3)
+        pane.send_keys("", enter=True)  # Just press Enter to confirm default
+        logger.debug("Sent trust prompt acceptance for %s", agent_id)
+
         # Extract pane PID (shell PID; Claude will be its child)
         pane_pid = int(pane.pane_pid) if pane.pane_pid else None
         pane_id = str(getattr(pane, "pane_id", ""))
@@ -184,6 +191,11 @@ class AgentManager:
                 f"--append-system-prompt-file {prompt_path}"
             )
             self._tmux.send_command(pane, chained_cmd)
+
+            # Auto-accept workspace trust prompt (same as single dispatch)
+            time.sleep(3)
+            pane.send_keys("", enter=True)
+            logger.debug("Sent trust prompt acceptance for %s", agent_cfg.id)
 
             pane_pid = int(pane.pane_pid) if pane.pane_pid else None
             pane_id = str(getattr(pane, "pane_id", ""))
@@ -369,28 +381,48 @@ class AgentManager:
             if wait_for_ready:
                 if not self._wait_for_claude_ready(pane, agent_id):
                     logger.warning("Proceeding without ready confirmation for %s", agent_id)
-            result = self._tmux.send_command(pane, command)
-            if result:
-                logger.info("Sent to %s: %s", agent_id, command)
-                # Verify command appeared in pane (best-effort)
-                time.sleep(0.5)
+                # Post-ready settle: Claude Code may still be loading GSD,
+                # auto-update checks, or processing startup hooks.
+                logger.info("Waiting 10s post-ready settle for %s", agent_id)
+                time.sleep(10)
+
+            # Send command with retry on delivery failure
+            max_attempts = 3
+            for attempt in range(1, max_attempts + 1):
+                result = self._tmux.send_command(pane, command)
+                if not result:
+                    logger.error("Failed to send to %s (attempt %d): %s", agent_id, attempt, command)
+                    continue
+
+                logger.info("Sent to %s: %s (attempt %d)", agent_id, command, attempt)
+
+                # Verify command appeared in pane
+                time.sleep(2)
                 try:
                     verify_output = self._tmux.get_output(pane, lines=10)
                     verify_text = "\n".join(verify_output).lower()
-                    # Check if any fragment of the command appears in pane
                     cmd_fragment = command[:30].lower()
                     if cmd_fragment in verify_text:
                         logger.info("Verified command delivery to %s", agent_id)
+                        return True
                     else:
-                        logger.warning(
-                            "Command may not have been delivered to %s — "
-                            "command fragment '%s' not found in pane output",
-                            agent_id, cmd_fragment,
-                        )
+                        if attempt < max_attempts:
+                            logger.debug(
+                                "Command not yet visible for %s (attempt %d), retrying in 10s",
+                                agent_id, attempt,
+                            )
+                            time.sleep(10)
+                        else:
+                            logger.warning(
+                                "Command not detected in pane for %s after %d attempts",
+                                agent_id, max_attempts,
+                            )
+                        continue
                 except Exception:
                     logger.debug("Could not verify command delivery to %s", agent_id)
-            else:
-                logger.error("Failed to send to %s: %s", agent_id, command)
+                    return True  # send_keys succeeded, assume delivered
+
+            logger.error("All %d delivery attempts failed for %s", max_attempts, agent_id)
             return result
         except Exception:
             logger.exception("Failed to send command to %s", agent_id)

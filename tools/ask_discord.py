@@ -94,7 +94,10 @@ def _make_request(
     Returns parsed JSON or None on error.
     Sets Authorization header to Bot {bot_token}.
     """
-    headers = {"Authorization": f"Bot {bot_token}"}
+    headers = {
+        "Authorization": f"Bot {bot_token}",
+        "User-Agent": "DiscordBot (https://vcompany.dev, 1.0)",
+    }
     body = None
 
     if data is not None:
@@ -165,13 +168,15 @@ def post_question(
 ) -> str | None:
     """POST question as embed to #agent-{id} channel. Returns message_id or None."""
     question_data = questions[0]
+    options = question_data.get("options", [])
+    # Format options as numbered list in description for clean display
+    options_text = "\n".join(
+        f"**{i+1}. {opt['label']}** — {opt['description']}"
+        for i, opt in enumerate(options)
+    )
     embed = {
         "title": f"Question from {agent_id}",
-        "description": question_data["question"],
-        "fields": [
-            {"name": opt["label"], "value": opt["description"], "inline": True}
-            for opt in question_data.get("options", [])
-        ],
+        "description": f"{question_data['question']}\n\n{options_text}",
         "footer": {"text": f"Request: {request_id}"},
         "color": 0x3498DB,
     }
@@ -210,7 +215,10 @@ def poll_for_reply(
     effective_max = max_polls
 
     while effective_max == 0 or polls_done < effective_max:
-        headers = {"Authorization": f"Bot {bot_token}"}
+        headers = {
+        "Authorization": f"Bot {bot_token}",
+        "User-Agent": "DiscordBot (https://vcompany.dev, 1.0)",
+    }
         req = urllib.request.Request(url, headers=headers)
 
         try:
