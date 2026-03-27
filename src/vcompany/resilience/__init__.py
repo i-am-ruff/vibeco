@@ -1,6 +1,7 @@
 """Resilience utilities for vCompany supervision tree."""
 
 from vcompany.resilience.bulk_failure import BulkFailureDetector
+from vcompany.resilience.degraded_mode import DegradedModeManager
 from vcompany.resilience.message_queue import (
     MessagePriority,
     MessageQueue,
@@ -10,6 +11,7 @@ from vcompany.resilience.message_queue import (
 
 __all__ = [
     "BulkFailureDetector",
+    "DegradedModeManager",
     "MessagePriority",
     "MessageQueue",
     "QueuedMessage",
