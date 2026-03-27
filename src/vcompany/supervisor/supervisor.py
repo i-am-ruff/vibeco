@@ -49,12 +49,14 @@ class Supervisor:
         parent: Any | None = None,
         on_escalation: Callable[[str], Awaitable[None]] | None = None,
         data_dir: Path | None = None,
+        on_health_change: Callable[[HealthReport], Awaitable[None]] | None = None,
     ) -> None:
         self.supervisor_id = supervisor_id
         self.strategy = strategy
         self._child_specs = list(child_specs)  # preserve order
         self._parent = parent
         self._on_escalation = on_escalation
+        self._on_health_change = on_health_change
         self._data_dir = data_dir or Path("/tmp/vcompany-supervisor")
 
         self._children: dict[str, AgentContainer] = {}
@@ -150,6 +152,18 @@ class Supervisor:
                 event = self._child_events.get(child_id)
                 if event is not None:
                     event.set()
+
+            # Notify on significant transitions (not during restarts)
+            if self._on_health_change is not None and report.state in (
+                "errored",
+                "running",
+                "stopped",
+            ):
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self._on_health_change(report))
+                except RuntimeError:
+                    pass  # No running event loop
 
         return callback
 

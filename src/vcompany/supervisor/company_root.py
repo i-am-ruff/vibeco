@@ -18,6 +18,7 @@ from typing import Awaitable, Callable
 from vcompany.container.child_spec import ChildSpec
 from vcompany.container.container import AgentContainer
 from vcompany.container.factory import register_defaults
+from vcompany.container.health import CompanyHealthTree, HealthReport, HealthTree
 from vcompany.container.memory_store import MemoryStore
 from vcompany.supervisor.project_supervisor import ProjectSupervisor
 from vcompany.supervisor.scheduler import Scheduler
@@ -49,6 +50,7 @@ class CompanyRoot(Supervisor):
         max_restarts: int = 3,
         window_seconds: int = 600,
         data_dir: Path | None = None,
+        on_health_change: Callable[[HealthReport], Awaitable[None]] | None = None,
     ) -> None:
         # CompanyRoot has no parent and no child_specs at init --
         # projects are added dynamically via add_project().
@@ -61,6 +63,7 @@ class CompanyRoot(Supervisor):
             parent=None,
             on_escalation=on_escalation,
             data_dir=data_dir,
+            on_health_change=on_health_change,
         )
         self._projects: dict[str, ProjectSupervisor] = {}
         # Scheduler for waking sleeping ContinuousAgents (AUTO-06)
@@ -74,6 +77,20 @@ class CompanyRoot(Supervisor):
     def projects(self) -> dict[str, ProjectSupervisor]:
         """Dict of project_id -> ProjectSupervisor."""
         return dict(self._projects)
+
+    def health_tree(self) -> CompanyHealthTree:
+        """Build a company-wide health tree from all project supervisors.
+
+        Returns a CompanyHealthTree containing a HealthTree per project.
+        """
+        project_trees: list[HealthTree] = []
+        for _project_id, ps in self._projects.items():
+            project_trees.append(ps.health_tree())
+        return CompanyHealthTree(
+            supervisor_id=self.supervisor_id,
+            state=self._state,
+            projects=project_trees,
+        )
 
     async def add_project(
         self,
