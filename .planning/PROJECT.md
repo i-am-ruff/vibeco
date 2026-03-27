@@ -8,6 +8,21 @@ vCompany is a project-agnostic orchestration system that coordinates multiple pa
 
 Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly — all operable from Discord.
 
+## Current Milestone: v2.0 Agent Container Architecture
+
+**Goal:** Replace the flat agent model and external watchdog with a self-supervising container hierarchy where every agent is a lifecycle unit with its own state machine, health reporting, and restart semantics.
+
+**Target features:**
+- AgentContainer base abstraction (state machine, health, context, communication)
+- Supervision tree (CompanyRoot → ProjectSupervisor → agents, Erlang-style restart policies)
+- Agent type specializations (GsdAgent, ContinuousAgent, FulltimeAgent, CompanyAgent)
+- Self-reported health tree ("docker ps" for the whole system)
+- Living milestone backlog (PM-managed mutable queue, replaces static roadmap)
+- Delegation protocol (continuous agents request task spawns through supervisor)
+- Decoupled project/agent lifecycles (event-driven, no interlocks)
+
+**Approach:** In-place refactor — new modules alongside existing code, reusable v1 code integrated, replaced modules deleted as new ones land.
+
 ## Requirements
 
 ### Validated
@@ -47,25 +62,18 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ### Active
 
-- [ ] vco CLI with init, clone, dispatch, monitor, integrate, standup, status, kill, relaunch, sync-context commands
-- [ ] Agent isolation model — each agent gets its own repo clone with non-overlapping directory ownership
-- [ ] GSD configuration injection per agent clone (yolo mode, assumptions discuss, agent system prompt)
-- [ ] PM/Strategist Discord bot — answers agent questions from project context, reviews plans against milestone scope, escalates low-confidence decisions to owner
-- [ ] Strategist confidence scoring (high/medium/low) with automatic @Owner escalation
-- [ ] PROJECT-STATUS.md auto-generation — monitor reads all clones' state, assembles cross-agent status, distributes to all clones
-- [ ] INTERFACES.md contract system — single source of truth for agent boundaries, with change request flow (agent asks → PM approves → orchestrator distributes)
-- [ ] /vco:checkin command deployed to agent clones — fire-and-forget status post after each phase ships
-- [ ] /vco:standup command deployed to agent clones — interactive group standup with threaded owner feedback
-- [ ] Discord bot commands: !new-project, !dispatch, !status, !standup, !kill, !relaunch, !integrate
-- [ ] Role-based access control for Discord commands
-- [ ] Integration pipeline — merge all agent branches, run tests, identify failures, dispatch fixes
-- [ ] Crash recovery — auto-relaunch with /gsd:resume-work, max 3/hour, alert + stop on 4th crash
-- [ ] Strategist context management — summarization strategy for large projects approaching context limits
-- [ ] agents.yaml configuration — agent roster, owned directories, shared_readonly, gsd_mode, system prompts
-- [ ] Per-agent Discord channels (#agent-{id}) for checkin logs
-- [ ] Channel structure: #strategist, #plan-review, #standup, #agent-{id}, #alerts, #decisions
-- [ ] Monitor loop (60s cycle): liveness check, stuck detection (30+ min no commits), plan gate trigger, status regeneration
-- [ ] tmux session management — one pane per agent plus monitor pane
+- [ ] AgentContainer base — lifecycle state machine (CREATING→RUNNING→SLEEPING→ERRORED→STOPPED→DESTROYED), health reporting, context management, communication
+- [ ] Supervision tree — CompanyRoot → ProjectSupervisor → agents, with Erlang-style restart policies (one_for_one, all_for_one, rest_for_one)
+- [ ] GsdAgent type — phase-driven lifecycle with internal state machine (IDLE→DISCUSS→PLAN→EXECUTE→UAT→SHIP), checkpoint at each state transition
+- [ ] ContinuousAgent type — scheduled wake/sleep cycles (WAKE→GATHER→ANALYZE→ACT→REPORT→SLEEP), persistent memory_store
+- [ ] FulltimeAgent type (PM) — event-driven, alive for project duration, reacts to state transitions/health changes/escalations/briefings
+- [ ] CompanyAgent type (Strategist) — event-driven, alive for company duration, cross-project state
+- [ ] Health tree — self-reported HealthReport per container, tree rendering ("docker ps"), Discord status push
+- [ ] Living milestone backlog — PM-managed mutable queue (append, insert_urgent, reorder, cancel), replaces static roadmap consumption
+- [ ] Delegation protocol — continuous agents request task spawns through supervisor, supervisor enforces policy
+- [ ] Decoupled lifecycles — project state owned by PM, agents read assignments and write completions, crash never corrupts project state
+- [ ] Scheduler — timer within CompanyRoot that triggers WAKE on sleeping containers
+- [ ] Agent memory_store — persistent per-agent key-value store (JSON/SQLite), checkpoints at state transitions
 
 ### Out of Scope
 
@@ -73,8 +81,8 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - Mobile app or web UI for vCompany itself — Discord is the interface
 - Multi-machine distributed agents — runs on a single local machine
 - Discord rate limit queuing — noted as known issue, address when it bites
-- Clone disk space optimization — noted, not solving in v1
-- CI/CD pipeline integration — agents build and test locally, no cloud CI in v1
+- Clone disk space optimization — noted, not solving in v2
+- CI/CD pipeline integration — agents build and test locally, no cloud CI in v2
 
 ## Context
 
@@ -106,6 +114,9 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 | AskUserQuestion hook returns deny + reason | Prevents terminal hang, carries answer back to Claude | — Pending |
 | Plan gate is filesystem-level, not hook | Monitor detects PLAN.md, pauses externally, more reliable than in-session gating | — Pending |
 | Interaction Safety Tables required per phase | Multi-agent systems have emergent timing/concurrency bugs — systematic analysis at design time catches what testing misses | — Pending |
+| v2: In-place refactor for container architecture | New modules alongside existing code, reuse Discord bot/CLI/git ops/tmux, delete replaced modules as new ones land | — Pending |
+| v2: Supervision tree replaces external watchdog | Self-supervising containers with Erlang-style restart policies eliminate single-point-of-failure monitor | — Pending |
+| v2: Agent type abstractions | GsdAgent, ContinuousAgent, FulltimeAgent, CompanyAgent — different lifecycles need different management | — Pending |
 
 ## Evolution
 
@@ -125,4 +136,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after Phase 4 completion*
+*Last updated: 2026-03-27 after v2.0 milestone start*
