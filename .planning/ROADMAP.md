@@ -186,7 +186,13 @@ Plans:
   2. FulltimeAgent (PM) reacts to agent state transitions, health changes, escalations, and briefings as an event-driven container that lives for the project duration
   3. CompanyAgent (Strategist) runs as an event-driven container that survives project restarts and holds cross-project state
   4. Sleeping ContinuousAgents are automatically woken by the scheduler at their configured times, and scheduled wake times survive bot restarts
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 04-01-PLAN.md -- Container factory registry + Supervisor._start_child() update
+- [ ] 04-02-PLAN.md -- ContinuousLifecycle FSM + ContinuousAgent with checkpoint recovery
+- [ ] 04-03-PLAN.md -- EventDrivenLifecycle FSM + FulltimeAgent + CompanyAgent
+- [ ] 04-04-PLAN.md -- Scheduler in CompanyRoot + factory registration for all agent types
 
 ### Phase 5: Health Tree
 **Goal**: Health reports aggregate across the supervision tree into a queryable, renderable status view pushed to Discord
@@ -241,8 +247,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 |-------|----------------|--------|-----------|
 | 1. Container Foundation | 3/3 | Complete | 2026-03-27 |
 | 2. Supervision Tree | 2/2 | Complete | 2026-03-27 |
-| 3. GsdAgent | 0/2 | Planned | - |
-| 4. Remaining Agent Types and Scheduler | 0/0 | Not started | - |
+| 3. GsdAgent | 2/2 | Complete | 2026-03-27 |
+| 4. Remaining Agent Types and Scheduler | 0/4 | Planned | - |
 | 5. Health Tree | 0/0 | Not started | - |
 | 6. Resilience | 0/0 | Not started | - |
 | 7. Autonomy Features | 0/0 | Not started | - |
