@@ -202,8 +202,12 @@ Plans:
   1. Supervisors aggregate children's health into a tree queryable at company, project, and individual agent levels
   2. Running `/health` in Discord renders the full supervision tree with color-coded state indicators
   3. State transitions (RUNNING to ERRORED, etc.) automatically push notifications to Discord without polling
-**Plans**: TBD
+**Plans**: 2 plans
 **UI hint**: yes
+
+Plans:
+- [ ] 05-01-PLAN.md -- Health tree models, supervisor aggregation, notification callback
+- [ ] 05-02-PLAN.md -- HealthCog with /health slash command and embed builder
 
 ### Phase 6: Resilience
 **Goal**: The communication layer handles Discord rate limits gracefully, supervisors detect upstream outages, and the system degrades safely when Claude servers are unreachable
@@ -249,7 +253,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 2. Supervision Tree | 2/2 | Complete | 2026-03-27 |
 | 3. GsdAgent | 2/2 | Complete | 2026-03-27 |
 | 4. Remaining Agent Types and Scheduler | 0/4 | Planned | - |
-| 5. Health Tree | 0/0 | Not started | - |
+| 5. Health Tree | 0/2 | Planned | - |
 | 6. Resilience | 0/0 | Not started | - |
 | 7. Autonomy Features | 0/0 | Not started | - |
 | 8. CompanyRoot Wiring and Migration | 0/0 | Not started | - |
