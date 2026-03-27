@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
+from vcompany.container.child_spec import ChildSpec, RestartPolicy
+from vcompany.container.context import ContainerContext
 from vcompany.resilience.bulk_failure import BulkFailureDetector
+from vcompany.supervisor.strategies import RestartStrategy
+from vcompany.supervisor.supervisor import Supervisor
 
 
 class TestBulkFailureDetector:
@@ -123,3 +129,117 @@ class TestBulkFailureDetector:
         assert detector.current_backoff == 200.0  # capped at max
         detector.escalate_backoff()
         assert detector.current_backoff == 200.0  # stays at max
+
+
+def _make_spec(
+    child_id: str, restart_policy: RestartPolicy = RestartPolicy.PERMANENT
+) -> ChildSpec:
+    """Create a minimal ChildSpec for testing."""
+    return ChildSpec(
+        child_id=child_id,
+        agent_type="test",
+        context=ContainerContext(agent_id=child_id, agent_type="test"),
+        restart_policy=restart_policy,
+    )
+
+
+class TestSupervisorBulkFailureIntegration:
+    """Integration tests for BulkFailureDetector in Supervisor."""
+
+    @pytest.mark.asyncio
+    async def test_supervisor_global_backoff(self, tmp_path) -> None:
+        """Supervisor enters global backoff when bulk failure detected."""
+        specs = [_make_spec("a"), _make_spec("b"), _make_spec("c"), _make_spec("d")]
+        escalation_msgs: list[str] = []
+
+        async def on_escalation(msg: str) -> None:
+            escalation_msgs.append(msg)
+
+        sup = Supervisor(
+            supervisor_id="test-sup",
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            child_specs=specs,
+            data_dir=tmp_path,
+            on_escalation=on_escalation,
+        )
+        await sup.start()
+
+        # Verify bulk detector was created
+        assert sup._bulk_detector is not None
+
+        # Suppress event-driven monitoring so we can control failure calls
+        sup._restarting = True
+
+        # Force children into errored state (monitor suppressed by _restarting)
+        for child_id in ["a", "b", "c"]:
+            container = sup.children[child_id]
+            container._lifecycle.error()
+
+        sup._restarting = False
+
+        # Clear any events that were set during the error() calls
+        for child_id in ["a", "b", "c", "d"]:
+            event = sup._child_events.get(child_id)
+            if event is not None:
+                event.clear()
+
+        # Handle failures directly -- threshold is max(2, int(4*0.5))=2
+        await sup._handle_child_failure("a")  # 1 failure, no bulk yet
+        await sup._handle_child_failure("b")  # 2 failures, bulk detected!
+
+        # Verify bulk failure was detected and backoff entered
+        assert sup._bulk_detector.is_in_backoff
+
+        # Verify escalation callback was called with outage message
+        assert len(escalation_msgs) == 1
+        assert "UPSTREAM OUTAGE" in escalation_msgs[0]
+
+        # Third failure should be suppressed (in backoff)
+        await sup._handle_child_failure("c")
+        # No additional escalation message (still in backoff, skipped restart)
+        assert len(escalation_msgs) == 1
+
+        await sup.stop()
+
+    @pytest.mark.asyncio
+    async def test_supervisor_single_failure_no_backoff(self, tmp_path) -> None:
+        """Single failure does not trigger global backoff."""
+        specs = [_make_spec("a"), _make_spec("b"), _make_spec("c"), _make_spec("d")]
+        escalation_msgs: list[str] = []
+
+        async def on_escalation(msg: str) -> None:
+            escalation_msgs.append(msg)
+
+        sup = Supervisor(
+            supervisor_id="test-sup",
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            child_specs=specs,
+            data_dir=tmp_path,
+            on_escalation=on_escalation,
+        )
+        await sup.start()
+
+        # Force one child to error state
+        container = sup.children["a"]
+        container._lifecycle.error()
+
+        # Handle single failure
+        await sup._handle_child_failure("a")
+
+        # Should NOT trigger bulk failure
+        assert not sup._bulk_detector.is_in_backoff
+        assert len(escalation_msgs) == 0
+
+        await sup.stop()
+
+    @pytest.mark.asyncio
+    async def test_supervisor_no_detector_with_single_child(self, tmp_path) -> None:
+        """Supervisor with 1 child does not create bulk detector."""
+        specs = [_make_spec("solo")]
+        sup = Supervisor(
+            supervisor_id="test-sup",
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            child_specs=specs,
+            data_dir=tmp_path,
+        )
+        assert sup._bulk_detector is None
