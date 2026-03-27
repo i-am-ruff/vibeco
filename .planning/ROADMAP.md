@@ -189,10 +189,12 @@ Plans:
 
 ### Phase 10: Rework GSD agent dispatch to bypass all interactive prompts (research, context, discuss) for fully autonomous operation
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** A WorkflowOrchestrator drives a deterministic per-agent state machine (discuss -> plan -> execute+verify) with PM artifact review at each gate, GSD workflow patches eliminate non-AskUserQuestion interactive prompts, and discussion flows naturally through the Discord hook
+**Requirements**: D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08, D-09, D-10, D-11, D-12, D-13, D-14, D-15, D-16, D-17, D-18
 **Depends on:** Phase 9
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 10 to break down)
+- [ ] 10-01-PLAN.md -- GSD config template update + workflow patcher tool
+- [ ] 10-02-PLAN.md -- WorkflowOrchestrator state machine + signal detection
+- [ ] 10-03-PLAN.md -- WorkflowOrchestratorCog + bot startup wiring + gate reviews
