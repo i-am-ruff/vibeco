@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
 status: Ready to plan
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-03-27T23:25:52.428Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-03-27T23:51:56.088Z"
 progress:
   total_phases: 8
-  completed_phases: 5
-  total_plans: 13
-  completed_plans: 13
+  completed_phases: 6
+  total_plans: 16
+  completed_plans: 16
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 05 — health-tree
+**Current focus:** Phase 06 — resilience
 
 ## Current Position
 
-Phase: 6
+Phase: 7
 Plan: Not started
 
 ## Performance Metrics
@@ -59,6 +59,9 @@ Plan: Not started
 | Phase 04 P04 | 4min | 2 tasks | 4 files |
 | Phase 05 P01 | 6min | 2 tasks | 4 files |
 | Phase 05 P02 | 3min | 1 tasks | 3 files |
+| Phase 06 P01 | 3min | 1 tasks | 3 files |
+| Phase 06 P03 | 3min | 2 tasks | 4 files |
+| Phase 06 P02 | 8min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -100,6 +103,13 @@ Recent decisions affecting current work:
 - [Phase 05]: Notification uses loop.create_task for fire-and-forget async dispatch from sync callback
 - [Phase 05]: Only errored/running/stopped trigger notifications (not creating)
 - [Phase 05]: STATE_INDICATORS uses Unicode emoji for portability; notifications only for errored/running/stopped
+- [Phase 06]: RateLimited custom exception instead of catching discord.HTTPException -- keeps MessageQueue Discord-agnostic
+- [Phase 06]: Injectable send_func callable instead of bot reference -- makes MessageQueue testable without Discord mocks
+- [Phase 06]: Injectable health_check callable decouples DegradedModeManager from anthropic SDK
+- [Phase 06]: DegradedModeManager supports both active probing (background loop) and passive operational detection
+- [Phase 06]: DegradedModeManager is optional in CompanyRoot -- graceful no-op when health_check not provided
+- [Phase 06]: Check is_in_backoff before record_failure to prevent duplicate escalations during active backoff
+- [Phase 06]: Bulk detector only created for supervisors with 2+ children
 
 ### Pending Todos
 
@@ -114,6 +124,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T23:21:47.825Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-03-27T23:47:31.026Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
