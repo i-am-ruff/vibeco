@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from vcompany.container.child_spec import ChildSpec, RestartPolicy
+from vcompany.container.child_spec import ChildSpec
 from vcompany.container.communication import CommunicationPort, Message
 from vcompany.container.container import AgentContainer
 from vcompany.container.context import ContainerContext
