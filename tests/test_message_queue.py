@@ -127,8 +127,8 @@ async def test_429_backoff():
 async def test_backoff_reset(mock_send, sent_messages):
     """After a successful send following backoff, backoff resets to 0.0."""
     mq = MessageQueue(send_func=mock_send, max_rate=1000.0)
-    # Simulate prior backoff
-    mq._backoff = 4.0
+    # Simulate prior backoff (small value so test doesn't wait long)
+    mq._backoff = 0.01
 
     await mq.start()
     await mq.enqueue(
