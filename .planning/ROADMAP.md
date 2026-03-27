@@ -189,7 +189,7 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 04-01-PLAN.md -- Container factory registry + Supervisor._start_child() update
+- [x] 04-01-PLAN.md -- Container factory registry + Supervisor._start_child() update
 - [ ] 04-02-PLAN.md -- ContinuousLifecycle FSM + ContinuousAgent with checkpoint recovery
 - [ ] 04-03-PLAN.md -- EventDrivenLifecycle FSM + FulltimeAgent + CompanyAgent
 - [ ] 04-04-PLAN.md -- Scheduler in CompanyRoot + factory registration for all agent types

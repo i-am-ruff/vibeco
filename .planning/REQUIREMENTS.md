@@ -29,9 +29,9 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 
 - [x] **TYPE-01**: GsdAgent with internal phase FSM (IDLE→DISCUSS→PLAN→EXECUTE→UAT→SHIP) absorbing WorkflowOrchestrator
 - [x] **TYPE-02**: GsdAgent saves checkpoint to memory_store after each state transition — crash recovery resumes from last completed state
-- [ ] **TYPE-03**: ContinuousAgent with scheduled wake/sleep cycles (WAKE→GATHER→ANALYZE→ACT→REPORT→SLEEP) and persistent memory_store
-- [ ] **TYPE-04**: FulltimeAgent (PM) is event-driven — reacts to agent state transitions, health changes, escalations, briefings, milestone completion
-- [ ] **TYPE-05**: CompanyAgent (Strategist) is event-driven, alive for company duration, holds cross-project state, survives project restarts
+- [x] **TYPE-03**: ContinuousAgent with scheduled wake/sleep cycles (WAKE→GATHER→ANALYZE→ACT→REPORT→SLEEP) and persistent memory_store
+- [x] **TYPE-04**: FulltimeAgent (PM) is event-driven — reacts to agent state transitions, health changes, escalations, briefings, milestone completion
+- [x] **TYPE-05**: CompanyAgent (Strategist) is event-driven, alive for company duration, holds cross-project state, survives project restarts
 
 ### Health Reporting
 
@@ -113,9 +113,9 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 | SUPV-06 | Phase 2 | Complete |
 | TYPE-01 | Phase 3 | Complete |
 | TYPE-02 | Phase 3 | Complete |
-| TYPE-03 | Phase 4 | Pending |
-| TYPE-04 | Phase 4 | Pending |
-| TYPE-05 | Phase 4 | Pending |
+| TYPE-03 | Phase 4 | Complete |
+| TYPE-04 | Phase 4 | Complete |
+| TYPE-05 | Phase 4 | Complete |
 | AUTO-06 | Phase 4 | Pending |
 | HLTH-02 | Phase 5 | Pending |
 | HLTH-03 | Phase 5 | Pending |

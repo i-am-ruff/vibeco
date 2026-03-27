@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
-status: Ready to plan
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-03-27T22:30:00.511Z"
+status: Ready to execute
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-27T22:46:45.862Z"
 progress:
   total_phases: 8
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 11
+  completed_plans: 8
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 03 — gsdagent
+**Current focus:** Phase 04 — remaining-agent-types-and-scheduler
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
+Phase: 04 (remaining-agent-types-and-scheduler) — EXECUTING
+Plan: 2 of 4
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Plan: Not started
 | Phase 02 P02 | 6min | 2 tasks | 5 files |
 | Phase 03 P01 | 3min | 2 tasks | 4 files |
 | Phase 03 P02 | 4min | 2 tasks | 3 files |
+| Phase 04 P01 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,7 @@ Recent decisions affecting current work:
 - [Phase 03]: OrderedSet[0] for outer state, OrderedSet[1] for inner state when decomposing compound FSM state
 - [Phase 03]: Checkpoint before sleep/error (not after) to capture phase state before exiting running
 - [Phase 03]: Invalid checkpoint falls back silently to running.idle rather than raising
+- [Phase 04]: Factory uses module-level _REGISTRY dict for agent type dispatch
 
 ### Pending Todos
 
@@ -97,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T22:14:19.621Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-03-27T22:46:45.857Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
