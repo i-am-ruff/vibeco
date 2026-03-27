@@ -2,8 +2,8 @@
 phase: 9
 slug: askuser-hook-sends-questions-to-agent-discord-channel-mentioning-pm-for-autonomous-q-a-forwarding
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-27
 ---
 
@@ -38,7 +38,11 @@ created: 2026-03-27
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| *To be filled by planner* | | | | | | | ⬜ pending |
+| 01-T1 | 09-01 | 1 | D-06, D-07, D-08 | unit (TDD) | `cd /home/developer/vcompany && uv run python -m pytest tests/test_routing.py -x -v` | tests/test_routing.py | ⬜ pending |
+| 01-T2 | 09-01 | 1 | D-16, D-18 | grep verify | `cd /home/developer/vcompany && grep -n "VCO_AGENT_ID" src/vcompany/orchestrator/agent_manager.py && grep "86400" src/vcompany/templates/settings.json.j2` | src/vcompany/orchestrator/agent_manager.py | ⬜ pending |
+| 02-T1 | 09-02 | 2 | D-01, D-02, D-12, D-13, D-15 | unit (TDD) | `cd /home/developer/vcompany && uv run python -m pytest tests/test_ask_discord.py -x -v && ! grep -r "vco-answers" tools/ask_discord.py && ! grep -r "DISCORD_AGENT_WEBHOOK_URL" tools/ask_discord.py` | tests/test_ask_discord.py | ⬜ pending |
+| 03-T1 | 09-03 | 2 | D-04, D-09, D-10, D-11, D-19 | unit | `cd /home/developer/vcompany && uv run python -m pytest tests/test_question_handler.py -x -v && ! grep -r "vco-answers" src/vcompany/bot/cogs/question_handler.py && ! grep "AnswerView" src/vcompany/bot/cogs/question_handler.py` | tests/test_question_handler.py | ⬜ pending |
+| 03-T2 | 09-03 | 2 | D-07 | unit | `cd /home/developer/vcompany && uv run python -m pytest tests/test_strategist_cog.py tests/test_question_handler.py tests/test_routing.py -x -v 2>&1 \| tail -30` | tests/test_strategist_cog.py | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -46,7 +50,9 @@ created: 2026-03-27
 
 ## Wave 0 Requirements
 
-- Existing infrastructure covers all phase requirements.
+- Existing infrastructure covers all phase requirements. No Wave 0 test scaffolding needed.
+- All 5 tasks have `<automated>` verify commands.
+- 100% sampling rate (every task has automated verification).
 
 ---
 
@@ -63,11 +69,11 @@ created: 2026-03-27
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 15s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved
