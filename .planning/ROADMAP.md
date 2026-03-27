@@ -174,7 +174,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- GsdLifecycle compound state FSM + GsdPhase enum + CheckpointData model
+- [x] 03-01-PLAN.md -- GsdLifecycle compound state FSM + GsdPhase enum + CheckpointData model
 - [ ] 03-02-PLAN.md -- GsdAgent class with checkpoint recovery + WorkflowOrchestrator absorption
 
 ### Phase 4: Remaining Agent Types and Scheduler
