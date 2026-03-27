@@ -4,7 +4,10 @@ import asyncio
 
 import pytest
 
+from vcompany.container.child_spec import ChildSpec
+from vcompany.container.context import ContainerContext
 from vcompany.resilience.degraded_mode import DegradedModeManager
+from vcompany.supervisor.company_root import CompanyRoot
 
 
 class TestDegradedModeState:
@@ -262,3 +265,160 @@ class TestOperationalDetection:
         assert mgr.state == "degraded"
         await mgr.record_operational_success()
         assert mgr.state == "normal"
+
+
+def _make_spec(child_id: str) -> ChildSpec:
+    return ChildSpec(
+        child_id=child_id,
+        agent_type="test",
+        context=ContainerContext(agent_id=child_id, agent_type="test"),
+    )
+
+
+class TestCompanyRootDegradedMode:
+    """Integration tests for CompanyRoot with DegradedModeManager."""
+
+    @pytest.mark.asyncio
+    async def test_company_root_dispatch_blocked(self, tmp_path):
+        """add_project() raises RuntimeError when system is degraded."""
+
+        async def unhealthy():
+            return False
+
+        root = CompanyRoot(
+            health_check=unhealthy,
+            data_dir=tmp_path,
+        )
+        await root.start()
+        try:
+            # Manually trigger degraded state via the manager
+            assert root._degraded_mode is not None
+            for _ in range(3):
+                await root._degraded_mode._record_result(False)
+            assert root.is_degraded is True
+
+            with pytest.raises(RuntimeError, match="degraded mode"):
+                await root.add_project("proj1", [_make_spec("a1")])
+        finally:
+            await root.stop()
+
+    @pytest.mark.asyncio
+    async def test_company_root_dispatch_allowed_normal(self, tmp_path):
+        """add_project() works normally when system is not degraded."""
+
+        async def healthy():
+            return True
+
+        root = CompanyRoot(
+            health_check=healthy,
+            data_dir=tmp_path,
+        )
+        await root.start()
+        try:
+            assert root.is_degraded is False
+            ps = await root.add_project("proj1", [_make_spec("a1")])
+            assert ps is not None
+            assert "proj1" in root.projects
+        finally:
+            await root.stop()
+
+    @pytest.mark.asyncio
+    async def test_company_root_is_degraded_property(self, tmp_path):
+        """is_degraded reflects DegradedModeManager state."""
+
+        async def healthy():
+            return True
+
+        root = CompanyRoot(
+            health_check=healthy,
+            data_dir=tmp_path,
+        )
+        await root.start()
+        try:
+            assert root.is_degraded is False
+            # Enter degraded
+            for _ in range(3):
+                await root._degraded_mode._record_result(False)
+            assert root.is_degraded is True
+            # Recover
+            for _ in range(2):
+                await root._degraded_mode._record_result(True)
+            assert root.is_degraded is False
+        finally:
+            await root.stop()
+
+    @pytest.mark.asyncio
+    async def test_company_root_no_health_check(self, tmp_path):
+        """CompanyRoot without health_check has no degraded mode manager."""
+        root = CompanyRoot(data_dir=tmp_path)
+        assert root._degraded_mode is None
+        assert root.is_degraded is False
+        await root.start()
+        try:
+            # add_project should work fine without health check
+            ps = await root.add_project("proj1", [_make_spec("a1")])
+            assert ps is not None
+        finally:
+            await root.stop()
+
+    @pytest.mark.asyncio
+    async def test_containers_stay_alive(self, tmp_path):
+        """Existing containers stay alive when system enters degraded mode."""
+
+        async def healthy():
+            return True
+
+        root = CompanyRoot(
+            health_check=healthy,
+            data_dir=tmp_path,
+        )
+        await root.start()
+        try:
+            # Add a project before degraded
+            ps = await root.add_project("proj1", [_make_spec("a1")])
+            assert ps.state == "running"
+
+            # Enter degraded
+            for _ in range(3):
+                await root._degraded_mode._record_result(False)
+            assert root.is_degraded is True
+
+            # Existing project supervisor is still running
+            assert ps.state == "running"
+            assert "proj1" in root.projects
+        finally:
+            await root.stop()
+
+    @pytest.mark.asyncio
+    async def test_owner_notified_on_degraded(self, tmp_path):
+        """on_degraded callback is called when entering degraded mode."""
+        notifications = []
+
+        async def on_degraded():
+            notifications.append("degraded")
+
+        async def on_recovered():
+            notifications.append("recovered")
+
+        async def healthy():
+            return True
+
+        root = CompanyRoot(
+            health_check=healthy,
+            on_degraded=on_degraded,
+            on_recovered=on_recovered,
+            data_dir=tmp_path,
+        )
+        await root.start()
+        try:
+            # Enter degraded
+            for _ in range(3):
+                await root._degraded_mode._record_result(False)
+            assert notifications == ["degraded"]
+
+            # Recover
+            for _ in range(2):
+                await root._degraded_mode._record_result(True)
+            assert notifications == ["degraded", "recovered"]
+        finally:
+            await root.stop()

@@ -20,6 +20,7 @@ from vcompany.container.container import AgentContainer
 from vcompany.container.factory import register_defaults
 from vcompany.container.health import CompanyHealthTree, HealthReport, HealthTree
 from vcompany.container.memory_store import MemoryStore
+from vcompany.resilience.degraded_mode import DegradedModeManager
 from vcompany.supervisor.project_supervisor import ProjectSupervisor
 from vcompany.supervisor.scheduler import Scheduler
 from vcompany.supervisor.strategies import RestartStrategy
@@ -51,6 +52,9 @@ class CompanyRoot(Supervisor):
         window_seconds: int = 600,
         data_dir: Path | None = None,
         on_health_change: Callable[[HealthReport], Awaitable[None]] | None = None,
+        health_check: Callable[[], Awaitable[bool]] | None = None,
+        on_degraded: Callable[[], Awaitable[None]] | None = None,
+        on_recovered: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         # CompanyRoot has no parent and no child_specs at init --
         # projects are added dynamically via add_project().
@@ -66,12 +70,27 @@ class CompanyRoot(Supervisor):
             on_health_change=on_health_change,
         )
         self._projects: dict[str, ProjectSupervisor] = {}
+        # Degraded mode manager (RESL-03)
+        self._degraded_mode: DegradedModeManager | None = None
+        if health_check is not None:
+            self._degraded_mode = DegradedModeManager(
+                health_check=health_check,
+                on_degraded=on_degraded,
+                on_recovered=on_recovered,
+            )
         # Scheduler for waking sleeping ContinuousAgents (AUTO-06)
         self._scheduler: Scheduler | None = None
         self._scheduler_task: asyncio.Task | None = None
         self._scheduler_memory: MemoryStore | None = None
         if data_dir is not None:
             self._scheduler_memory = MemoryStore(data_dir / "scheduler" / "memory.db")
+
+    @property
+    def is_degraded(self) -> bool:
+        """True when the system is in degraded mode (Claude unreachable)."""
+        if self._degraded_mode is not None:
+            return self._degraded_mode.is_degraded
+        return False
 
     @property
     def projects(self) -> dict[str, ProjectSupervisor]:
@@ -111,7 +130,15 @@ class CompanyRoot(Supervisor):
 
         Returns:
             The started ProjectSupervisor instance.
+
+        Raises:
+            RuntimeError: If system is in degraded mode (Claude unreachable).
         """
+        if self._degraded_mode is not None and self._degraded_mode.is_degraded:
+            raise RuntimeError(
+                f"System in degraded mode (Claude unreachable). "
+                f"Cannot add project {project_id}. Will auto-recover."
+            )
         ps = ProjectSupervisor(
             project_id=project_id,
             child_specs=child_specs,
@@ -152,6 +179,10 @@ class CompanyRoot(Supervisor):
         """Register agent types, open scheduler memory, and start scheduler loop."""
         register_defaults()
         await super().start()
+
+        if self._degraded_mode is not None:
+            await self._degraded_mode.start()
+            logger.info("DegradedModeManager started")
 
         if self._scheduler_memory is not None:
             await self._scheduler_memory.open()
@@ -230,6 +261,11 @@ class CompanyRoot(Supervisor):
 
     async def stop(self) -> None:
         """Cancel scheduler, stop all ProjectSupervisors, and stop the root."""
+        # Stop degraded mode manager first
+        if self._degraded_mode is not None:
+            await self._degraded_mode.stop()
+            logger.info("DegradedModeManager stopped")
+
         # Cancel the scheduler task first
         if self._scheduler_task is not None:
             self._scheduler_task.cancel()
