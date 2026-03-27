@@ -25,3 +25,35 @@ class HealthReport(BaseModel):
     last_heartbeat: datetime
     error_count: int = 0
     last_activity: datetime
+
+
+class HealthNode(BaseModel):
+    """A single child's health within a supervision tree.
+
+    Wraps a HealthReport so the tree structure can be extended later
+    (e.g., with restart counts, timestamps) without changing HealthReport.
+    """
+
+    report: HealthReport
+
+
+class HealthTree(BaseModel):
+    """Aggregated health for a Supervisor and its direct children.
+
+    Returned by ``Supervisor.health_tree()``.
+    """
+
+    supervisor_id: str
+    state: str
+    children: list[HealthNode] = []
+
+
+class CompanyHealthTree(BaseModel):
+    """Top-level health view across all projects.
+
+    Returned by ``CompanyRoot.health_tree()``. Each project is a HealthTree.
+    """
+
+    supervisor_id: str
+    state: str
+    projects: list[HealthTree] = []

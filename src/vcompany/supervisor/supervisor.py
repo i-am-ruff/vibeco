@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from vcompany.container.child_spec import ChildSpec, RestartPolicy
 from vcompany.container.container import AgentContainer
 from vcompany.container.factory import create_container
-from vcompany.container.health import HealthReport
+from vcompany.container.health import HealthNode, HealthReport, HealthTree
 from vcompany.supervisor.restart_tracker import RestartTracker
 from vcompany.supervisor.strategies import RestartStrategy
 
@@ -66,6 +66,7 @@ class Supervisor:
         )
         self._restarting: bool = False
         self._state: str = "stopped"
+        self._health_reports: dict[str, HealthReport] = {}
 
     # --- Properties ---
 
@@ -78,6 +79,30 @@ class Supervisor:
     def children(self) -> dict[str, AgentContainer]:
         """Dict of child_id -> AgentContainer."""
         return self._children
+
+    # --- Health Aggregation ---
+
+    def health_tree(self) -> HealthTree:
+        """Build a health tree from cached reports and live containers.
+
+        Iterates ``_child_specs`` (not ``_health_reports``) to preserve
+        child ordering. Uses cached reports when available, falling back
+        to ``container.health_report()`` for children without a cached report.
+        """
+        nodes: list[HealthNode] = []
+        for spec in self._child_specs:
+            report = self._health_reports.get(spec.child_id)
+            if report is None:
+                container = self._children.get(spec.child_id)
+                if container is not None:
+                    report = container.health_report()
+            if report is not None:
+                nodes.append(HealthNode(report=report))
+        return HealthTree(
+            supervisor_id=self.supervisor_id,
+            state=self._state,
+            children=nodes,
+        )
 
     # --- Lifecycle ---
 
@@ -118,6 +143,7 @@ class Supervisor:
         """Create a state-change callback that signals the monitor for a child."""
 
         def callback(report: HealthReport) -> None:
+            self._health_reports[child_id] = report
             if self._restarting:
                 return  # Suppress during supervisor-initiated restarts
             if report.state in ("errored", "stopped"):
@@ -137,6 +163,9 @@ class Supervisor:
                 await old_task
             except asyncio.CancelledError:
                 pass
+
+        # Clear stale health report before creating new container
+        self._health_reports.pop(spec.child_id, None)
 
         # Create event for this child
         event = asyncio.Event()
