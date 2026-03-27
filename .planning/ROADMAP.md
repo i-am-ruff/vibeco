@@ -141,7 +141,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A child specification registry can declare container types with config and restart policy, and a supervisor can read specs to instantiate containers
   4. Each container self-reports a HealthReport (state, uptime, last_heartbeat, error_count, last_activity) on every state transition
   5. No container communicates with another through file-based IPC or in-memory callbacks -- the communication interface is designed for Discord-only message passing
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md -- Types, state machine, data models (ContainerLifecycle, ContainerContext, HealthReport, CommunicationPort)
+- [ ] 01-02-PLAN.md -- MemoryStore (async SQLite persistence) + ChildSpec registry
+- [ ] 01-03-PLAN.md -- AgentContainer class wiring all modules together
 
 ### Phase 2: Supervision Tree
 **Goal**: Supervisors manage child containers with Erlang-style restart policies, intensity-limited restart windows, and escalation to parent when limits are exceeded
