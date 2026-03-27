@@ -37,7 +37,7 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 
 - [x] **HLTH-01**: Each container self-reports a HealthReport (state, inner_state, uptime, last_heartbeat, error_count, last_activity)
 - [x] **HLTH-02**: Supervisors aggregate children's health into a tree — queryable at any level (company-wide, project, individual)
-- [ ] **HLTH-03**: Discord slash command `/health` renders the full status tree with state indicators
+- [x] **HLTH-03**: Discord slash command `/health` renders the full status tree with state indicators
 - [x] **HLTH-04**: State transitions (RUNNING→ERRORED, etc.) push notifications to Discord automatically
 
 ### Autonomy
@@ -118,7 +118,7 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 | TYPE-05 | Phase 4 | Complete |
 | AUTO-06 | Phase 4 | Complete |
 | HLTH-02 | Phase 5 | Complete |
-| HLTH-03 | Phase 5 | Pending |
+| HLTH-03 | Phase 5 | Complete |
 | HLTH-04 | Phase 5 | Complete |
 | RESL-01 | Phase 6 | Pending |
 | RESL-02 | Phase 6 | Pending |

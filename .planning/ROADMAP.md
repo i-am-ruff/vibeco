@@ -124,7 +124,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Supervision Tree** - Two-level supervision hierarchy with Erlang-style restart policies, escalation, and 10-minute restart windows *(completed 2026-03-27)*
 - [x] **Phase 3: GsdAgent** - Phase-driven agent type absorbing WorkflowOrchestrator with nested FSM and checkpoint-based crash recovery *(completed 2026-03-27)*
 - [x] **Phase 4: Remaining Agent Types and Scheduler** - ContinuousAgent, FulltimeAgent (PM), CompanyAgent (Strategist), and scheduler for wake cycles *(completed 2026-03-27)*
-- [ ] **Phase 5: Health Tree** - Health aggregation across the supervision tree with Discord /health rendering and state-change notifications
+- [x] **Phase 5: Health Tree** - Health aggregation across the supervision tree with Discord /health rendering and state-change notifications (completed 2026-03-27)
 - [ ] **Phase 6: Resilience** - Rate-aware communication, upstream outage detection, and degraded mode for Claude server unavailability
 - [ ] **Phase 7: Autonomy Features** - Living milestone backlog, delegation protocol, and decoupled project/agent lifecycles
 - [ ] **Phase 8: CompanyRoot Wiring and Migration** - CompanyRoot replaces VcoBot.on_ready(), slash command conversion, v1 module removal, communication layer abstraction
@@ -207,7 +207,7 @@ Plans:
 
 Plans:
 - [x] 05-01-PLAN.md -- Health tree models, supervisor aggregation, notification callback
-- [ ] 05-02-PLAN.md -- HealthCog with /health slash command and embed builder
+- [x] 05-02-PLAN.md -- HealthCog with /health slash command and embed builder
 
 ### Phase 6: Resilience
 **Goal**: The communication layer handles Discord rate limits gracefully, supervisors detect upstream outages, and the system degrades safely when Claude servers are unreachable
@@ -253,7 +253,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 2. Supervision Tree | 2/2 | Complete | 2026-03-27 |
 | 3. GsdAgent | 2/2 | Complete | 2026-03-27 |
 | 4. Remaining Agent Types and Scheduler | 0/4 | Planned | - |
-| 5. Health Tree | 0/2 | Planned | - |
+| 5. Health Tree | 2/2 | Complete   | 2026-03-27 |
 | 6. Resilience | 0/0 | Not started | - |
 | 7. Autonomy Features | 0/0 | Not started | - |
 | 8. CompanyRoot Wiring and Migration | 0/0 | Not started | - |
