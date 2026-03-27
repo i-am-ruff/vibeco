@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from vcompany.container.child_spec import ChildSpec, RestartPolicy
 from vcompany.container.container import AgentContainer
+from vcompany.container.factory import create_container
 from vcompany.container.health import HealthReport
 from vcompany.supervisor.restart_tracker import RestartTracker
 from vcompany.supervisor.strategies import RestartStrategy
@@ -142,7 +143,7 @@ class Supervisor:
         self._child_events[spec.child_id] = event
 
         # Create and start container
-        container = AgentContainer.from_spec(
+        container = create_container(
             spec,
             data_dir=self._data_dir,
             on_state_change=self._make_state_change_callback(spec.child_id),
