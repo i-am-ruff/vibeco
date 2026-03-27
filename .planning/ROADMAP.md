@@ -217,7 +217,12 @@ Plans:
   1. Outbound Discord messages are queued with rate-aware batching -- health reports debounced, supervisor commands prioritized, exponential backoff on 429s
   2. When all children fail simultaneously, the supervisor detects an upstream outage and triggers global backoff instead of per-agent restart loops
   3. When Claude servers are unreachable, the system enters degraded mode -- existing containers stay alive, no new dispatches occur, the owner is notified, and the system recovers automatically when service returns
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md -- MessageQueue with priority ordering, debounce, and exponential backoff
+- [ ] 06-02-PLAN.md -- BulkFailureDetector and Supervisor integration for upstream outage detection
+- [ ] 06-03-PLAN.md -- DegradedModeManager and CompanyRoot integration for Claude API unavailability
 
 ### Phase 7: Autonomy Features
 **Goal**: The PM manages a living milestone backlog, continuous agents can delegate task spawns through the supervisor, and agent crashes never corrupt project state
@@ -254,6 +259,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 3. GsdAgent | 2/2 | Complete | 2026-03-27 |
 | 4. Remaining Agent Types and Scheduler | 0/4 | Planned | - |
 | 5. Health Tree | 2/2 | Complete   | 2026-03-27 |
-| 6. Resilience | 0/0 | Not started | - |
+| 6. Resilience | 0/3 | Planned | - |
 | 7. Autonomy Features | 0/0 | Not started | - |
 | 8. CompanyRoot Wiring and Migration | 0/0 | Not started | - |
