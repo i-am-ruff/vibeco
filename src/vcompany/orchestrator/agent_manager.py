@@ -111,6 +111,7 @@ class AgentManager:
             f"&& export DISCORD_GUILD_ID='{self._guild_id}' "
             f"&& export PROJECT_NAME='{self._config.project}' "
             f"&& export AGENT_ID='{agent_id}' "
+            f"&& export VCO_AGENT_ID='{agent_id}' "
             f"&& export AGENT_ROLE='{agent_cfg.role}' "
             f"&& claude --dangerously-skip-permissions "
             f"--append-system-prompt-file {prompt_path}"
@@ -150,6 +151,13 @@ class AgentManager:
         Returns:
             List of DispatchResult, one per agent.
         """
+        # Clear stale registry BEFORE killing old session. This prevents a race
+        # where the monitor reads agents.json between create_session (which kills
+        # old PIDs) and _save_registry (which writes new PIDs). With stale PIDs
+        # and a dead session, the monitor would fire false "agent appears dead" alerts.
+        self._registry = AgentsRegistry(project=self._config.project)
+        self._save_registry()
+
         # Create the main session
         session = self._tmux.create_session(self._session_name)
 
@@ -170,6 +178,7 @@ class AgentManager:
                 f"&& export DISCORD_GUILD_ID='{os.environ.get('DISCORD_GUILD_ID', '')}' "
                 f"&& export PROJECT_NAME='{self._config.project}' "
                 f"&& export AGENT_ID='{agent_cfg.id}' "
+                f"&& export VCO_AGENT_ID='{agent_cfg.id}' "
                 f"&& export AGENT_ROLE='{agent_cfg.role}' "
                 f"&& claude --dangerously-skip-permissions "
                 f"--append-system-prompt-file {prompt_path}"
@@ -363,6 +372,23 @@ class AgentManager:
             result = self._tmux.send_command(pane, command)
             if result:
                 logger.info("Sent to %s: %s", agent_id, command)
+                # Verify command appeared in pane (best-effort)
+                time.sleep(0.5)
+                try:
+                    verify_output = self._tmux.get_output(pane, lines=10)
+                    verify_text = "\n".join(verify_output).lower()
+                    # Check if any fragment of the command appears in pane
+                    cmd_fragment = command[:30].lower()
+                    if cmd_fragment in verify_text:
+                        logger.info("Verified command delivery to %s", agent_id)
+                    else:
+                        logger.warning(
+                            "Command may not have been delivered to %s — "
+                            "command fragment '%s' not found in pane output",
+                            agent_id, cmd_fragment,
+                        )
+                except Exception:
+                    logger.debug("Could not verify command delivery to %s", agent_id)
             else:
                 logger.error("Failed to send to %s: %s", agent_id, command)
             return result
@@ -379,23 +405,52 @@ class AgentManager:
         Uses Claude-specific UI markers (not generic '>' which matches too broadly).
         Post-ready settle time is 2 seconds (not 30).
         """
+        pane_id = getattr(pane, "pane_id", "?")
         deadline = time.monotonic() + timeout
+        poll_count = 0
+        empty_count = 0
+        error_count = 0
         while time.monotonic() < deadline:
+            poll_count += 1
             try:
                 output = self._tmux.get_output(pane, lines=30)
                 text = "\n".join(output).lower()
-                for marker in CLAUDE_READY_MARKERS:
-                    if marker in text:
-                        logger.info(
-                            "Claude ready for %s (marker: '%s')", agent_id, marker
+                if not output or all(not line.strip() for line in output):
+                    empty_count += 1
+                    # Log every 10th empty result to avoid spam
+                    if empty_count % 10 == 1:
+                        logger.warning(
+                            "Pane %s for %s returned empty output (empty_count=%d, poll=%d)",
+                            pane_id, agent_id, empty_count, poll_count,
                         )
-                        time.sleep(2)  # Brief settle, NOT 30s
-                        return True
+                else:
+                    for marker in CLAUDE_READY_MARKERS:
+                        if marker in text:
+                            logger.info(
+                                "Claude ready for %s (marker: '%s', polls=%d)",
+                                agent_id, marker, poll_count,
+                            )
+                            time.sleep(2)  # Brief settle, NOT 30s
+                            return True
+                    # Log first non-empty, non-matching output for diagnostics
+                    if poll_count <= 3 or poll_count % 15 == 0:
+                        preview = text[:200].replace("\n", " | ")
+                        logger.info(
+                            "Pane %s for %s has content but no marker (poll=%d): %s",
+                            pane_id, agent_id, poll_count, preview,
+                        )
             except Exception:
-                logger.debug("Error reading pane output for %s", agent_id)
+                error_count += 1
+                logger.warning(
+                    "Error reading pane %s for %s (error_count=%d, poll=%d)",
+                    pane_id, agent_id, error_count, poll_count,
+                    exc_info=True,
+                )
             time.sleep(poll_interval)
         logger.warning(
-            "Timeout (%ds) waiting for Claude ready on %s", timeout, agent_id
+            "Timeout (%ds) waiting for Claude ready on %s "
+            "(polls=%d, empty=%d, errors=%d, pane=%s)",
+            timeout, agent_id, poll_count, empty_count, error_count, pane_id,
         )
         return False
 
