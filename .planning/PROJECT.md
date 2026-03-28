@@ -10,39 +10,28 @@ Every agent runs inside an Erlang-style supervision tree with lifecycle state ma
 
 Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly — all operable from Discord.
 
-## Current Milestone: v2.1 Behavioral Integration
-
-**Goal:** Make the v2.0 container infrastructure operational — agents do real work, PM leads development through conversational review gates, health tree shows the full supervision hierarchy.
-
-**Target features:**
-- Work initiation: agents receive GSD commands and start working autonomously
-- PM-led conversational review gates (approve/modify/clarify multi-turn flow)
-- Auto work distribution from backlog via PM
-- Full PM event routing (health, GSD transitions, briefings, escalations)
-- Strategist operating through CompanyAgent container
-- Inter-container communication via CommunicationPort
-- BLOCKED as real FSM state
-- PM outbound actions (integration, milestone injection, recruitment, escalation)
-- Correct supervision hierarchy (Strategist under CompanyRoot)
-- Full health tree rendering
-- Stuck-agent detection
-- Message throttling (1 per 30s per agent)
-
 ## Current State
 
-**Shipped:** v2.0 Agent Container Architecture (2026-03-28)
-**Codebase:** 13,927 LOC Python (src/) + 17,460 LOC tests, 740 passing tests
+**Shipped:** v2.1 Behavioral Integration (2026-03-28)
 **Stack:** Python 3.12, discord.py 2.7, anthropic SDK, libtmux, pydantic v2, click, uv
 
-**v2.0 delivered:**
-- AgentContainer with 6-state lifecycle FSM bridged to real tmux sessions
-- Two-level supervision tree (CompanyRoot → ProjectSupervisor → agents)
-- Four agent types: GsdAgent, ContinuousAgent, FulltimeAgent (PM), CompanyAgent (Strategist)
-- Health tree with /health Discord command reflecting real tmux liveness
-- Priority message queue with rate-limit backoff for all notifications
-- Resilience: bulk failure detection, degraded mode, auto-recovery
-- PM autonomy: living backlog, delegation protocol, crash-safe project state
-- All commands are slash commands; v1 modules fully removed
+**v2.1 delivered:**
+- Work initiation: agents receive GSD commands in tmux, start working autonomously after readiness poll
+- PM-led conversational review gates: asyncio.Future gate on GsdAgent, approve/modify/clarify flow
+- Auto work distribution: PM auto-assigns next backlog item when agent completes current task
+- Full PM event routing: health_change, gsd_transition, briefing, escalation events flow to PM queue
+- Strategist inverted: CompanyAgent._handle_event() owns logic, StrategistCog is thin Discord adapter
+- CommunicationPort wired: NoopCommunicationPort passed through all container creation paths
+- BLOCKED/STOPPING as real FSM states across all 4 lifecycle machines with reason strings
+- PM outbound actions: integration review, backlog injection, agent recruit/remove, Strategist escalation
+- Stuck-agent detection: background loop with per-agent suppression and Discord intervention
+- Health tree: CompanyRoot header, company agents, uptime, last_activity per agent
+- Message throttling: 30s per-agent minimum between review requests
+- ContinuousAgent delegation + state persistence, GsdAgent assignment restore on restart
+
+**Previously shipped:**
+- v2.0 Agent Container Architecture (2026-03-28): 8-state lifecycle FSM, supervision tree, 4 agent types, health tree, resilience, PM autonomy
+- v1.0 MVP (2026-03-27): CLI orchestration, Discord bot, plan review, AI decision system, integration pipeline
 
 ## Requirements
 
