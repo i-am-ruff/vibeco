@@ -27,6 +27,7 @@ from vcompany.container.context import ContainerContext
 from vcompany.container.health import HealthReport
 
 if TYPE_CHECKING:
+    from vcompany.container.child_spec import ChildSpec
     from vcompany.container.communication import CommunicationPort
 
 logger = logging.getLogger("vcompany.agent.fulltime_agent")
@@ -66,6 +67,24 @@ class FulltimeAgent(AgentContainer):
         # GATE-02: Callback invoked when gsd_transition event received.
         # Wired by VcoBot.on_ready to call PlanReviewCog.dispatch_pm_review().
         self._on_gsd_review: Callable[[str, str], Awaitable[None]] | None = None
+        # WORK-03: Sends assignment + GSD command to agent.
+        self._on_assign_task: Callable[[str, BacklogItem], Awaitable[None]] | None = None
+        # PMAC-01: Triggers integration review.
+        self._on_trigger_integration_review: Callable[[], Awaitable[None]] | None = None
+        # PMAC-03: Agent recruitment/removal callbacks.
+        self._on_recruit_agent: Callable[[ChildSpec], Awaitable[None]] | None = None
+        self._on_remove_agent: Callable[[str], Awaitable[None]] | None = None
+        # PMAC-04: Escalate question to Strategist, returns answer or None.
+        self._on_escalate_to_strategist: Callable[[str, str, float], Awaitable[str | None]] | None = None
+        # PMAC-05: Sends intervention message to an agent channel.
+        self._on_send_intervention: Callable[[str, str], Awaitable[None]] | None = None
+
+        # Stuck detector state (PMAC-05)
+        self._agent_state_timestamps: dict[str, tuple[str, float]] = {}
+        self._stuck_threshold_seconds: float = 1800.0  # 30 min default
+        self._stuck_check_interval: float = 60.0  # poll every 60s
+        self._stuck_detected_agents: set[str] = set()
+        self._stuck_detector_task: asyncio.Task[None] | None = None
 
     # --- Properties (override parent for compound state handling) ---
 
@@ -126,6 +145,7 @@ class FulltimeAgent(AgentContainer):
             await self._project_state.handle_task_completed(
                 event["agent_id"], event["item_id"]
             )
+            await self._auto_assign_next(event["agent_id"])
         elif event_type == "task_failed" and self._project_state is not None:
             await self._project_state.handle_task_failed(
                 event["agent_id"], event["item_id"]
@@ -135,17 +155,25 @@ class FulltimeAgent(AgentContainer):
         elif event_type == "request_assignment" and self._project_state is not None:
             await self._project_state.assign_next_task(event["agent_id"])
         elif event_type == "health_change":
+            agent_id = event.get("agent_id", "")
+            inner = event.get("inner_state", "")
             logger.info(
                 "PM received health_change: agent=%s state=%s inner=%s",
-                event.get("agent_id"), event.get("state"), event.get("inner_state"),
+                agent_id, event.get("state"), inner,
             )
+            if inner:
+                self._agent_state_timestamps[agent_id] = (inner, asyncio.get_event_loop().time())
         elif event_type == "gsd_transition":
+            agent_id = event.get("agent_id", "")
+            to_phase = event.get("to_phase", "")
             logger.info(
                 "PM received gsd_transition: agent=%s %s->%s",
-                event.get("agent_id"), event.get("from_phase"), event.get("to_phase"),
+                agent_id, event.get("from_phase"), to_phase,
             )
+            self._agent_state_timestamps[agent_id] = (to_phase, asyncio.get_event_loop().time())
+            self._stuck_detected_agents.discard(agent_id)
             if self._on_gsd_review is not None:
-                await self._on_gsd_review(event.get("agent_id", ""), event.get("to_phase", ""))
+                await self._on_gsd_review(agent_id, to_phase)
         elif event_type == "briefing":
             logger.info(
                 "PM received briefing from %s (content_len=%d)",
@@ -156,17 +184,115 @@ class FulltimeAgent(AgentContainer):
                 "PM received escalation: agent=%s reason=%s",
                 event.get("agent_id"), event.get("reason"),
             )
+            await self.escalate_to_strategist(
+                event.get("agent_id", ""), event.get("reason", "unknown")
+            )
         else:
             logger.warning("Unhandled event type: %s", event_type)
 
     # --- Lifecycle Overrides ---
 
+    # --- PM Action Methods ---
+
+    async def _auto_assign_next(self, agent_id: str) -> None:
+        """Auto-assign the next pending backlog item to agent (WORK-03)."""
+        if self._project_state is None:
+            return
+        item = await self._project_state.assign_next_task(agent_id)
+        if item is None:
+            logger.info("No pending backlog items for %s -- agent idle", agent_id)
+            return
+        logger.info("Auto-assigned %s to agent %s", item.item_id, agent_id)
+        if self._on_assign_task is not None:
+            await self._on_assign_task(agent_id, item)
+
+    async def trigger_integration_review(self) -> None:
+        """Trigger integration review via callback (PMAC-01)."""
+        logger.info("PM triggering integration review")
+        if self._on_trigger_integration_review is not None:
+            await self._on_trigger_integration_review()
+        else:
+            logger.warning("Integration review requested but no handler wired")
+
+    async def inject_backlog_item(self, item: BacklogItem, urgent: bool = False) -> None:
+        """Inject an item into the backlog (PMAC-02)."""
+        if self.backlog is None:
+            logger.warning("Cannot inject backlog item -- backlog not wired")
+            return
+        if urgent:
+            await self.backlog.insert_urgent(item)
+            logger.info("Injected urgent backlog item: %s", item.item_id)
+        else:
+            await self.backlog.append(item)
+            logger.info("Appended backlog item: %s", item.item_id)
+
+    async def request_recruit_agent(self, spec: ChildSpec) -> None:
+        """Request agent recruitment through supervisor (PMAC-03)."""
+        logger.info("PM requesting agent recruitment: %s", spec.child_id)
+        if self._on_recruit_agent is not None:
+            await self._on_recruit_agent(spec)
+        else:
+            logger.warning("Agent recruitment requested but no handler wired")
+
+    async def request_remove_agent(self, agent_id: str) -> None:
+        """Request agent removal through supervisor (PMAC-03)."""
+        logger.info("PM requesting agent removal: %s", agent_id)
+        if self._on_remove_agent is not None:
+            await self._on_remove_agent(agent_id)
+        else:
+            logger.warning("Agent removal requested but no handler wired")
+
+    async def escalate_to_strategist(
+        self, agent_id: str, question: str, confidence: float = 0.0
+    ) -> str | None:
+        """Escalate a decision to the Strategist, returning the answer (PMAC-04)."""
+        logger.info("PM escalating to Strategist for %s: %s", agent_id, question[:80])
+        if self._on_escalate_to_strategist is not None:
+            return await self._on_escalate_to_strategist(agent_id, question, confidence)
+        logger.warning("Strategist escalation requested but no handler wired")
+        return None
+
+    # --- Stuck Detector ---
+
+    async def _run_stuck_detector(self) -> None:
+        """Background loop detecting agents stuck in the same GSD state (PMAC-05)."""
+        while True:
+            await asyncio.sleep(self._stuck_check_interval)
+            now = asyncio.get_event_loop().time()
+            for agent_id, (state, ts) in list(self._agent_state_timestamps.items()):
+                elapsed = now - ts
+                if (
+                    elapsed > self._stuck_threshold_seconds
+                    and agent_id not in self._stuck_detected_agents
+                ):
+                    self._stuck_detected_agents.add(agent_id)
+                    msg = (
+                        f"Agent {agent_id} stuck in state '{state}' for {int(elapsed)}s"
+                        f" (threshold: {int(self._stuck_threshold_seconds)}s)"
+                    )
+                    logger.warning(msg)
+                    if self._on_send_intervention is not None:
+                        await self._on_send_intervention(agent_id, msg)
+
+    # --- Lifecycle Overrides ---
+
     async def start(self) -> None:
-        """Transition to running, open memory, and restore event count."""
+        """Transition to running, open memory, restore event count, start stuck detector."""
         await super().start()
         count_str = await self.memory.get("events_processed")
         if count_str is not None:
             self._events_processed = int(count_str)
+        self._stuck_detector_task = asyncio.create_task(self._run_stuck_detector())
+
+    async def stop(self) -> None:
+        """Cancel stuck detector task then delegate to parent stop."""
+        if self._stuck_detector_task is not None:
+            self._stuck_detector_task.cancel()
+            try:
+                await self._stuck_detector_task
+            except asyncio.CancelledError:
+                pass
+        await super().stop()
 
     async def sleep(self) -> None:
         """Checkpoint event count then transition to sleeping."""
