@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
-status: Ready to plan
+status: Milestone complete
 stopped_at: "Completed 17-01-PLAN.md: CompanyRoot header and per-agent uptime/activity added to health embed"
-last_updated: "2026-03-28T17:44:35.022Z"
+last_updated: "2026-03-28T17:44:57.289Z"
 progress:
   total_phases: 7
   completed_phases: 7
