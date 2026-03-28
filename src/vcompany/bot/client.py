@@ -272,12 +272,12 @@ class VcoBot(commands.Bot):
                 for agent_cfg in self.project_config.agents:
                     ctx = ContainerContext(
                         agent_id=agent_cfg.id,
-                        agent_type=agent_cfg.type if hasattr(agent_cfg, "type") else "gsd",
+                        agent_type=agent_cfg.type,
                         parent_id="project-supervisor",
                         project_id=self.project_config.project,
-                        owned_dirs=agent_cfg.owns if hasattr(agent_cfg, "owns") else [],
-                        gsd_mode=agent_cfg.gsd_mode if hasattr(agent_cfg, "gsd_mode") else "",
-                        system_prompt=agent_cfg.system_prompt if hasattr(agent_cfg, "system_prompt") else "",
+                        owned_dirs=agent_cfg.owns,
+                        gsd_mode=agent_cfg.gsd_mode,
+                        system_prompt=agent_cfg.system_prompt,
                     )
                     specs.append(ChildSpec(child_id=agent_cfg.id, agent_type=ctx.agent_type, context=ctx))
 

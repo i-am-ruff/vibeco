@@ -198,10 +198,10 @@ class CommandsCog(commands.Cog):
             for agent in config.agents:
                 ctx = ContainerContext(
                     agent_id=agent.id,
-                    agent_type=agent.type if hasattr(agent, "type") else "gsd",
+                    agent_type=agent.type,
                     parent_id="project-supervisor",
                     project_id=config.project,
-                    owned_dirs=agent.owns if hasattr(agent, "owns") else [],
+                    owned_dirs=agent.owns,
                 )
                 specs.append(ChildSpec(child_id=agent.id, agent_type=ctx.agent_type, context=ctx))
 
