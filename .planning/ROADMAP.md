@@ -267,7 +267,11 @@ Plans:
   3. GsdAgent consumption loop calls get_assignment() and routes completion events to PM
   4. DegradedModeManager activates with a health_check callable
   5. MessageQueue routes all outbound Discord notifications with priority and debounce
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 08.1-01-PLAN.md -- Wire HealthCog loading, DegradedMode health_check, and MessageQueue into bot startup
+- [ ] 08.1-02-PLAN.md -- Wire BacklogQueue/ProjectStateManager to FulltimeAgent and GsdAgent consumption loop
 
 ## Progress
 
