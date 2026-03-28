@@ -641,7 +641,8 @@ class PlanReviewCog(commands.Cog):
         """Have PM evaluate the agent's stage artifacts and post a review response.
 
         Called when a gsd_transition event triggers PM evaluation (GATE-02).
-        Uses PlanReviewer for plan-stage artifacts; auto-approves other stages.
+        Uses PlanReviewer for all stage artifacts. Falls back to auto-approve
+        if no reviewer configured or no artifacts found.
         Posts a [PM] APPROVED or [PM] NEEDS CHANGES message to the agent channel,
         which is then picked up by on_message -> _handle_review_response to
         resolve the gate Future.
@@ -683,24 +684,25 @@ class PlanReviewCog(commands.Cog):
 
         await asyncio.to_thread(self._read_pm_context)
 
-        # Use PlanReviewer for plan stage, auto-approve for others
-        if stage == "plan" and self._plan_reviewer:
+        # Use PlanReviewer for ALL stages (not just plan)
+        if self._plan_reviewer and artifact_content:
             try:
                 review = await asyncio.to_thread(
                     self._plan_reviewer.review_plan, agent_id, artifact_content
                 )
                 if review.confidence.level == "HIGH":
-                    response = f"[PM] APPROVED: {review.note}"
+                    response = f"[PM] APPROVED: {review.note or f'{stage} stage approved'}"
                 else:
                     response = f"[PM] NEEDS CHANGES: {review.note}"
-                self._append_pm_context(f"## {agent_id} {stage} review: {review.note[:200]}")
+                self._append_pm_context(
+                    f"## {agent_id} {stage} review: {review.note[:200] if review.note else 'approved'}"
+                )
                 await self._post_throttled(agent_id, channel, response)
                 return
             except Exception:
                 logger.exception("PlanReviewer failed for %s %s", agent_id, stage)
 
-        # Fallback / non-plan stages: auto-approve with logging
-        # (Full PMTier integration for non-plan stages is Phase 15 scope)
+        # Fallback: auto-approve if no reviewer or no artifacts
         response = f"[PM] APPROVED: {stage} stage looks good for {agent_id}"
         self._append_pm_context(f"## {agent_id} {stage} auto-approved")
         await self._post_throttled(agent_id, channel, response)
