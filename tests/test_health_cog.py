@@ -143,10 +143,11 @@ class TestHealthEmbed:
         assert embed.color == discord.Color.red()
 
     def test_empty_projects_shows_description(self):
-        """Empty projects list sets embed description."""
+        """Empty projects list sets embed description (HLTH-05: root header preserved)."""
         tree = _make_tree(projects=[])
         embed = build_health_tree_embed(tree)
-        assert embed.description == "No projects active"
+        assert "No projects active" in embed.description
+        assert "company-root" in embed.description
         assert len(embed.fields) == 0
 
     def test_project_with_no_children(self):
@@ -421,3 +422,78 @@ class TestNotifyStateChange:
         report = _make_report("a1", "errored")
         # Should not raise
         await cog._notify_state_change(report)
+
+
+# ── HLTH-05: CompanyRoot header in embed description ─────────────────
+
+
+def test_embed_description_shows_company_root():
+    """Embed description shows company-root state as tree root (HLTH-05)."""
+    tree = _make_tree(state="running")
+    embed = build_health_tree_embed(tree)
+    assert embed.description is not None
+    assert "company-root" in embed.description
+    assert "running" in embed.description
+    assert STATE_INDICATORS["running"] in embed.description
+
+
+def test_embed_description_shows_company_root_non_running():
+    """CompanyRoot header reflects non-running states (HLTH-05)."""
+    tree = _make_tree(state="errored")
+    embed = build_health_tree_embed(tree)
+    assert "errored" in embed.description
+    assert STATE_INDICATORS["errored"] in embed.description
+
+
+def test_no_projects_preserves_root_header():
+    """'No projects active' message preserves CompanyRoot header (HLTH-05)."""
+    tree = _make_tree(projects=[], state="running")
+    embed = build_health_tree_embed(tree)
+    assert "company-root" in embed.description
+
+
+# ── HLTH-06: Per-agent uptime and last_activity in lines ─────────────
+
+
+def test_company_agent_line_shows_uptime_and_activity():
+    """Company agent lines include uptime and last_activity (HLTH-06)."""
+    tree = _make_tree()
+    tree.company_agents = [HealthNode(report=_make_report(agent_id="strategist", state="running", inner_state="listening"))]
+    embed = build_health_tree_embed(tree)
+    field = embed.fields[0]
+    assert "up " in field.value
+    assert "active " in field.value
+    assert "ago" in field.value
+
+
+def test_project_agent_line_shows_uptime_and_activity():
+    """Project agent lines include uptime and last_activity (HLTH-06)."""
+    project = HealthTree(
+        supervisor_id="project-alpha",
+        state="running",
+        children=[HealthNode(report=_make_report(agent_id="dev-1", state="running", inner_state="PLAN"))],
+    )
+    tree = _make_tree(projects=[project])
+    embed = build_health_tree_embed(tree)
+    # Find the project field
+    project_field = [f for f in embed.fields if "project-alpha" in f.name][0]
+    assert "up " in project_field.value
+    assert "active " in project_field.value
+
+
+# ── Helper function unit tests ────────────────────────────────────────
+
+
+def test_fmt_uptime_hours():
+    from vcompany.bot.embeds import _fmt_uptime
+    assert _fmt_uptime(7380.0) == "up 2h 3m"
+
+
+def test_fmt_uptime_minutes():
+    from vcompany.bot.embeds import _fmt_uptime
+    assert _fmt_uptime(300.0) == "up 5m"
+
+
+def test_fmt_uptime_seconds():
+    from vcompany.bot.embeds import _fmt_uptime
+    assert _fmt_uptime(45.0) == "up 45s"

@@ -34,6 +34,28 @@ STATE_INDICATORS: dict[str, str] = {
 _DEFAULT_INDICATOR = "\u2753"   # question mark for unknown states
 
 
+def _fmt_uptime(seconds: float) -> str:
+    """Format uptime seconds as human-readable duration."""
+    h = int(seconds) // 3600
+    m = (int(seconds) % 3600) // 60
+    s = int(seconds) % 60
+    if h > 0:
+        return f"up {h}h {m}m"
+    elif m > 0:
+        return f"up {m}m"
+    return f"up {s}s"
+
+
+def _fmt_last_activity(last: datetime) -> str:
+    """Format last_activity as time-ago string."""
+    diff = (datetime.now(timezone.utc) - last).total_seconds()
+    if diff < 60:
+        return f"active {int(diff)}s ago"
+    elif diff < 3600:
+        return f"active {int(diff // 60)}m ago"
+    return f"active {int(diff // 3600)}h ago"
+
+
 _ALERT_COLORS: dict[str, discord.Color] = {
     "error": discord.Color.red(),
     "warning": discord.Color.orange(),
@@ -331,6 +353,10 @@ def build_health_tree_embed(
         timestamp=datetime.now(timezone.utc),
     )
 
+    # HLTH-05: Show CompanyRoot as the explicit root node with lifecycle state
+    root_emoji = STATE_INDICATORS.get(tree.state, _DEFAULT_INDICATOR)
+    embed.description = f"{root_emoji} **{tree.supervisor_id}**: {tree.state}"
+
     # Render company-level agents (Strategist, etc.) before project sections
     if tree.company_agents:
         lines: list[str] = []
@@ -339,7 +365,9 @@ def build_health_tree_embed(
             emoji = STATE_INDICATORS.get(r.state, _DEFAULT_INDICATOR)
             inner = f" ({r.inner_state})" if r.inner_state else ""
             blocked = f" -- {r.blocked_reason}" if r.blocked_reason else ""
-            lines.append(f"{emoji} **{r.agent_id}**: {r.state}{inner}{blocked}")
+            uptime_str = _fmt_uptime(r.uptime)
+            activity_str = _fmt_last_activity(r.last_activity)
+            lines.append(f"{emoji} **{r.agent_id}**: {r.state}{inner} | {uptime_str} | {activity_str}{blocked}")
         value = "\n".join(lines)
         if len(value) > 1024:
             value = value[:1021] + "..."
@@ -354,11 +382,11 @@ def build_health_tree_embed(
         projects = [p for p in projects if p.supervisor_id == project_filter]
 
     if not projects and not tree.projects and not tree.company_agents:
-        embed.description = "No projects active"
+        embed.description += "\nNo projects active"
         return embed
 
     if not projects and project_filter is not None:
-        embed.description = "No projects active"
+        embed.description += "\nNo projects active"
         return embed
 
     field_count = 0
@@ -385,7 +413,9 @@ def build_health_tree_embed(
                 emoji = STATE_INDICATORS.get(r.state, _DEFAULT_INDICATOR)
                 inner = f" ({r.inner_state})" if r.inner_state else ""
                 blocked = f" -- {r.blocked_reason}" if r.blocked_reason else ""
-                agent_lines.append(f"{emoji} **{r.agent_id}**: {r.state}{inner}{blocked}")
+                uptime_str = _fmt_uptime(r.uptime)
+                activity_str = _fmt_last_activity(r.last_activity)
+                agent_lines.append(f"{emoji} **{r.agent_id}**: {r.state}{inner} | {uptime_str} | {activity_str}{blocked}")
             value = "\n".join(agent_lines)
         else:
             value = "No agents"
