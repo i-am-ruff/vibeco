@@ -8,6 +8,7 @@ Implements D-11, D-12, D-13, D-22, MIGR-01.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from pathlib import Path
@@ -16,6 +17,7 @@ from typing import Any, Callable
 import discord
 from discord.ext import commands
 
+from vcompany.agent.company_agent import CompanyAgent
 from vcompany.agent.continuous_agent import ContinuousAgent
 from vcompany.agent.fulltime_agent import FulltimeAgent
 from vcompany.agent.gsd_agent import GsdAgent
@@ -142,7 +144,10 @@ class VcoBot(commands.Bot):
             logger.exception("Failed to set up system channels")
             self._system_channels = {}
 
-        # Initialize Strategist (always available, even without project)
+        # Initialize Strategist channels/logger (always available, even without project)
+        # The conversation itself is now owned by CompanyAgent (ARCH-01).
+        # We store persona_path here so CompanyAgent wiring below can use it.
+        _strategist_persona_path: Path | None = None
         try:
             from vcompany.bot.config import BotConfig
 
@@ -150,7 +155,7 @@ class VcoBot(commands.Bot):
 
             strategist_cog = self.get_cog("StrategistCog")
             if strategist_cog:
-                persona_path = (
+                _strategist_persona_path = (
                     Path(bot_config.strategist_persona_path)
                     if bot_config.strategist_persona_path
                     else None
@@ -161,11 +166,13 @@ class VcoBot(commands.Bot):
                     if self.project_dir
                     else None
                 )
-                await strategist_cog.initialize(persona_path, decisions_path)
+                # Pass persona_path for backward-compat fallback; CompanyAgent will
+                # own the conversation once wired in the project section below.
+                await strategist_cog.initialize(_strategist_persona_path, decisions_path)
 
-            logger.info("Strategist initialized (always available)")
+            logger.info("Strategist channels initialized (always available)")
         except Exception:
-            logger.exception("Failed to initialize Strategist")
+            logger.exception("Failed to initialize Strategist channels")
 
         # Initialize WorkflowMaster (always available, like Strategist)
         try:
@@ -274,8 +281,35 @@ class VcoBot(commands.Bot):
                     agent_type="company",
                     context=strategist_ctx,
                 )
-                await self.company_root.add_company_agent(strategist_spec)
+                strategist_container = await self.company_root.add_company_agent(strategist_spec)
                 logger.info("Strategist CompanyAgent added to CompanyRoot")
+
+                # Wire Strategist conversation and callbacks (ARCH-01)
+                if isinstance(strategist_container, CompanyAgent):
+                    # CompanyAgent owns the conversation
+                    strategist_container.initialize_conversation(_strategist_persona_path)
+
+                    # Response callback: post text to the originating Discord channel
+                    async def _on_strategist_response(response: str, channel_id: int) -> None:
+                        channel = self.get_channel(channel_id)
+                        if channel is not None:
+                            if len(response) > 2000:
+                                remaining = response
+                                while remaining:
+                                    chunk = remaining[:2000]
+                                    await channel.send(chunk)  # type: ignore[union-attr]
+                                    remaining = remaining[2000:]
+                            else:
+                                await channel.send(response)  # type: ignore[union-attr]
+
+                    strategist_container._on_response = _on_strategist_response
+
+                    # Wire StrategistCog to forward events to CompanyAgent
+                    strategist_cog_ref = self.get_cog("StrategistCog")
+                    if strategist_cog_ref is not None:
+                        strategist_cog_ref.set_company_agent(strategist_container)
+
+                    logger.info("Strategist CompanyAgent wired (conversation + callbacks)")
 
                 # MessageQueue for outbound notifications (RESL-01)
                 async def _send_message(msg: QueuedMessage) -> None:
@@ -449,15 +483,33 @@ class VcoBot(commands.Bot):
                     pm_container._on_recruit_agent = _on_recruit_agent
                     pm_container._on_remove_agent = _on_remove_agent
 
-                    strategist_cog_ref = self.get_cog("StrategistCog")
-                    if strategist_cog_ref is not None:
+                    # Route PM escalations through CompanyAgent container (ARCH-01)
+                    # strategist_container is set from add_company_agent() above.
+                    if isinstance(strategist_container, CompanyAgent):
                         async def _on_escalate_to_strategist(
                             agent_id: str, question: str, score: float
                         ) -> str | None:
-                            return await strategist_cog_ref.handle_pm_escalation(
-                                agent_id, question, score
-                            )
+                            future: asyncio.Future[str | None] = asyncio.get_event_loop().create_future()
+                            await strategist_container.post_event({
+                                "type": "pm_escalation",
+                                "agent_id": agent_id,
+                                "question": question,
+                                "confidence": score,
+                                "_response_future": future,
+                            })
+                            return await future
                         pm_container._on_escalate_to_strategist = _on_escalate_to_strategist
+                    else:
+                        # Fallback: route through cog (backward compat)
+                        strategist_cog_ref2 = self.get_cog("StrategistCog")
+                        if strategist_cog_ref2 is not None:
+                            async def _on_escalate_to_strategist_fallback(
+                                agent_id: str, question: str, score: float
+                            ) -> str | None:
+                                return await strategist_cog_ref2.handle_pm_escalation(
+                                    agent_id, question, score
+                                )
+                            pm_container._on_escalate_to_strategist = _on_escalate_to_strategist_fallback
 
                     async def _on_send_intervention(agent_id: str, message: str) -> None:
                         if self.message_queue and guild:
