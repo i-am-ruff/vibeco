@@ -4,16 +4,20 @@ GsdAgent owns its own phase state internally via GsdLifecycle's compound
 running state. Phase transitions checkpoint to memory_store for crash
 recovery. Absorbs WorkflowOrchestrator state-tracking responsibilities
 (blocked tracking, phase number).
+
+Extended with assignment methods: reads assignments from own MemoryStore,
+produces completion/failure events for PM consumption.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from statemachine.orderedset import OrderedSet
 
@@ -214,3 +218,58 @@ class GsdAgent(AgentContainer):
     async def set_phase_number(self, phase: int) -> None:
         """Write phase number to memory_store KV."""
         await self.memory.set("phase_number", str(phase))
+
+    # --- Assignment Methods (reads from own MemoryStore) ---
+
+    async def get_assignment(self) -> dict[str, Any] | None:
+        """Read current assignment from own MemoryStore.
+
+        Returns:
+            Parsed assignment dict, or None if no assignment stored.
+        """
+        raw = await self.memory.get("current_assignment")
+        if raw is None:
+            return None
+        return json.loads(raw)
+
+    async def set_assignment(self, assignment: dict[str, Any]) -> None:
+        """Write assignment to own MemoryStore.
+
+        Args:
+            assignment: Assignment data dict to persist.
+        """
+        await self.memory.set("current_assignment", json.dumps(assignment))
+
+    def make_completion_event(self, item_id: str, result: str = "success") -> dict[str, Any]:
+        """Create a task_completed event dict for PM consumption.
+
+        Args:
+            item_id: The backlog item ID that was completed.
+            result: Result description (default "success").
+
+        Returns:
+            Event dict ready to post to PM's event queue.
+        """
+        return {
+            "type": "task_completed",
+            "agent_id": self.context.agent_id,
+            "item_id": item_id,
+            "result": result,
+        }
+
+    def make_failure_event(self, item_id: str, reason: str = "") -> dict[str, Any]:
+        """Create a task_failed event dict for PM consumption.
+
+        Args:
+            item_id: The backlog item ID that failed.
+            reason: Failure reason description.
+
+        Returns:
+            Event dict ready to post to PM's event queue.
+        """
+        return {
+            "type": "task_failed",
+            "agent_id": self.context.agent_id,
+            "item_id": item_id,
+            "reason": reason,
+        }

@@ -4,6 +4,10 @@ Reacts to events (state transitions, health changes, escalations, briefings)
 via asyncio.Queue. Scoped to a project (has project_id). Processes events
 one at a time, transitioning between listening and processing sub-states.
 Persists event processing state via memory_store for crash recovery.
+
+Extended with backlog operations: routes task lifecycle events
+(task_completed, task_failed, add_backlog_item, request_assignment) to
+ProjectStateManager for PM-owned project state coordination.
 """
 
 from __future__ import annotations
@@ -16,6 +20,8 @@ from typing import TYPE_CHECKING, Any, Callable
 from statemachine.orderedset import OrderedSet
 
 from vcompany.agent.event_driven_lifecycle import EventDrivenLifecycle
+from vcompany.autonomy.backlog import BacklogItem, BacklogQueue
+from vcompany.autonomy.project_state import ProjectStateManager
 from vcompany.container.container import AgentContainer
 from vcompany.container.context import ContainerContext
 from vcompany.container.health import HealthReport
@@ -53,6 +59,9 @@ class FulltimeAgent(AgentContainer):
         self._event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._events_processed: int = 0
         self._checkpoint_lock = asyncio.Lock()
+        # Backlog and project state (wired after construction, not in __init__ args)
+        self.backlog: BacklogQueue | None = None
+        self._project_state: ProjectStateManager | None = None
 
     # --- Properties (override parent for compound state handling) ---
 
@@ -97,8 +106,32 @@ class FulltimeAgent(AgentContainer):
         return True
 
     async def _handle_event(self, event: dict[str, Any]) -> None:
-        """Process a single event. Override in subclasses for custom behavior."""
-        pass  # Base implementation is no-op; real PM logic added in later phases
+        """Process a single event, routing to appropriate backlog operation.
+
+        Supported event types:
+        - task_completed: marks item COMPLETED via ProjectStateManager
+        - task_failed: re-queues item as PENDING via ProjectStateManager
+        - add_backlog_item: appends new item to backlog
+        - request_assignment: assigns next PENDING item to requesting agent
+
+        Unknown event types are logged as warnings (no-op, no raise).
+        """
+        event_type = event.get("type", "")
+
+        if event_type == "task_completed" and self._project_state is not None:
+            await self._project_state.handle_task_completed(
+                event["agent_id"], event["item_id"]
+            )
+        elif event_type == "task_failed" and self._project_state is not None:
+            await self._project_state.handle_task_failed(
+                event["agent_id"], event["item_id"]
+            )
+        elif event_type == "add_backlog_item" and self.backlog is not None:
+            await self.backlog.append(BacklogItem(**event["item"]))
+        elif event_type == "request_assignment" and self._project_state is not None:
+            await self._project_state.assign_next_task(event["agent_id"])
+        else:
+            logger.warning("Unhandled event type: %s", event_type)
 
     # --- Lifecycle Overrides ---
 
