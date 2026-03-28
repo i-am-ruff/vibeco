@@ -246,6 +246,63 @@ class TestBlockedTracking:
         await agent.stop()
 
 
+# --- Review Gate Loop (GATE-01) ---
+
+
+class TestReviewGateLoop:
+    """advance_phase re-enters gate on modify/clarify until approve."""
+
+    @pytest.mark.asyncio
+    async def test_modify_then_approve(self, tmp_path: Path) -> None:
+        """Gate blocks after modify, only continues after approve."""
+        agent = GsdAgent(context=_ctx(), data_dir=tmp_path)
+        decisions = iter(["modify", "approve"])
+
+        async def _staged_review(aid: str, stage: str) -> None:
+            agent.resolve_review(next(decisions))
+
+        agent._on_review_request = _staged_review
+        await agent.start()
+        result = await agent.advance_phase("discuss")
+        assert result == "approve"
+        assert agent._review_attempts == 1  # one modify before approve
+        await agent.stop()
+
+    @pytest.mark.asyncio
+    async def test_clarify_then_modify_then_approve(self, tmp_path: Path) -> None:
+        """Multiple non-approve decisions loop until approve."""
+        agent = GsdAgent(context=_ctx(), data_dir=tmp_path)
+        decisions = iter(["clarify", "modify", "approve"])
+
+        async def _staged_review(aid: str, stage: str) -> None:
+            agent.resolve_review(next(decisions))
+
+        agent._on_review_request = _staged_review
+        await agent.start()
+        # advance_phase("discuss") is valid from idle; tests the looping behavior
+        result = await agent.advance_phase("discuss")
+        assert result == "approve"
+        assert agent._review_attempts == 2
+        await agent.stop()
+
+    @pytest.mark.asyncio
+    async def test_max_attempts_auto_approves(self, tmp_path: Path) -> None:
+        """After max_review_attempts non-approvals, auto-approves."""
+        agent = GsdAgent(context=_ctx(), data_dir=tmp_path)
+        agent._max_review_attempts = 2
+
+        async def _always_modify(aid: str, stage: str) -> None:
+            agent.resolve_review("modify")
+
+        agent._on_review_request = _always_modify
+        await agent.start()
+        # advance_phase("discuss") is valid from idle; tests the max-attempts safety valve
+        result = await agent.advance_phase("discuss")
+        assert result == "approve"
+        assert agent._review_attempts == 2
+        await agent.stop()
+
+
 # --- from_spec ---
 
 

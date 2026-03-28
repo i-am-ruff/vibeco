@@ -109,14 +109,16 @@ class GsdAgent(AgentContainer):
         """Transition to the next GSD phase, checkpoint, and await PM gate decision.
 
         After the phase transition, creates an asyncio.Future and blocks until
-        resolve_review() is called by PlanReviewCog. Returns the gate decision
-        string ("approve", "modify", or "clarify").
+        resolve_review() is called by PlanReviewCog. Loops on modify/clarify --
+        only "approve" (or reaching max_review_attempts) allows the agent to
+        proceed. Returns "approve" in all exit cases.
 
         Args:
             phase: Target phase name (discuss, plan, execute, uat, ship).
 
         Returns:
-            Gate decision string: "approve", "modify", or "clarify".
+            Gate decision string: always "approve" (either real or auto-approved
+            after max_review_attempts).
 
         Raises:
             ValueError: If phase name is unknown.
@@ -137,18 +139,38 @@ class GsdAgent(AgentContainer):
         # PMRT-02: Notify PM of phase transition
         if self._on_phase_transition is not None:
             await self._on_phase_transition(self.context.agent_id, from_phase, phase)
-        # GATE-01: Create gate Future and await PM decision
+
+        # GATE-01: Loop until PM approves (modify/clarify re-enter the gate)
         loop = asyncio.get_running_loop()
-        self._pending_review = loop.create_future()
         self._review_attempts = 0
-        # Post review request via callback (wired by VcoBot.on_ready)
-        if self._on_review_request is not None:
-            await self._on_review_request(self.context.agent_id, phase)
-        try:
-            decision = await self._pending_review
-        finally:
-            self._pending_review = None
-        return decision
+        while True:
+            self._pending_review = loop.create_future()
+            # Post review request via callback (wired by VcoBot.on_ready)
+            if self._on_review_request is not None:
+                await self._on_review_request(self.context.agent_id, phase)
+            try:
+                decision = await self._pending_review
+            finally:
+                self._pending_review = None
+
+            if decision == "approve":
+                return decision
+
+            # modify/clarify: agent receives feedback via tmux (handled by
+            # _handle_review_response in PlanReviewCog), then we loop back
+            # and re-create the gate to wait for next PM decision.
+            self._review_attempts += 1
+            if self._review_attempts >= self._max_review_attempts:
+                logger.warning(
+                    "Agent %s hit max review attempts (%d) for phase %s, auto-approving",
+                    self.context.agent_id, self._max_review_attempts, phase,
+                )
+                return "approve"
+            logger.info(
+                "Agent %s received '%s' for phase %s (attempt %d/%d), re-entering gate",
+                self.context.agent_id, decision, phase,
+                self._review_attempts, self._max_review_attempts,
+            )
 
     def resolve_review(self, decision: str) -> bool:
         """Resolve the pending review gate with a PM decision.
