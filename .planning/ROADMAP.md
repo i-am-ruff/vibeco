@@ -130,6 +130,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 8: CompanyRoot Wiring and Migration** - CompanyRoot replaces VcoBot.on_ready(), slash command conversion, v1 module removal, communication layer abstraction *(completed 2026-03-28)*
 - [x] **Phase 8.1: Integration Wiring** - Wire cross-phase integration gaps (HealthCog, BacklogQueue, MessageQueue, DegradedMode) *(completed 2026-03-28)*
 - [x] **Phase 8.2: Deep Integration** - Make v2 container system operational end-to-end (2026-03-28)
+- [ ] **Phase 9: Agent Type Routing and PM Event Dispatch** - Fix AgentConfig.type field, enable correct agent type instantiation, wire GsdAgent→PM event dispatch
+- [ ] **Phase 10: MessageQueue Notification Routing** - Route all Discord notification senders through MessageQueue for rate limiting and priority ordering
 
 ## Phase Details
 
@@ -290,6 +292,34 @@ Plans:
 - [x] 08.2-01-PLAN.md -- Container tmux bridge + supervisor liveness monitoring + tests
 - [x] 08.2-02-PLAN.md -- Command updates (dispatch/kill/relaunch use tmux lifecycle, /status removed) + test updates
 
+### Phase 9: Agent Type Routing and PM Event Dispatch (GAP CLOSURE)
+**Goal**: AgentConfig carries a type field so FulltimeAgent and CompanyAgent are instantiated from agents.yaml, GsdAgent completion events are dispatched to the PM, /new-project wires PM backlog, and all dead code paths from old workflows are removed
+**Depends on**: Phase 8.2
+**Requirements**: TYPE-04, TYPE-05, AUTO-05
+**Gap Closure**: Closes gaps from v2.0 milestone audit
+**Success Criteria** (what must be TRUE):
+  1. `AgentConfig` has a `type` field with values `gsd`, `continuous`, `fulltime`, `company` — agents.yaml entries with `type: fulltime` produce a FulltimeAgent
+  2. `client.py` and `commands.py` read `agent_cfg.type` (not `hasattr` fallback) — FulltimeAgent and CompanyAgent are created when config specifies them
+  3. A cog or dispatcher calls `gsd_agent.make_completion_event()` on phase completion and routes the event to `bot._pm_container.post_event()`
+  4. `/new-project` command wires BacklogQueue and ProjectStateManager to FulltimeAgent (same wiring as on_ready path)
+  5. `isinstance(child, FulltimeAgent)` finds the PM container in on_ready's post-wiring loop
+  6. Dead code removed: `HealthCog.setup_notifications()` no-op method deleted, `build_status_embed` deprecated function removed from embeds.py, any other dead/unreachable code paths from v1→v2 migration cleaned up
+  7. No `hasattr(..., "type")` fallback guards remain — replaced with direct attribute access
+**Plans**: TBD
+
+### Phase 10: MessageQueue Notification Routing (GAP CLOSURE)
+**Goal**: All outbound Discord notifications (health state changes, escalations, degraded mode alerts, recovery notices) route through MessageQueue for rate-limit backoff and priority ordering — old direct-send paths fully removed
+**Depends on**: Phase 9
+**Requirements**: RESL-01
+**Gap Closure**: Closes gaps from v2.0 milestone audit
+**Success Criteria** (what must be TRUE):
+  1. `HealthCog._notify_state_change()` calls `message_queue.enqueue(QueuedMessage(...))` instead of `channel.send()`
+  2. `on_escalation`, `on_degraded`, `on_recovered` callbacks in `client.py` route through `message_queue.enqueue()` instead of direct `channel.send()`
+  3. No direct `channel.send()` calls remain in notification paths (health, alerts, escalation) — old direct-send code paths fully removed
+  4. MessageQueue priority ordering is exercised — escalations have higher priority than health state change notifications
+  5. Existing tests updated to verify queue routing, not direct sends
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
@@ -306,3 +336,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 6. Resilience | 0/3 | Planned | - |
 | 7. Autonomy Features | 2/3 | In Progress|  |
 | 8. CompanyRoot Wiring and Migration | 2/3 | In Progress|  |
+| 8.1. Integration Wiring | 2/2 | Complete | 2026-03-28 |
+| 8.2. Deep Integration | 2/2 | Complete | 2026-03-28 |
+| 9. Agent Type Routing + PM Event Dispatch | 0/0 | Not Started | - |
+| 10. MessageQueue Notification Routing | 0/0 | Not Started | - |

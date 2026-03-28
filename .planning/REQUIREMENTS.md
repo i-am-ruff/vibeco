@@ -30,8 +30,8 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 - [x] **TYPE-01**: GsdAgent with internal phase FSM (IDLE→DISCUSS→PLAN→EXECUTE→UAT→SHIP) absorbing WorkflowOrchestrator
 - [x] **TYPE-02**: GsdAgent saves checkpoint to memory_store after each state transition — crash recovery resumes from last completed state
 - [x] **TYPE-03**: ContinuousAgent with scheduled wake/sleep cycles (WAKE→GATHER→ANALYZE→ACT→REPORT→SLEEP) and persistent memory_store
-- [x] **TYPE-04**: FulltimeAgent (PM) is event-driven — reacts to agent state transitions, health changes, escalations, briefings, milestone completion
-- [x] **TYPE-05**: CompanyAgent (Strategist) is event-driven, alive for company duration, holds cross-project state, survives project restarts
+- [ ] **TYPE-04**: FulltimeAgent (PM) is event-driven — reacts to agent state transitions, health changes, escalations, briefings, milestone completion
+- [ ] **TYPE-05**: CompanyAgent (Strategist) is event-driven, alive for company duration, holds cross-project state, survives project restarts
 
 ### Health Reporting
 
@@ -46,12 +46,12 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 - [x] **AUTO-02**: GSD state machine consumes milestones from the living queue, not a static list
 - [x] **AUTO-03**: Delegation protocol — ContinuousAgent requests task spawns through supervisor with hard caps and rate limits
 - [x] **AUTO-04**: Supervisor validates delegation requests, enforces policy, spawns short-lived task agents
-- [x] **AUTO-05**: Project state owned by PM — agents read assignments and write completions. Agent crash never corrupts project state
+- [ ] **AUTO-05**: Project state owned by PM — agents read assignments and write completions. Agent crash never corrupts project state
 - [x] **AUTO-06**: Scheduler in CompanyRoot triggers WAKE on sleeping ContinuousAgents per their configured schedule
 
 ### Resilience
 
-- [x] **RESL-01**: Communication layer queues outbound Discord messages with rate-aware batching — health reports debounced, supervisor commands prioritized over status updates, exponential backoff on 429s
+- [ ] **RESL-01**: Communication layer queues outbound Discord messages with rate-aware batching — health reports debounced, supervisor commands prioritized over status updates, exponential backoff on 429s
 - [x] **RESL-02**: Supervisor distinguishes upstream outage (all children failing simultaneously within a short window) from individual agent failure — bulk failure triggers global backoff instead of per-agent restart loops
 - [x] **RESL-03**: System enters degraded mode when Claude servers are unreachable — existing containers stay alive, no new dispatches, owner notified, automatic recovery when service returns
 
@@ -114,20 +114,20 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 | TYPE-01 | Phase 3 | Complete |
 | TYPE-02 | Phase 3 | Complete |
 | TYPE-03 | Phase 4 | Complete |
-| TYPE-04 | Phase 4 | Complete |
-| TYPE-05 | Phase 4 | Complete |
+| TYPE-04 | Phase 9 | Pending |
+| TYPE-05 | Phase 9 | Pending |
 | AUTO-06 | Phase 4 | Complete |
 | HLTH-02 | Phase 5 | Complete |
 | HLTH-03 | Phase 5 | Complete |
 | HLTH-04 | Phase 5 | Complete |
-| RESL-01 | Phase 6 | Complete |
+| RESL-01 | Phase 10 | Pending |
 | RESL-02 | Phase 6 | Complete |
 | RESL-03 | Phase 6 | Complete |
 | AUTO-01 | Phase 7 | Complete |
 | AUTO-02 | Phase 7 | Complete |
 | AUTO-03 | Phase 7 | Complete |
 | AUTO-04 | Phase 7 | Complete |
-| AUTO-05 | Phase 7 | Complete |
+| AUTO-05 | Phase 9 | Pending |
 | MIGR-01 | Phase 8 | Complete |
 | MIGR-02 | Phase 8 | Complete |
 | MIGR-03 | Phase 8 | Complete |
@@ -136,6 +136,8 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 **Coverage:**
 - v2 requirements: 34 total
 - Mapped to phases: 34
+- Complete: 30
+- Pending (gap closure): 4 (TYPE-04, TYPE-05, AUTO-05, RESL-01)
 - Unmapped: 0
 
 ---
