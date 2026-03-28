@@ -26,6 +26,8 @@ def mock_bot():
     mock_root = MagicMock()
     mock_root._find_container = AsyncMock(return_value=MagicMock(state="running"))
     bot.company_root = mock_root
+    # PM container not wired by default (tests that need it set explicitly)
+    bot._pm_container = None
     return bot
 
 

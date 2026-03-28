@@ -58,8 +58,13 @@ def _make_mock_message(
     channel_id: int = 100,
     webhook_id: int = 999,
 ) -> MagicMock:
-    """Create a mock Discord message with webhook and embed."""
+    """Create a mock Discord message with webhook and embed.
+
+    Sets author.id to 42 to match bot.user.id in _make_question_handler_cog,
+    so the QuestionHandlerCog recognises it as a bot-posted question embed.
+    """
     message = MagicMock()
+    message.author.id = 42  # Matches bot.user.id in _make_question_handler_cog
     message.webhook_id = webhook_id
     message.channel = MagicMock()
     message.channel.id = channel_id
@@ -69,11 +74,16 @@ def _make_mock_message(
 
 
 def _make_question_handler_cog(channel_id: int = 100) -> MagicMock:
-    """Create a QuestionHandlerCog with mocked bot."""
+    """Create a QuestionHandlerCog with mocked bot.
+
+    Sets bot.user.id to a known value so question embeds posted by the bot
+    are detected (QuestionHandlerCog checks message.author.id == bot.user.id).
+    """
     from vcompany.bot.cogs.question_handler import QuestionHandlerCog
 
     bot = MagicMock()
     bot.get_cog = MagicMock(return_value=None)
+    bot.user.id = 42  # Sentinel value, matched in _make_mock_message
     cog = QuestionHandlerCog(bot)
     cog._strategist_channel = MagicMock()
     cog._strategist_channel.id = channel_id
@@ -87,7 +97,7 @@ def _make_question_handler_cog(channel_id: int = 100) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_question_handler_pm_high_confidence_auto_answers():
-    """HIGH confidence PM decision should auto-answer without buttons."""
+    """HIGH confidence PM decision should auto-answer via Discord reply."""
     cog = _make_question_handler_cog()
     pm = AsyncMock()
     pm.evaluate_question = AsyncMock(
@@ -98,21 +108,20 @@ async def test_question_handler_pm_high_confidence_auto_answers():
     embed = _make_mock_embed()
     message = _make_mock_message(embed)
 
-    with patch("vcompany.bot.cogs.question_handler._write_answer_file_sync"):
-        await cog.on_message(message)
+    await cog.on_message(message)
 
     # PM was called
     pm.evaluate_question.assert_awaited_once_with("What color should the button be?", "agent-a")
-    # Auto-answered via reply (not AnswerView buttons)
+    # Auto-answered via reply
     message.reply.assert_awaited_once()
     reply_text = message.reply.call_args[0][0]
-    assert "PM auto-answered" in reply_text
+    assert "[PM]" in reply_text
     assert "Use blue for the button" in reply_text
 
 
 @pytest.mark.asyncio
-async def test_question_handler_pm_medium_shows_suggestion_and_buttons():
-    """MEDIUM confidence should suggest answer but still show buttons for override."""
+async def test_question_handler_pm_medium_replies_with_note():
+    """MEDIUM confidence should reply with answer and note."""
     cog = _make_question_handler_cog()
     pm = AsyncMock()
     pm.evaluate_question = AsyncMock(
@@ -129,10 +138,11 @@ async def test_question_handler_pm_medium_shows_suggestion_and_buttons():
 
     await cog.on_message(message)
 
-    # Should have TWO replies: PM suggestion + answer buttons
-    assert message.reply.await_count == 2
-    first_reply = message.reply.call_args_list[0][0][0]
-    assert "PM suggests" in first_reply
+    # Single reply with answer and note
+    message.reply.assert_awaited_once()
+    reply_text = message.reply.call_args[0][0]
+    assert "[PM]" in reply_text
+    assert "Try red for the button" in reply_text
 
 
 @pytest.mark.asyncio
@@ -151,13 +161,13 @@ async def test_question_handler_pm_low_escalates_to_strategist():
 
     embed = _make_mock_embed()
     message = _make_mock_message(embed)
+    message.channel.send = AsyncMock()
 
-    with patch("vcompany.bot.cogs.question_handler._write_answer_file_sync"):
-        await cog.on_message(message)
+    await cog.on_message(message)
 
     strategist_cog.handle_pm_escalation.assert_awaited_once()
     reply_text = message.reply.call_args[0][0]
-    assert "Strategist answered" in reply_text
+    assert "Strategist says: use green" in reply_text
 
 
 @pytest.mark.asyncio
@@ -177,14 +187,14 @@ async def test_question_handler_pm_low_strategist_low_escalates_to_owner():
 
     embed = _make_mock_embed()
     message = _make_mock_message(embed)
+    message.channel.send = AsyncMock()
 
-    with patch("vcompany.bot.cogs.question_handler._write_answer_file_sync"):
-        await cog.on_message(message)
+    await cog.on_message(message)
 
     # post_owner_escalation was called (indefinite wait per D-07)
     strategist_cog.post_owner_escalation.assert_awaited_once()
     reply_text = message.reply.call_args[0][0]
-    assert "Owner answered" in reply_text
+    assert "Owner decided" in reply_text
 
 
 @pytest.mark.asyncio
@@ -203,16 +213,14 @@ async def test_question_handler_pm_low_does_not_fall_through_to_buttons():
 
     embed = _make_mock_embed()
     message = _make_mock_message(embed)
+    message.channel.send = AsyncMock()
 
-    with patch("vcompany.bot.cogs.question_handler._write_answer_file_sync"):
-        await cog.on_message(message)
+    await cog.on_message(message)
 
     # Only one reply (the Strategist answer), no AnswerView buttons
     assert message.reply.await_count == 1
     reply_text = message.reply.call_args[0][0]
-    assert "Strategist answered" in reply_text
-    # Should NOT contain "Select an answer" (the AnswerView prompt)
-    assert "Select an answer" not in reply_text
+    assert "Some answer" in reply_text
 
 
 # ---------------------------------------------------------------------------

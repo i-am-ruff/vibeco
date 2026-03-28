@@ -205,10 +205,33 @@ class CommandsCog(commands.Cog):
                 )
                 specs.append(ChildSpec(child_id=agent.id, agent_type=ctx.agent_type, context=ctx))
 
-            await self.bot.company_root.add_project(
+            project_sup = await self.bot.company_root.add_project(
                 project_id=config.project,
                 child_specs=specs,
             )
+
+            # Wire PM backlog and project state (same as on_ready path)
+            from vcompany.agent.fulltime_agent import FulltimeAgent
+            from vcompany.autonomy.backlog import BacklogQueue
+            from vcompany.autonomy.project_state import ProjectStateManager
+
+            pm_container: FulltimeAgent | None = None
+            for child in project_sup.children.values():
+                if isinstance(child, FulltimeAgent):
+                    pm_container = child
+                    break
+
+            if pm_container is not None:
+                backlog = BacklogQueue(pm_container.memory)
+                await backlog.load()
+                state_mgr = ProjectStateManager(backlog, pm_container.memory)
+                pm_container.backlog = backlog
+                pm_container._project_state = state_mgr
+                self.bot._pm_container = pm_container
+                logger.info(
+                    "PM backlog and project state wired for %s in /new-project",
+                    pm_container.context.agent_id,
+                )
 
             await interaction.channel.send(
                 f"Supervision tree started with {len(specs)} agents. "

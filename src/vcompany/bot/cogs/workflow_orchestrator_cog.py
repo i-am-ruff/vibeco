@@ -432,8 +432,8 @@ class WorkflowOrchestratorCog(commands.Cog):
     async def _handle_phase_complete(self, agent_id: str) -> None:
         """Handle phase completion for an agent.
 
-        Logs completion and posts to Discord. Container FSM handles
-        actual phase transitions.
+        Logs completion, posts to Discord, and routes completion event
+        to PM container if available (AUTO-05).
         """
         logger.info("Agent %s completed current phase", agent_id)
 
@@ -441,6 +441,17 @@ class WorkflowOrchestratorCog(commands.Cog):
             agent_id,
             "PHASE COMPLETE -- all stages passed",
         )
+
+        # Route completion event to PM (AUTO-05)
+        pm = getattr(self.bot, "_pm_container", None)
+        if pm is not None and self.bot.company_root is not None:
+            container = await self.bot.company_root._find_container(agent_id)
+            if container is not None and hasattr(container, "make_completion_event"):
+                assignment = await container.get_assignment()
+                item_id = assignment.get("item_id", agent_id) if assignment else agent_id
+                event = container.make_completion_event(item_id)
+                await pm.post_event(event)
+                logger.info("Routed completion event for %s to PM (item_id=%s)", agent_id, item_id)
 
     async def notify_plan_approved(self, agent_id: str) -> None:
         """Called by PlanReviewCog after plan approval.
