@@ -7,6 +7,8 @@ AgentContainers. Agent types (Phase 3/4) subclass them.
 
 from __future__ import annotations
 
+import asyncio
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -19,6 +21,7 @@ from vcompany.container.state_machine import ContainerLifecycle
 if TYPE_CHECKING:
     from vcompany.container.child_spec import ChildSpec
     from vcompany.container.communication import CommunicationPort
+    from vcompany.tmux.session import TmuxManager
 
 
 class AgentContainer:
@@ -42,6 +45,9 @@ class AgentContainer:
         data_dir: Path,
         comm_port: CommunicationPort | None = None,
         on_state_change: Callable[[HealthReport], None] | None = None,
+        tmux_manager: TmuxManager | None = None,
+        project_dir: Path | None = None,
+        project_session_name: str | None = None,
     ) -> None:
         self.context = context
         # _fsm_state is written by python-statemachine via state_field param
@@ -53,6 +59,11 @@ class AgentContainer:
         self._created_at = datetime.now(timezone.utc)
         self._error_count: int = 0
         self._last_activity = self._created_at
+        # Tmux bridge attributes
+        self._tmux: TmuxManager | None = tmux_manager
+        self._project_dir: Path | None = project_dir
+        self._project_session_name: str | None = project_session_name
+        self._pane_id: str | None = None
 
     # --- Properties ---
 
@@ -66,14 +77,75 @@ class AgentContainer:
         """Agent-type-specific sub-state. Overridden by subclasses."""
         return None
 
+    @property
+    def _needs_tmux_session(self) -> bool:
+        """True for agent types that run in tmux (gsd, continuous)."""
+        return self.context.agent_type in ("gsd", "continuous")
+
+    # --- Tmux Bridge ---
+
+    def _build_launch_command(self) -> str:
+        """Build the chained shell command matching dispatch_cmd.py pattern."""
+        clone_dir = self._project_dir / "clones" / self.context.agent_id
+        prompt_path = self._project_dir / "context" / "agents" / f"{self.context.agent_id}.md"
+        chained_cmd = (
+            f"cd {clone_dir} "
+            f"&& export DISCORD_BOT_TOKEN='{os.environ.get('DISCORD_BOT_TOKEN', '')}' "
+            f"&& export DISCORD_GUILD_ID='{os.environ.get('DISCORD_GUILD_ID', '')}' "
+            f"&& export PROJECT_NAME='{self.context.project_id or ''}' "
+            f"&& export AGENT_ID='{self.context.agent_id}' "
+            f"&& export VCO_AGENT_ID='{self.context.agent_id}' "
+            f"&& export AGENT_ROLE='{self.context.agent_type}' "
+            f"&& claude --dangerously-skip-permissions "
+            f"--append-system-prompt-file {prompt_path}"
+        )
+        return chained_cmd
+
+    async def _launch_tmux_session(self) -> None:
+        """Create a tmux pane and launch Claude Code in it."""
+        session = await asyncio.to_thread(
+            self._tmux.get_or_create_session, self._project_session_name
+        )
+        pane = await asyncio.to_thread(
+            self._tmux.create_pane, session, window_name=self.context.agent_id
+        )
+        self._pane_id = pane.pane_id
+        cmd = self._build_launch_command()
+        await asyncio.to_thread(self._tmux.send_command, pane, cmd)
+        # Auto-accept workspace trust prompt
+        await asyncio.sleep(3)
+        await asyncio.to_thread(pane.send_keys, "", enter=True)
+
+    def is_tmux_alive(self) -> bool:
+        """Check if the tmux pane process is alive.
+
+        Returns True when no tmux manager is injected (test containers).
+        """
+        if self._tmux is None or self._pane_id is None:
+            return True
+        pane = self._tmux.get_pane_by_id(self._pane_id)
+        return pane is not None and self._tmux.is_alive(pane)
+
     # --- Health ---
 
     def health_report(self) -> HealthReport:
-        """Generate a health snapshot for this container."""
+        """Generate a health snapshot for this container.
+
+        If the FSM says 'running' but the tmux pane is dead, reports
+        'errored' to reflect actual liveness.
+        """
         now = datetime.now(timezone.utc)
+        actual_state = self.state
+        if (
+            actual_state == "running"
+            and self._tmux is not None
+            and self._needs_tmux_session
+            and not self.is_tmux_alive()
+        ):
+            actual_state = "errored"
         return HealthReport(
             agent_id=self.context.agent_id,
-            state=self.state,
+            state=actual_state,
             inner_state=self.inner_state,
             uptime=(now - self._created_at).total_seconds(),
             last_heartbeat=now,
@@ -90,9 +162,11 @@ class AgentContainer:
     # --- Lifecycle Methods ---
 
     async def start(self) -> None:
-        """Transition to running and open memory store."""
+        """Transition to running, open memory store, and launch tmux if needed."""
         self._lifecycle.start()
         await self.memory.open()
+        if self._tmux is not None and self._needs_tmux_session:
+            await self._launch_tmux_session()
 
     async def sleep(self) -> None:
         """Transition to sleeping."""
@@ -112,7 +186,12 @@ class AgentContainer:
         self._lifecycle.recover()
 
     async def stop(self) -> None:
-        """Transition to stopped and close memory store."""
+        """Kill tmux pane (if any), transition to stopped, and close memory store."""
+        if self._tmux is not None and self._pane_id is not None:
+            pane = await asyncio.to_thread(self._tmux.get_pane_by_id, self._pane_id)
+            if pane is not None:
+                await asyncio.to_thread(self._tmux.kill_pane, pane)
+            self._pane_id = None
         self._lifecycle.stop()
         await self.memory.close()
 
@@ -134,6 +213,9 @@ class AgentContainer:
         data_dir: Path,
         comm_port: CommunicationPort | None = None,
         on_state_change: Callable[[HealthReport], None] | None = None,
+        tmux_manager: TmuxManager | None = None,
+        project_dir: Path | None = None,
+        project_session_name: str | None = None,
     ) -> AgentContainer:
         """Create an AgentContainer from a ChildSpec."""
         return cls(
@@ -141,4 +223,7 @@ class AgentContainer:
             data_dir=data_dir,
             comm_port=comm_port,
             on_state_change=on_state_change,
+            tmux_manager=tmux_manager,
+            project_dir=project_dir,
+            project_session_name=project_session_name,
         )

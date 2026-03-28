@@ -32,6 +32,9 @@ def create_container(
     data_dir: Path,
     comm_port: object | None = None,
     on_state_change: Callable[[HealthReport], None] | None = None,
+    tmux_manager: object | None = None,
+    project_dir: Path | None = None,
+    project_session_name: str | None = None,
 ) -> AgentContainer:
     """Create the correct AgentContainer subclass for a ChildSpec.
 
@@ -43,12 +46,23 @@ def create_container(
         data_dir: Root directory for container persistent data.
         comm_port: Optional communication port.
         on_state_change: Optional callback for state transitions.
+        tmux_manager: Optional TmuxManager for tmux bridge.
+        project_dir: Optional project directory for clone/prompt paths.
+        project_session_name: Optional tmux session name for the project.
 
     Returns:
         An AgentContainer instance (or subclass thereof).
     """
     cls = _REGISTRY.get(spec.agent_type, AgentContainer)
-    return cls.from_spec(spec, data_dir=data_dir, comm_port=comm_port, on_state_change=on_state_change)
+    return cls.from_spec(
+        spec,
+        data_dir=data_dir,
+        comm_port=comm_port,
+        on_state_change=on_state_change,
+        tmux_manager=tmux_manager,
+        project_dir=project_dir,
+        project_session_name=project_session_name,
+    )
 
 
 def register_defaults() -> None:

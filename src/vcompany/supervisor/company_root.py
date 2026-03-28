@@ -55,6 +55,8 @@ class CompanyRoot(Supervisor):
         health_check: Callable[[], Awaitable[bool]] | None = None,
         on_degraded: Callable[[], Awaitable[None]] | None = None,
         on_recovered: Callable[[], Awaitable[None]] | None = None,
+        tmux_manager: object | None = None,
+        project_dir: Path | None = None,
     ) -> None:
         # CompanyRoot has no parent and no child_specs at init --
         # projects are added dynamically via add_project().
@@ -70,6 +72,8 @@ class CompanyRoot(Supervisor):
             on_health_change=on_health_change,
         )
         self._projects: dict[str, ProjectSupervisor] = {}
+        self._tmux_manager = tmux_manager
+        self._project_dir = project_dir
         # Degraded mode manager (RESL-03)
         self._degraded_mode: DegradedModeManager | None = None
         if health_check is not None:
@@ -147,6 +151,8 @@ class CompanyRoot(Supervisor):
             window_seconds=window_seconds,
             parent=self,
             data_dir=self._data_dir,
+            tmux_manager=self._tmux_manager,
+            project_dir=self._project_dir,
         )
         await ps.start()
         self._projects[project_id] = ps
@@ -246,6 +252,8 @@ class CompanyRoot(Supervisor):
                 window_seconds=old_ps._restart_tracker.window_seconds,
                 parent=self,
                 data_dir=self._data_dir,
+                tmux_manager=self._tmux_manager,
+                project_dir=self._project_dir,
             )
             await new_ps.start()
             self._projects[project_id] = new_ps

@@ -61,8 +61,9 @@ class GsdAgent(AgentContainer):
         data_dir: Path,
         comm_port: CommunicationPort | None = None,
         on_state_change: Callable[[HealthReport], None] | None = None,
+        **kwargs,
     ) -> None:
-        super().__init__(context, data_dir, comm_port, on_state_change)
+        super().__init__(context, data_dir, comm_port, on_state_change, **kwargs)
         # Override the parent's ContainerLifecycle with GsdLifecycle
         self._lifecycle = GsdLifecycle(model=self, state_field="_fsm_state")
         self._checkpoint_lock = asyncio.Lock()

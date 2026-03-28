@@ -60,6 +60,9 @@ class Supervisor:
         data_dir: Path | None = None,
         on_health_change: Callable[[HealthReport], Awaitable[None]] | None = None,
         delegation_policy: DelegationPolicy | None = None,
+        tmux_manager: object | None = None,
+        project_dir: Path | None = None,
+        session_name: str | None = None,
     ) -> None:
         self.supervisor_id = supervisor_id
         self.strategy = strategy
@@ -68,6 +71,10 @@ class Supervisor:
         self._on_escalation = on_escalation
         self._on_health_change = on_health_change
         self._data_dir = data_dir or Path("/tmp/vcompany-supervisor")
+        # Tmux bridge params -- injected into child containers
+        self._tmux_manager = tmux_manager
+        self._project_dir = project_dir
+        self._session_name = session_name
 
         self._children: dict[str, AgentContainer] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
@@ -272,6 +279,9 @@ class Supervisor:
             spec,
             data_dir=self._data_dir,
             on_state_change=self._make_state_change_callback(spec.child_id),
+            tmux_manager=self._tmux_manager,
+            project_dir=self._project_dir,
+            project_session_name=self._session_name,
         )
         await container.start()
         self._children[spec.child_id] = container
@@ -282,11 +292,25 @@ class Supervisor:
         )
 
     async def _monitor_child(self, child_id: str) -> None:
-        """Wait for child events and handle failures."""
+        """Wait for child events and handle failures.
+
+        Uses a 30s timeout on event.wait() to periodically check tmux
+        liveness. If the tmux pane is dead but the FSM still says
+        'running', transitions the container to errored.
+        """
         event = self._child_events[child_id]
         while True:
-            await event.wait()
-            event.clear()
+            try:
+                await asyncio.wait_for(event.wait(), timeout=30.0)
+                event.clear()
+            except asyncio.TimeoutError:
+                # Periodic liveness check
+                container = self._children.get(child_id)
+                if container is not None and container.state == "running":
+                    if hasattr(container, "is_tmux_alive") and not container.is_tmux_alive():
+                        logger.warning("Tmux pane dead for %s, transitioning to errored", child_id)
+                        await container.error()
+                continue
 
             container = self._children.get(child_id)
             if container is None:

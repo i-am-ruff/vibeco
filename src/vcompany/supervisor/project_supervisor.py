@@ -37,6 +37,8 @@ class ProjectSupervisor(Supervisor):
         parent: Any | None = None,
         on_escalation: Callable[[str], Awaitable[None]] | None = None,
         data_dir: Path | None = None,
+        tmux_manager: object | None = None,
+        project_dir: Path | None = None,
     ) -> None:
         self._project_id = project_id
         super().__init__(
@@ -48,6 +50,9 @@ class ProjectSupervisor(Supervisor):
             parent=parent,
             on_escalation=on_escalation,
             data_dir=data_dir,
+            tmux_manager=tmux_manager,
+            project_dir=project_dir,
+            session_name=f"vco-{project_id}",
         )
 
     @property
