@@ -14,6 +14,9 @@ class ContainerContext(BaseModel):
         owned_dirs: Directories this agent is allowed to modify.
         gsd_mode: GSD pipeline mode ("full" or "quick").
         system_prompt: System prompt injected into the agent's session.
+        gsd_command: GSD command to auto-send after Claude Code is ready,
+            e.g. "/gsd:discuss-phase 1". Only used for agent types that run
+            in tmux (gsd, continuous). None means no command is sent.
     """
 
     agent_id: str
@@ -23,3 +26,4 @@ class ContainerContext(BaseModel):
     owned_dirs: list[str] = []
     gsd_mode: str = "full"
     system_prompt: str = ""
+    gsd_command: str | None = None

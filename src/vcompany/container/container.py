@@ -8,10 +8,14 @@ AgentContainers. Agent types (Phase 3/4) subclass them.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
+
+logger = logging.getLogger(__name__)
 
 from vcompany.container.context import ContainerContext
 from vcompany.container.health import HealthReport
@@ -102,8 +106,40 @@ class AgentContainer:
         )
         return chained_cmd
 
+    async def _wait_for_claude_ready(
+        self,
+        pane: object,
+        timeout: float = 60.0,
+        poll_interval: float = 1.0,
+    ) -> bool:
+        """Poll pane output until Claude Code shows its ready prompt.
+
+        Returns True when ready (last non-empty line is ">" or ends with " >"),
+        False if timeout elapsed without detecting readiness.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                lines = await asyncio.to_thread(self._tmux.get_output, pane)
+            except Exception:
+                lines = []
+            for line in reversed(lines):
+                stripped = line.strip()
+                if stripped:
+                    if stripped == ">" or stripped.endswith(" >"):
+                        return True
+                    break  # last non-empty line is not the ready prompt yet
+            await asyncio.sleep(poll_interval)
+        return False
+
     async def _launch_tmux_session(self) -> None:
-        """Create a tmux pane and launch Claude Code in it."""
+        """Create a tmux pane and launch Claude Code in it.
+
+        After launching, waits briefly for the workspace trust prompt then
+        sends Enter to accept it. If gsd_command is configured, polls for
+        Claude Code readiness (the '>' idle prompt) and sends the command once
+        ready.
+        """
         session = await asyncio.to_thread(
             self._tmux.get_or_create_session, self._project_session_name
         )
@@ -113,9 +149,27 @@ class AgentContainer:
         self._pane_id = pane.pane_id
         cmd = self._build_launch_command()
         await asyncio.to_thread(self._tmux.send_command, pane, cmd)
-        # Auto-accept workspace trust prompt
-        await asyncio.sleep(3)
+        # Auto-accept workspace trust prompt (brief wait, not a blind readiness gate)
+        await asyncio.sleep(2)
         await asyncio.to_thread(pane.send_keys, "", enter=True)
+        # If a GSD command is configured, wait for Claude Code readiness then send it
+        if self.context.gsd_command:
+            ready = await self._wait_for_claude_ready(pane)
+            if ready:
+                await asyncio.to_thread(
+                    self._tmux.send_command, pane, self.context.gsd_command
+                )
+                logger.info(
+                    "Sent GSD command to %s: %s",
+                    self.context.agent_id,
+                    self.context.gsd_command,
+                )
+            else:
+                logger.warning(
+                    "Claude Code did not become ready within timeout for %s"
+                    " -- GSD command not sent",
+                    self.context.agent_id,
+                )
 
     def is_tmux_alive(self) -> bool:
         """Check if the tmux pane process is alive.
