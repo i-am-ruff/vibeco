@@ -131,7 +131,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 8.1: Integration Wiring** - Wire cross-phase integration gaps (HealthCog, BacklogQueue, MessageQueue, DegradedMode) *(completed 2026-03-28)*
 - [x] **Phase 8.2: Deep Integration** - Make v2 container system operational end-to-end (2026-03-28)
 - [x] **Phase 9: Agent Type Routing and PM Event Dispatch** - Fix AgentConfig.type field, enable correct agent type instantiation, wire GsdAgent→PM event dispatch *(completed 2026-03-28)*
-- [ ] **Phase 10: MessageQueue Notification Routing** - Route all Discord notification senders through MessageQueue for rate limiting and priority ordering
+- [x] **Phase 10: MessageQueue Notification Routing** - Route all Discord notification senders through MessageQueue for rate limiting and priority ordering (completed 2026-03-28)
 
 ## Phase Details
 
@@ -346,4 +346,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 8.1. Integration Wiring | 2/2 | Complete | 2026-03-28 |
 | 8.2. Deep Integration | 2/2 | Complete | 2026-03-28 |
 | 9. Agent Type Routing + PM Event Dispatch | 0/2 | Planned | - |
-| 10. MessageQueue Notification Routing | 0/1 | Not Started | - |
+| 10. MessageQueue Notification Routing | 0/1 | Complete    | 2026-03-28 |
