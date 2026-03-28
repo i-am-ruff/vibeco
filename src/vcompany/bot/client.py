@@ -401,6 +401,7 @@ class VcoBot(commands.Bot):
                             child._on_phase_transition = _make_gsd_cb(pm_event_sink)
                         elif isinstance(child, ContinuousAgent):
                             child._on_briefing = _make_briefing_cb(pm_event_sink)
+                            child._request_delegation = project_sup.handle_delegation_request
 
                     logger.info("PM event routing wired for %s", pm_container.context.agent_id)
 
@@ -476,6 +477,9 @@ class VcoBot(commands.Bot):
                             new_child._on_phase_transition = _make_gsd_cb(pm_event_sink)
                             if plan_review_cog is not None:
                                 new_child._on_review_request = _make_review_cb(plan_review_cog)
+                        elif isinstance(new_child, ContinuousAgent):
+                            new_child._on_briefing = _make_briefing_cb(pm_event_sink)
+                            new_child._request_delegation = project_sup.handle_delegation_request
 
                     async def _on_remove_agent(agent_id: str) -> None:
                         await project_sup.remove_child(agent_id)
