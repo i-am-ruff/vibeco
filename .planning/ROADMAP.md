@@ -235,7 +235,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- BacklogQueue data structure with PM operations and GsdAgent consumption
+- [x] 07-01-PLAN.md -- BacklogQueue data structure with PM operations and GsdAgent consumption
 - [ ] 07-02-PLAN.md -- Delegation protocol with policy enforcement and supervisor integration
 - [ ] 07-03-PLAN.md -- ProjectStateManager, PM event handling, crash-safe state ownership
 

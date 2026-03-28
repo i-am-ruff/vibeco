@@ -42,8 +42,8 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 
 ### Autonomy
 
-- [ ] **AUTO-01**: Living milestone backlog — PM-managed mutable queue (append, insert_after, insert_urgent, reorder, cancel)
-- [ ] **AUTO-02**: GSD state machine consumes milestones from the living queue, not a static list
+- [x] **AUTO-01**: Living milestone backlog — PM-managed mutable queue (append, insert_after, insert_urgent, reorder, cancel)
+- [x] **AUTO-02**: GSD state machine consumes milestones from the living queue, not a static list
 - [ ] **AUTO-03**: Delegation protocol — ContinuousAgent requests task spawns through supervisor with hard caps and rate limits
 - [ ] **AUTO-04**: Supervisor validates delegation requests, enforces policy, spawns short-lived task agents
 - [ ] **AUTO-05**: Project state owned by PM — agents read assignments and write completions. Agent crash never corrupts project state
@@ -51,9 +51,9 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 
 ### Resilience
 
-- [ ] **RESL-01**: Communication layer queues outbound Discord messages with rate-aware batching — health reports debounced, supervisor commands prioritized over status updates, exponential backoff on 429s
-- [ ] **RESL-02**: Supervisor distinguishes upstream outage (all children failing simultaneously within a short window) from individual agent failure — bulk failure triggers global backoff instead of per-agent restart loops
-- [ ] **RESL-03**: System enters degraded mode when Claude servers are unreachable — existing containers stay alive, no new dispatches, owner notified, automatic recovery when service returns
+- [x] **RESL-01**: Communication layer queues outbound Discord messages with rate-aware batching — health reports debounced, supervisor commands prioritized over status updates, exponential backoff on 429s
+- [x] **RESL-02**: Supervisor distinguishes upstream outage (all children failing simultaneously within a short window) from individual agent failure — bulk failure triggers global backoff instead of per-agent restart loops
+- [x] **RESL-03**: System enters degraded mode when Claude servers are unreachable — existing containers stay alive, no new dispatches, owner notified, automatic recovery when service returns
 
 ### Integration & Migration
 
@@ -120,11 +120,11 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 | HLTH-02 | Phase 5 | Complete |
 | HLTH-03 | Phase 5 | Complete |
 | HLTH-04 | Phase 5 | Complete |
-| RESL-01 | Phase 6 | Pending |
-| RESL-02 | Phase 6 | Pending |
-| RESL-03 | Phase 6 | Pending |
-| AUTO-01 | Phase 7 | Pending |
-| AUTO-02 | Phase 7 | Pending |
+| RESL-01 | Phase 6 | Complete |
+| RESL-02 | Phase 6 | Complete |
+| RESL-03 | Phase 6 | Complete |
+| AUTO-01 | Phase 7 | Complete |
+| AUTO-02 | Phase 7 | Complete |
 | AUTO-03 | Phase 7 | Pending |
 | AUTO-04 | Phase 7 | Pending |
 | AUTO-05 | Phase 7 | Pending |
