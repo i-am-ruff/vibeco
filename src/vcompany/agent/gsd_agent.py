@@ -36,7 +36,7 @@ logger = logging.getLogger("vcompany.agent.gsd_agent")
 _VALID_STATES = frozenset({
     "creating", "running", "idle", "discuss", "plan",
     "execute", "uat", "ship", "sleeping", "errored",
-    "stopped", "destroyed",
+    "stopped", "destroyed", "blocked", "stopping",
 })
 
 

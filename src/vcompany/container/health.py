@@ -25,6 +25,7 @@ class HealthReport(BaseModel):
     last_heartbeat: datetime
     error_count: int = 0
     last_activity: datetime
+    blocked_reason: str | None = None  # ARCH-03: populated when state == "blocked"
 
 
 class HealthNode(BaseModel):
@@ -57,3 +58,4 @@ class CompanyHealthTree(BaseModel):
     supervisor_id: str
     state: str
     projects: list[HealthTree] = []
+    company_agents: list[HealthNode] = []  # CompanyAgent containers (Strategist etc.)
