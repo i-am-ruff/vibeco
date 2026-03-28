@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -67,9 +66,7 @@ class GsdAgent(AgentContainer):
         # Override the parent's ContainerLifecycle with GsdLifecycle
         self._lifecycle = GsdLifecycle(model=self, state_field="_fsm_state")
         self._checkpoint_lock = asyncio.Lock()
-        # Blocked tracking (absorbs WorkflowOrchestrator.handle_unknown_prompt)
-        self._blocked_since: float | None = None
-        self._blocked_reason: str = ""
+        # Note: blocked tracking now uses FSM state (ARCH-03) via parent block()/unblock()
 
     # --- Properties (override parent for compound state handling) ---
 
@@ -198,18 +195,16 @@ class GsdAgent(AgentContainer):
 
     @property
     def is_blocked(self) -> bool:
-        """Whether the agent is currently blocked."""
-        return self._blocked_since is not None
+        """Whether the agent is currently blocked (ARCH-03: uses FSM state)."""
+        return self.state == "blocked"
 
     def mark_blocked(self, reason: str) -> None:
-        """Mark agent as blocked with a reason (truncated to 200 chars)."""
-        self._blocked_since = time.monotonic()
-        self._blocked_reason = reason[:200]
+        """Transition to BLOCKED FSM state with reason (ARCH-03)."""
+        self.block(reason)
 
     def clear_blocked(self) -> None:
-        """Clear blocked state."""
-        self._blocked_since = None
-        self._blocked_reason = ""
+        """Clear BLOCKED FSM state (ARCH-03)."""
+        self.unblock()
 
     async def get_phase_number(self) -> int | None:
         """Read phase number from memory_store KV."""

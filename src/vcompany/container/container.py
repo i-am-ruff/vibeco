@@ -64,6 +64,7 @@ class AgentContainer:
         self._project_dir: Path | None = project_dir
         self._project_session_name: str | None = project_session_name
         self._pane_id: str | None = None
+        self._blocked_reason: str | None = None  # ARCH-03
 
     # --- Properties ---
 
@@ -151,6 +152,7 @@ class AgentContainer:
             last_heartbeat=now,
             error_count=self._error_count,
             last_activity=self._last_activity,
+            blocked_reason=self._blocked_reason,
         )
 
     def _on_state_change(self) -> None:
@@ -185,14 +187,25 @@ class AgentContainer:
         """Transition from errored to running."""
         self._lifecycle.recover()
 
+    def block(self, reason: str) -> None:
+        """Transition to BLOCKED state with a reason (ARCH-03)."""
+        self._blocked_reason = reason[:200]
+        self._lifecycle.block()
+
+    def unblock(self) -> None:
+        """Transition from BLOCKED back to running (ARCH-03)."""
+        self._blocked_reason = None
+        self._lifecycle.unblock()
+
     async def stop(self) -> None:
-        """Kill tmux pane (if any), transition to stopped, and close memory store."""
+        """Kill tmux pane (if any), transition through stopping to stopped, and close memory."""
+        self._lifecycle.begin_stop()
         if self._tmux is not None and self._pane_id is not None:
             pane = await asyncio.to_thread(self._tmux.get_pane_by_id, self._pane_id)
             if pane is not None:
                 await asyncio.to_thread(self._tmux.kill_pane, pane)
             self._pane_id = None
-        self._lifecycle.stop()
+        self._lifecycle.finish_stop()
         await self.memory.close()
 
     async def destroy(self) -> None:

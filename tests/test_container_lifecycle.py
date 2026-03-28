@@ -56,30 +56,35 @@ class TestValidTransitions:
         sm.recover()
         assert sm.current_state_value == "running"
 
-    def test_running_to_stopped_via_stop(self):
+    def test_running_to_stopped_via_begin_finish_stop(self):
         sm = ContainerLifecycle()
         sm.start()
-        sm.stop()
+        sm.begin_stop()
+        assert sm.current_state_value == "stopping"
+        sm.finish_stop()
         assert sm.current_state_value == "stopped"
 
-    def test_sleeping_to_stopped_via_stop(self):
+    def test_sleeping_to_stopped_via_begin_finish_stop(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.sleep()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         assert sm.current_state_value == "stopped"
 
-    def test_errored_to_stopped_via_stop(self):
+    def test_errored_to_stopped_via_begin_finish_stop(self):
         sm = ContainerLifecycle()
         sm.start()
         sm.error()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         assert sm.current_state_value == "stopped"
 
     def test_stopped_to_destroyed_via_destroy(self):
         sm = ContainerLifecycle()
         sm.start()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         sm.destroy()
         assert sm.current_state_value == "destroyed"
 
@@ -97,14 +102,16 @@ class TestInvalidTransitions:
     def test_stopped_to_running_raises(self):
         sm = ContainerLifecycle()
         sm.start()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         with pytest.raises(TransitionNotAllowed):
             sm.start()
 
     def test_destroyed_to_any_raises(self):
         sm = ContainerLifecycle()
         sm.start()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         sm.destroy()
         with pytest.raises(TransitionNotAllowed):
             sm.start()
@@ -117,7 +124,7 @@ class TestInvalidTransitions:
     def test_creating_to_stopped_raises(self):
         sm = ContainerLifecycle()
         with pytest.raises(TransitionNotAllowed):
-            sm.stop()
+            sm.begin_stop()
 
     def test_running_to_creating_raises(self):
         sm = ContainerLifecycle()

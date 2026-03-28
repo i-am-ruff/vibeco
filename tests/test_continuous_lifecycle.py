@@ -191,14 +191,15 @@ class TestContinuousLifecycleErrorRecover:
 
 
 class TestContinuousLifecycleStopDestroy:
-    """Stop and destroy transitions."""
+    """Stop and destroy transitions (two-phase: begin_stop/finish_stop)."""
 
     def test_stop_from_running(self) -> None:
         from vcompany.agent.continuous_lifecycle import ContinuousLifecycle
 
         sm = ContinuousLifecycle()
         sm.start()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         assert sm.current_state_value == "stopped"
 
     def test_destroy_from_stopped(self) -> None:
@@ -206,7 +207,8 @@ class TestContinuousLifecycleStopDestroy:
 
         sm = ContinuousLifecycle()
         sm.start()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         sm.destroy()
         assert sm.current_state_value == "destroyed"
 
@@ -216,7 +218,8 @@ class TestContinuousLifecycleStopDestroy:
         sm = ContinuousLifecycle()
         sm.start()
         sm.error()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         assert sm.current_state_value == "stopped"
 
 

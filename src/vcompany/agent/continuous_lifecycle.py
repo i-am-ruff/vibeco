@@ -43,6 +43,7 @@ class ContinuousLifecycle(StateMachine):
         start_sleep_prep = report.to(sleep_prep)
 
     sleeping = State()
+    stopping = State()  # LIFE-01: transitional state before stopped
     errored = State()
     stopped = State()
     destroyed = State(final=True)
@@ -55,7 +56,12 @@ class ContinuousLifecycle(StateMachine):
     error = creating.to(errored) | running.to(errored) | sleeping.to(errored)
     # CRITICAL: recover uses HistoryState to resume mid-cycle
     recover = errored.to(running.h)
-    stop = running.to(stopped) | sleeping.to(stopped) | errored.to(stopped)
+
+    # Two-phase stop (LIFE-01)
+    begin_stop = (running.to(stopping) | sleeping.to(stopping)
+                  | errored.to(stopping))
+    finish_stop = stopping.to(stopped)
+
     destroy = stopped.to(destroyed) | errored.to(destroyed)
 
     def after_transition(self, event: str, state: State) -> None:

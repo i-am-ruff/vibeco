@@ -147,14 +147,15 @@ class TestErrorAndRecover:
 
 
 class TestStopAndDestroy:
-    """Test 7: stop and destroy transitions work."""
+    """Test 7: stop and destroy transitions work (two-phase: begin_stop/finish_stop)."""
 
     def test_stop_from_running(self) -> None:
         from vcompany.agent.event_driven_lifecycle import EventDrivenLifecycle
 
         sm = EventDrivenLifecycle()
         sm.start()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         assert sm.current_state_value == "stopped"
 
     def test_stop_from_sleeping(self) -> None:
@@ -163,7 +164,8 @@ class TestStopAndDestroy:
         sm = EventDrivenLifecycle()
         sm.start()
         sm.sleep()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         assert sm.current_state_value == "stopped"
 
     def test_stop_from_errored(self) -> None:
@@ -172,7 +174,8 @@ class TestStopAndDestroy:
         sm = EventDrivenLifecycle()
         sm.start()
         sm.error()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         assert sm.current_state_value == "stopped"
 
     def test_destroy_from_stopped(self) -> None:
@@ -180,7 +183,8 @@ class TestStopAndDestroy:
 
         sm = EventDrivenLifecycle()
         sm.start()
-        sm.stop()
+        sm.begin_stop()
+        sm.finish_stop()
         sm.destroy()
         assert sm.current_state_value == "destroyed"
 

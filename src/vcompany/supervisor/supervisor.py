@@ -212,7 +212,7 @@ class Supervisor:
         # Stop children in reverse spec order
         for spec in reversed(self._child_specs):
             child = self._children.get(spec.child_id)
-            if child is not None and child.state not in ("stopped", "destroyed"):
+            if child is not None and child.state not in ("stopped", "destroyed", "stopping"):
                 try:
                     await child.stop()
                 except Exception:
@@ -237,7 +237,7 @@ class Supervisor:
 
             if self._restarting:
                 return  # Suppress during supervisor-initiated restarts
-            if report.state in ("errored", "stopped"):
+            if report.state in ("errored", "stopped", "stopping"):
                 event = self._child_events.get(child_id)
                 if event is not None:
                     event.set()
@@ -247,6 +247,8 @@ class Supervisor:
                 "errored",
                 "running",
                 "stopped",
+                "blocked",
+                "stopping",
             ):
                 try:
                     loop = asyncio.get_running_loop()
@@ -318,6 +320,10 @@ class Supervisor:
 
             if container.state == "errored":
                 await self._handle_child_failure(child_id)
+            elif container.state == "stopping":
+                pass  # Transient -- will reach stopped soon; do not restart
+            elif container.state == "blocked":
+                pass  # Blocked -- do not restart, wait for external unblock
             elif container.state in ("stopped", "destroyed"):
                 # Check if transient that stopped normally -- no restart
                 break
@@ -424,7 +430,7 @@ class Supervisor:
 
         # Stop old container
         old = self._children.get(failed_id)
-        if old is not None and old.state not in ("stopped", "destroyed"):
+        if old is not None and old.state not in ("stopped", "destroyed", "stopping"):
             await old.stop()
 
         # Start new container from spec
@@ -437,7 +443,7 @@ class Supervisor:
             # Stop all children in reverse spec order
             for spec in reversed(self._child_specs):
                 child = self._children.get(spec.child_id)
-                if child is not None and child.state not in ("stopped", "destroyed"):
+                if child is not None and child.state not in ("stopped", "destroyed", "stopping"):
                     await child.stop()
                 # Cancel monitor task
                 task = self._tasks.pop(spec.child_id, None)
@@ -471,7 +477,7 @@ class Supervisor:
             # Stop affected children in reverse order
             for spec in reversed(specs_to_restart):
                 child = self._children.get(spec.child_id)
-                if child is not None and child.state not in ("stopped", "destroyed"):
+                if child is not None and child.state not in ("stopped", "destroyed", "stopping"):
                     await child.stop()
                 # Cancel monitor task
                 task = self._tasks.pop(spec.child_id, None)
@@ -501,7 +507,7 @@ class Supervisor:
         self._restarting = True
         for spec in reversed(self._child_specs):
             child = self._children.get(spec.child_id)
-            if child is not None and child.state not in ("stopped", "destroyed"):
+            if child is not None and child.state not in ("stopped", "destroyed", "stopping"):
                 try:
                     await child.stop()
                 except Exception:
