@@ -44,7 +44,11 @@ def _make_bot(*, ready: bool = True) -> MagicMock:
     bot._ready_flag = ready
     bot.is_bot_ready = ready
     bot.company_root = MagicMock()
-    bot.company_root._find_container = AsyncMock(return_value=MagicMock(state="running"))
+    mock_container = MagicMock(state="running")
+    mock_container.is_tmux_alive = MagicMock(return_value=True)
+    bot.company_root._find_container = AsyncMock(return_value=mock_container)
+    # Mock projects property for /dispatch "all" and restart paths
+    bot.company_root.projects = {}
     return bot
 
 
@@ -148,27 +152,81 @@ class TestDispatch:
     """/dispatch routes through CompanyRoot supervision tree (DISC-04, MIGR-01)."""
 
     @pytest.mark.asyncio
-    async def test_dispatch_single(self):
-        """Dispatches a single agent by checking container state via CompanyRoot."""
+    async def test_dispatch_running_tmux_alive(self):
+        """Dispatching a running container with tmux alive reports tmux alive."""
         bot = _make_bot()
+        mock_container = MagicMock(state="running")
+        mock_container.is_tmux_alive = MagicMock(return_value=True)
+        bot.company_root._find_container = AsyncMock(return_value=mock_container)
         cog = CommandsCog(bot)
         interaction = _make_interaction()
 
         await cog.dispatch_cmd.callback(cog, interaction, agent_id="agent-1")
 
         bot.company_root._find_container.assert_called_once_with("agent-1")
-        assert "agent-1" in interaction.followup.send.call_args[0][0].lower()
+        msg = interaction.followup.send.call_args[0][0]
+        assert "tmux alive" in msg.lower()
 
     @pytest.mark.asyncio
-    async def test_dispatch_all(self):
-        """Dispatching all agents returns supervision tree message."""
+    async def test_dispatch_running_tmux_dead(self):
+        """Dispatching a running container with dead tmux reports tmux dead."""
         bot = _make_bot()
+        mock_container = MagicMock(state="running")
+        mock_container.is_tmux_alive = MagicMock(return_value=False)
+        bot.company_root._find_container = AsyncMock(return_value=mock_container)
+        cog = CommandsCog(bot)
+        interaction = _make_interaction()
+
+        await cog.dispatch_cmd.callback(cog, interaction, agent_id="agent-1")
+
+        msg = interaction.followup.send.call_args[0][0]
+        assert "tmux dead" in msg.lower()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_stopped_restarts_via_supervisor(self):
+        """Dispatching a stopped container triggers _start_child on project supervisor."""
+        bot = _make_bot()
+        mock_container = MagicMock(state="stopped")
+        mock_container.is_tmux_alive = MagicMock(return_value=False)
+        bot.company_root._find_container = AsyncMock(return_value=mock_container)
+
+        # Set up a mock project supervisor with the agent
+        mock_spec = MagicMock()
+        mock_ps = MagicMock()
+        mock_ps.children = {"agent-1": mock_container}
+        mock_ps._get_spec = MagicMock(return_value=mock_spec)
+        mock_ps._start_child = AsyncMock()
+        bot.company_root.projects = {"testproject": mock_ps}
+
+        cog = CommandsCog(bot)
+        interaction = _make_interaction()
+
+        await cog.dispatch_cmd.callback(cog, interaction, agent_id="agent-1")
+
+        mock_ps._get_spec.assert_called_once_with("agent-1")
+        mock_ps._start_child.assert_called_once_with(mock_spec)
+        msg = interaction.followup.send.call_args[0][0]
+        assert "restarted" in msg.lower()
+        assert "tmux session" in msg.lower()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_all_shows_tmux_liveness(self):
+        """Dispatching all agents reports tmux liveness for each."""
+        bot = _make_bot()
+        mock_child = MagicMock(state="running")
+        mock_child.is_tmux_alive = MagicMock(return_value=True)
+        mock_ps = MagicMock()
+        mock_ps.children = {"agent-1": mock_child}
+        bot.company_root.projects = {"testproject": mock_ps}
+
         cog = CommandsCog(bot)
         interaction = _make_interaction()
 
         await cog.dispatch_cmd.callback(cog, interaction, agent_id="all")
 
-        assert "supervision tree" in interaction.followup.send.call_args[0][0].lower()
+        msg = interaction.followup.send.call_args[0][0]
+        assert "agent-1" in msg.lower()
+        assert "tmux alive" in msg.lower()
 
     @pytest.mark.asyncio
     async def test_dispatch_no_company_root(self):
@@ -208,33 +266,6 @@ class TestDispatch:
         assert "no project" in call_args[0][0].lower()
 
 
-class TestStatus:
-    """/status shows project status embed (DISC-05)."""
-
-    @pytest.mark.asyncio
-    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
-    @patch("vcompany.bot.cogs.commands.build_status_embed")
-    async def test_status(self, mock_build_embed, mock_to_thread):
-        """Generates status via to_thread and sends embed."""
-        bot = _make_bot()
-        cog = CommandsCog(bot)
-        interaction = _make_interaction()
-
-        mock_to_thread.return_value = "## Agent 1\nRunning"
-        mock_embed = MagicMock(spec=discord.Embed)
-        mock_build_embed.return_value = mock_embed
-
-        await cog.status_cmd.callback(cog, interaction)
-
-        mock_to_thread.assert_called_once()
-        # Verify to_thread called with generate_project_status
-        call_args = mock_to_thread.call_args[0]
-        assert call_args[0].__name__ == "generate_project_status"
-
-        mock_build_embed.assert_called_once_with("## Agent 1\nRunning")
-        interaction.followup.send.assert_called_once_with(embed=mock_embed)
-
-
 class TestKill:
     """/kill routes through CompanyRoot supervision tree (DISC-07, MIGR-01)."""
 
@@ -263,9 +294,9 @@ class TestKill:
         # Verify container.stop() was called
         mock_container.stop.assert_called_once()
 
-        # Verify success message via followup
+        # Verify success message via followup mentions tmux pane killed
         last_followup = interaction.followup.send.call_args
-        assert "stopped" in last_followup[0][0].lower()
+        assert "tmux pane killed" in last_followup[0][0].lower()
 
     @pytest.mark.asyncio
     @patch("vcompany.bot.cogs.commands.ConfirmView")
@@ -333,7 +364,9 @@ class TestRelaunch:
         await cog.relaunch_cmd.callback(cog, interaction, agent_id="agent-1")
 
         mock_container.stop.assert_called_once()
-        assert "stopped" in interaction.followup.send.call_args[0][0].lower()
+        msg = interaction.followup.send.call_args[0][0].lower()
+        assert "tmux pane killed" in msg
+        assert "supervisor restart policy" in msg
 
     @pytest.mark.asyncio
     async def test_relaunch_unknown_agent(self):
@@ -431,7 +464,7 @@ class TestRoleCheckUnauthorized:
         cog = CommandsCog(bot)
 
         command_names = [
-            "new-project", "dispatch", "status", "kill",
+            "new-project", "dispatch", "kill",
             "relaunch", "standup", "integrate",
         ]
 

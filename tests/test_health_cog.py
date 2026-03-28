@@ -346,6 +346,26 @@ class TestNotifyStateChange:
         await cog._notify_state_change(report)
 
     @pytest.mark.asyncio
+    async def test_errored_state_reflected_in_health_embed(self):
+        """When container health_report returns errored (tmux dead), embed reflects it."""
+        # Build a tree with an errored agent (as would happen when tmux dies)
+        projects = [
+            _make_project(
+                "project-alpha",
+                agents=[("a1", "errored", None), ("a2", "running", None)],
+            ),
+        ]
+        tree = _make_tree(projects=projects)
+        embed = build_health_tree_embed(tree)
+        field_value = embed.fields[0].value
+        # Errored agent should show red circle indicator
+        assert STATE_INDICATORS["errored"] in field_value
+        assert "**a1**" in field_value
+        # Running agent should show green circle
+        assert STATE_INDICATORS["running"] in field_value
+        assert "**a2**" in field_value
+
+    @pytest.mark.asyncio
     async def test_notify_includes_inner_state(self):
         """_notify_state_change includes inner_state when present."""
         from vcompany.bot.cogs.health import HealthCog
