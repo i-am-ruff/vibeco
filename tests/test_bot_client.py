@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from vcompany.bot.client import VcoBot, _COG_EXTENSIONS
 from vcompany.models.config import AgentConfig, ProjectConfig
+from vcompany.resilience.message_queue import MessageQueue
 
 
 def _make_config() -> ProjectConfig:
@@ -238,3 +239,100 @@ class TestVcoBotCompanyRoot:
         with patch.object(type(bot).__bases__[0], "close", new_callable=AsyncMock):
             await bot.close()
         # No exception raised
+
+    @pytest.mark.asyncio
+    async def test_close_stops_message_queue(self):
+        """close() calls message_queue.stop() if message_queue exists."""
+        bot = _make_bot()
+        mock_queue = AsyncMock(spec=MessageQueue)
+        bot.message_queue = mock_queue
+        bot.company_root = None
+
+        with patch.object(type(bot).__bases__[0], "close", new_callable=AsyncMock):
+            await bot.close()
+
+        mock_queue.stop.assert_called_once()
+
+
+class TestHealthCogExtension:
+    """HealthCog wiring tests (HLTH-03, HLTH-04)."""
+
+    def test_health_cog_in_extensions(self):
+        """HealthCog extension is registered in _COG_EXTENSIONS (HLTH-03, HLTH-04)."""
+        assert "vcompany.bot.cogs.health" in _COG_EXTENSIONS
+
+
+class TestHealthCheckWiring:
+    """DegradedModeManager health_check wiring tests (RESL-03)."""
+
+    @pytest.mark.asyncio
+    async def test_health_check_passed_to_company_root(self):
+        """CompanyRoot receives health_check callable when on_ready runs with project."""
+        bot = _make_bot()
+
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.name = "TestGuild"
+        mock_guild.roles = []
+        mock_guild.create_role = AsyncMock()
+        bot.get_guild = MagicMock(return_value=mock_guild)
+
+        with patch("vcompany.bot.client.CompanyRoot") as MockRoot:
+            mock_instance = AsyncMock()
+            mock_instance.start = AsyncMock()
+            mock_instance.add_project = AsyncMock()
+            MockRoot.return_value = mock_instance
+
+            await bot.on_ready()
+
+            # CompanyRoot was called with health_check as non-None callable
+            MockRoot.assert_called_once()
+            call_kwargs = MockRoot.call_args.kwargs
+            assert "health_check" in call_kwargs
+            assert callable(call_kwargs["health_check"])
+            assert call_kwargs["on_degraded"] is not None
+            assert call_kwargs["on_recovered"] is not None
+
+
+class TestMessageQueueWiring:
+    """MessageQueue wiring tests (RESL-01)."""
+
+    @pytest.mark.asyncio
+    async def test_message_queue_created_on_ready(self):
+        """MessageQueue is created and started during on_ready with project."""
+        bot = _make_bot()
+
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.name = "TestGuild"
+        mock_guild.roles = []
+        mock_guild.create_role = AsyncMock()
+        bot.get_guild = MagicMock(return_value=mock_guild)
+
+        with patch("vcompany.bot.client.CompanyRoot") as MockRoot, \
+             patch("vcompany.bot.client.MessageQueue") as MockQueue:
+            mock_root = AsyncMock()
+            mock_root.start = AsyncMock()
+            mock_root.add_project = AsyncMock()
+            MockRoot.return_value = mock_root
+
+            mock_queue_instance = AsyncMock()
+            mock_queue_instance.start = AsyncMock()
+            MockQueue.return_value = mock_queue_instance
+
+            await bot.on_ready()
+
+            # MessageQueue was instantiated with a send_func
+            MockQueue.assert_called_once()
+            call_kwargs = MockQueue.call_args.kwargs
+            assert "send_func" in call_kwargs
+            assert callable(call_kwargs["send_func"])
+
+            # start() was called
+            mock_queue_instance.start.assert_called_once()
+
+            # bot attribute was set
+            assert bot.message_queue is mock_queue_instance
+
+    def test_message_queue_init_none(self):
+        """Bot starts with message_queue=None."""
+        bot = _make_bot()
+        assert bot.message_queue is None
