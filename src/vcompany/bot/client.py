@@ -17,6 +17,7 @@ from discord.ext import commands
 from vcompany.container.child_spec import ChildSpec
 from vcompany.container.context import ContainerContext
 from vcompany.models.config import ProjectConfig
+from vcompany.resilience.message_queue import MessageQueue, MessagePriority, QueuedMessage, RateLimited
 from vcompany.supervisor.company_root import CompanyRoot
 
 logger = logging.getLogger("vcompany.bot.client")
@@ -30,6 +31,7 @@ _COG_EXTENSIONS: list[str] = [
     "vcompany.bot.cogs.question_handler",
     "vcompany.bot.cogs.workflow_master",
     "vcompany.bot.cogs.workflow_orchestrator_cog",
+    "vcompany.bot.cogs.health",
 ]
 
 
@@ -56,6 +58,9 @@ class VcoBot(commands.Bot):
 
         # v2: CompanyRoot supervision tree replaces v1 flat initialization
         self.company_root: CompanyRoot | None = None
+
+        # Resilience: outbound message queue with priority and debounce (RESL-01)
+        self.message_queue: MessageQueue | None = None
 
         # Guild ID as explicit constructor arg (D-21, D-22: single guild bot)
         self._guild_id: int = guild_id
@@ -182,14 +187,69 @@ class VcoBot(commands.Bot):
                 health_cog = self.get_cog("HealthCog")
                 on_health_change = health_cog._notify_state_change if health_cog else None
 
+                # Claude API health check for DegradedModeManager (RESL-03)
+                async def claude_health_check() -> bool:
+                    try:
+                        import anthropic
+
+                        client = anthropic.AsyncAnthropic()
+                        await client.messages.create(
+                            model="claude-sonnet-4-20250514",
+                            max_tokens=1,
+                            messages=[{"role": "user", "content": "ping"}],
+                        )
+                        return True
+                    except Exception:
+                        return False
+
+                # Degraded/recovered callbacks notify #alerts channel
+                async def on_degraded() -> None:
+                    alerts_ch = self._system_channels.get("alerts")
+                    if alerts_ch:
+                        await alerts_ch.send(
+                            "WARNING: System entered degraded mode (Claude API unreachable). "
+                            "New dispatches blocked. Will auto-recover."
+                        )
+
+                async def on_recovered() -> None:
+                    alerts_ch = self._system_channels.get("alerts")
+                    if alerts_ch:
+                        await alerts_ch.send(
+                            "RECOVERED: System recovered from degraded mode. "
+                            "Claude API reachable. Normal operations resumed."
+                        )
+
                 self.company_root = CompanyRoot(
                     on_escalation=on_escalation,
                     max_restarts=3,
                     window_seconds=600,
                     data_dir=self.project_dir / "state" / "supervision",
                     on_health_change=on_health_change,
+                    health_check=claude_health_check,
+                    on_degraded=on_degraded,
+                    on_recovered=on_recovered,
                 )
                 await self.company_root.start()
+
+                # MessageQueue for outbound notifications (RESL-01)
+                async def _send_message(msg: QueuedMessage) -> None:
+                    channel = self.get_channel(msg.channel_id)
+                    if channel is None:
+                        logger.warning("Channel %d not found, dropping message", msg.channel_id)
+                        return
+                    try:
+                        if msg.embed is not None:
+                            await channel.send(embed=msg.embed)  # type: ignore[union-attr]
+                        elif msg.content is not None:
+                            await channel.send(msg.content)  # type: ignore[union-attr]
+                    except discord.HTTPException as exc:
+                        if exc.status == 429:
+                            raise RateLimited() from exc
+                        raise
+
+                self.message_queue = MessageQueue(send_func=_send_message)
+                await self.message_queue.start()
+                logger.info("MessageQueue started")
 
                 # Build child specs from agents.yaml
                 specs = []
@@ -323,7 +383,9 @@ class VcoBot(commands.Bot):
             logger.exception("Failed to send boot notifications")
 
     async def close(self) -> None:
-        """Graceful shutdown: stop supervision tree, then close bot."""
+        """Graceful shutdown: stop message queue, supervision tree, then close bot."""
+        if self.message_queue is not None:
+            await self.message_queue.stop()
         if self.company_root is not None:
             await self.company_root.stop()
         await super().close()
