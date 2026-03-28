@@ -128,7 +128,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [ ] 16-01-PLAN.md — Strategist inversion: move conversation into CompanyAgent._handle_event(), StrategistCog becomes thin adapter
-- [ ] 16-02-PLAN.md — Agent completeness: ContinuousAgent delegation + persistence, GsdAgent assignment restore
+- [x] 16-02-PLAN.md — Agent completeness: ContinuousAgent delegation + persistence, GsdAgent assignment restore
 
 ### Phase 17: Health Tree Rendering
 **Goal**: /health command shows the complete supervision hierarchy matching the architecture doc's format
@@ -152,5 +152,5 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 13. PM Event Routing | v2.1 | 1/1 | Complete    | 2026-03-28 |
 | 14. PM Review Gates | v2.1 | 2/2 | Complete    | 2026-03-28 |
 | 15. PM Actions & Auto Distribution | v2.1 | 2/2 | Complete    | 2026-03-28 |
-| 16. Agent Completeness & Strategist | v2.1 | 0/2 | Planning    | - |
+| 16. Agent Completeness & Strategist | v2.1 | 1/2 | In Progress|  |
 | 17. Health Tree Rendering | v2.1 | 0/0 | Not started | - |

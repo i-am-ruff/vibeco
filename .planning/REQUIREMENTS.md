@@ -50,9 +50,9 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 
 ### Agent Completeness
 
-- [ ] **AGNT-01**: ContinuousAgent has a `request_task()` method that delegates work through supervisor via DelegationTracker
-- [ ] **AGNT-02**: ContinuousAgent persists seen_items, pending_actions, briefing_log, config to memory_store (not just cycle_count)
-- [ ] **AGNT-03**: GsdAgent restores full work context on restart — current phase, task, and assignment from ProjectStateManager, not just FSM state
+- [x] **AGNT-01**: ContinuousAgent has a `request_task()` method that delegates work through supervisor via DelegationTracker
+- [x] **AGNT-02**: ContinuousAgent persists seen_items, pending_actions, briefing_log, config to memory_store (not just cycle_count)
+- [x] **AGNT-03**: GsdAgent restores full work context on restart — current phase, task, and assignment from ProjectStateManager, not just FSM state
 
 ### Lifecycle
 
@@ -106,9 +106,9 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 | ARCH-04 | Phase 11 | Complete |
 | HLTH-05 | Phase 17 | Pending |
 | HLTH-06 | Phase 17 | Pending |
-| AGNT-01 | Phase 16 | Pending |
-| AGNT-02 | Phase 16 | Pending |
-| AGNT-03 | Phase 16 | Pending |
+| AGNT-01 | Phase 16 | Complete |
+| AGNT-02 | Phase 16 | Complete |
+| AGNT-03 | Phase 16 | Complete |
 | LIFE-01 | Phase 11 | Complete |
 
 **Coverage:**

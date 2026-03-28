@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
 status: Ready to plan
-stopped_at: "Completed 15-01-PLAN.md: PM action methods, callback slots, stuck detector, ProjectSupervisor lifecycle helpers"
-last_updated: "2026-03-28T17:22:59.323Z"
+stopped_at: "Completed 16-02-PLAN.md: ContinuousAgent delegation+persistence, GsdAgent assignment restore, ProjectSupervisor delegation default"
+last_updated: "2026-03-28T17:33:33.011Z"
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 10
+  completed_plans: 9
 ---
 
 # Project State
@@ -54,6 +54,7 @@ Plan: Not started
 | Phase 14-pm-review-gates P02 | 10 | 2 tasks | 3 files |
 | Phase 15-pm-actions-auto-distribution P01 | 12 | 2 tasks | 2 files |
 | Phase 15-pm-actions-auto-distribution P02 | 3 | 1 task | 1 file |
+| Phase 16-agent-completeness-strategist P02 | 525603 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,8 @@ Recent decisions affecting current work:
 - [Phase 15]: stop() override on FulltimeAgent cancels stuck detector task before delegating to parent
 - [Phase 15 P02]: set_pm_event_sink moved to after all Phase 15 callback wiring -- prevents race condition where supervisor emits events before handlers are set
 - [Phase 15 P02]: _make_gsd_cb/_make_briefing_cb hoisted from for-loop body to be available for _on_recruit_agent reuse
+- [Phase 16-agent-completeness-strategist]: DelegationResult(approved=False) returned when _request_delegation is None -- safe default until VcoBot wires it
+- [Phase 16-agent-completeness-strategist]: ProjectSupervisor default delegation_policy=DelegationPolicy() enables conservative delegation without requiring call-site changes
 
 ### Pending Todos
 
@@ -101,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T17:18:03.498Z
-Stopped at: Completed 15-01-PLAN.md: PM action methods, callback slots, stuck detector, ProjectSupervisor lifecycle helpers
+Last session: 2026-03-28T17:33:33.002Z
+Stopped at: Completed 16-02-PLAN.md: ContinuousAgent delegation+persistence, GsdAgent assignment restore, ProjectSupervisor delegation default
 Resume file: None
