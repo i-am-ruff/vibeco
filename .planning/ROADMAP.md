@@ -322,7 +322,10 @@ Plans:
   3. No direct `channel.send()` calls remain in notification paths (health, alerts, escalation) — old direct-send code paths fully removed
   4. MessageQueue priority ordering is exercised — escalations have higher priority than health state change notifications
   5. Existing tests updated to verify queue routing, not direct sends
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 10-01-PLAN.md -- Rewire all notification call sites through MessageQueue + update tests
 
 ## Progress
 
@@ -343,4 +346,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 8.1. Integration Wiring | 2/2 | Complete | 2026-03-28 |
 | 8.2. Deep Integration | 2/2 | Complete | 2026-03-28 |
 | 9. Agent Type Routing + PM Event Dispatch | 0/2 | Planned | - |
-| 10. MessageQueue Notification Routing | 0/0 | Not Started | - |
+| 10. MessageQueue Notification Routing | 0/1 | Not Started | - |
