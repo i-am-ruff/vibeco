@@ -232,7 +232,12 @@ Plans:
   1. The PM can append, insert_urgent, reorder, and cancel items in the living milestone backlog, and GsdAgent consumes work from this queue instead of a static list
   2. A ContinuousAgent can request a task spawn through the supervisor, the supervisor enforces hard caps and rate limits, and the spawned GsdAgent executes the delegated work
   3. Project state is owned by the PM -- agents read assignments and write completions, and an agent crash never leaves project state in an inconsistent or corrupted condition
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 07-01-PLAN.md -- BacklogQueue data structure with PM operations and GsdAgent consumption
+- [ ] 07-02-PLAN.md -- Delegation protocol with policy enforcement and supervisor integration
+- [ ] 07-03-PLAN.md -- ProjectStateManager, PM event handling, crash-safe state ownership
 
 ### Phase 8: CompanyRoot Wiring and Migration
 **Goal**: The supervision tree replaces flat VcoBot initialization, all commands are slash commands, v1 modules are removed, and the communication layer is ready for v3 abstraction
@@ -260,5 +265,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 4. Remaining Agent Types and Scheduler | 0/4 | Planned | - |
 | 5. Health Tree | 2/2 | Complete   | 2026-03-27 |
 | 6. Resilience | 0/3 | Planned | - |
-| 7. Autonomy Features | 0/0 | Not started | - |
+| 7. Autonomy Features | 0/3 | Planned | - |
 | 8. CompanyRoot Wiring and Migration | 0/0 | Not started | - |
