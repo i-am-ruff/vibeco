@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,6 +26,9 @@ from vcompany.bot.views.plan_review import PlanReviewView
 from vcompany.monitor.safety_validator import validate_safety_table
 
 logger = logging.getLogger("vcompany.bot.cogs.plan_review")
+
+# GATE-05: Maximum 1 review request per agent per this many seconds
+_REVIEW_THROTTLE_SECS = 30.0
 
 from typing import TYPE_CHECKING
 
@@ -43,6 +47,8 @@ class PlanReviewCog(commands.Cog):
         self._alerts_channel: discord.TextChannel | None = None
         self._plan_reviewer: PlanReviewer | None = None
         self._workflow_cog: WorkflowOrchestratorCog | None = None
+        # GATE-05: Per-agent throttle tracker (agent_id -> last post monotonic time)
+        self._last_review_time: dict[str, float] = {}
 
     def set_plan_reviewer(self, reviewer: PlanReviewer) -> None:
         """Inject PlanReviewer for PM review. Called from bot startup."""
@@ -490,6 +496,97 @@ class PlanReviewCog(commands.Cog):
                     agent_id=agent_id,
                 )
             )
+
+    # --- Review Request Infrastructure (GATE-01, GATE-05) ---
+
+    async def _post_throttled(
+        self,
+        agent_id: str,
+        channel: discord.TextChannel,
+        content: str,
+        files: list[discord.File] | None = None,
+    ) -> None:
+        """Post review message respecting 1-per-30s throttle per agent (GATE-05).
+
+        If the agent posted a review request less than _REVIEW_THROTTLE_SECS ago,
+        this method waits until the throttle window has elapsed before posting.
+
+        Args:
+            agent_id: Agent identifier for throttle tracking.
+            channel: Discord channel to post to.
+            content: Message content string.
+            files: Optional list of file attachments.
+        """
+        now = time.monotonic()
+        last = self._last_review_time.get(agent_id, 0.0)
+        wait = _REVIEW_THROTTLE_SECS - (now - last)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        self._last_review_time[agent_id] = time.monotonic()
+        kwargs: dict = {"content": content}
+        if files:
+            kwargs["files"] = files
+        await channel.send(**kwargs)
+
+    async def _build_review_attachments(
+        self, agent_id: str, stage: str
+    ) -> list[discord.File]:
+        """Collect relevant files for a stage review request (GATE-01).
+
+        Looks up the agent's clone directory and finds the latest file matching
+        the stage's glob pattern. Files larger than 1MB are skipped.
+
+        Args:
+            agent_id: Agent identifier to locate clone directory.
+            stage: GSD stage name (discuss, plan, execute, uat, ship).
+
+        Returns:
+            List of discord.File objects ready to attach to a message.
+        """
+        if not self.bot.project_dir:
+            return []
+        clone_dir = self.bot.project_dir / "clones" / agent_id
+        phases_dir = clone_dir / ".planning" / "phases"
+        if not phases_dir.exists():
+            return []
+        stage_globs = {
+            "discuss": ["*/*-CONTEXT.md"],
+            "plan": ["*/*-PLAN.md"],
+            "execute": ["*/*-SUMMARY.md"],
+            "uat": ["*/*-SUMMARY.md"],
+            "ship": ["*/*-SUMMARY.md"],
+        }
+        patterns = stage_globs.get(stage, [])
+        files = []
+        for pattern in patterns:
+            matches = sorted(phases_dir.glob(pattern))
+            if matches:
+                latest = matches[-1]
+                if latest.stat().st_size < 1_000_000:  # 1MB guard
+                    files.append(discord.File(fp=str(latest), filename=latest.name))
+        return files
+
+    async def post_review_request(self, agent_id: str, stage: str) -> None:
+        """Post a review request to the agent's Discord channel with file attachments.
+
+        Main entry point called from VcoBot wiring after a GSD stage transition.
+        Finds the agent-{id} channel, collects relevant attachments, and posts
+        a throttled message mentioning @PM.
+
+        Args:
+            agent_id: Agent identifier -- posted to #agent-{agent_id} channel.
+            stage: GSD stage name (discuss, plan, execute, uat, ship).
+        """
+        guild = self.bot.get_guild(self.bot._guild_id)
+        if not guild:
+            return
+        channel = discord.utils.get(guild.text_channels, name=f"agent-{agent_id}")
+        if not channel:
+            logger.warning("Channel agent-%s not found for review request", agent_id)
+            return
+        attachments = await self._build_review_attachments(agent_id, stage)
+        content = f"[{agent_id}] @PM, finished {stage}, need your review"
+        await self._post_throttled(agent_id, channel, content, attachments or None)
 
     def make_sync_callback(self) -> dict:
         """Create sync callback for on_plan_detected routing.
