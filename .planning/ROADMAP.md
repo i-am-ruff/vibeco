@@ -137,7 +137,9 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. /health shows CompanyRoot at the top, Strategist/CompanyAgents as its direct children, then ProjectSupervisors with their PM and GsdAgents underneath
   2. Each agent in the health tree displays inner_state (e.g., GSD sub-state), uptime, and last_activity — not just lifecycle state
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 17-01-PLAN.md — Update build_health_tree_embed with CompanyRoot header and per-agent uptime/last_activity
 
 ## Progress
 
