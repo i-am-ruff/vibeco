@@ -11,11 +11,14 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
+from typing import Any, Callable
 
 import discord
 from discord.ext import commands
 
+from vcompany.agent.continuous_agent import ContinuousAgent
 from vcompany.agent.fulltime_agent import FulltimeAgent
+from vcompany.agent.gsd_agent import GsdAgent
 from vcompany.autonomy.backlog import BacklogQueue
 from vcompany.autonomy.project_state import ProjectStateManager
 from vcompany.container.child_spec import ChildSpec
@@ -332,6 +335,39 @@ class VcoBot(commands.Bot):
                         "PM backlog and project state wired for %s",
                         pm_container.context.agent_id,
                     )
+
+                    # Wire PM event routing (PMRT-01, PMRT-02, PMRT-03, PMRT-04)
+                    async def pm_event_sink(event: dict[str, Any]) -> None:
+                        await pm_container.post_event(event)
+
+                    # PMRT-01 + PMRT-04: health_change and escalation events via supervisor callback
+                    project_sup.set_pm_event_sink(pm_event_sink)
+
+                    # PMRT-02 + PMRT-03: GSD transitions and briefings via agent callbacks
+                    for child in project_sup.children.values():
+                        if isinstance(child, GsdAgent):
+                            def _make_gsd_cb(sink: Callable[[dict[str, Any]], Any]) -> Callable:
+                                async def _cb(agent_id: str, from_phase: str, to_phase: str) -> None:
+                                    await sink({
+                                        "type": "gsd_transition",
+                                        "agent_id": agent_id,
+                                        "from_phase": from_phase,
+                                        "to_phase": to_phase,
+                                    })
+                                return _cb
+                            child._on_phase_transition = _make_gsd_cb(pm_event_sink)
+                        elif isinstance(child, ContinuousAgent):
+                            def _make_briefing_cb(sink: Callable[[dict[str, Any]], Any]) -> Callable:
+                                async def _cb(agent_id: str, content: str) -> None:
+                                    await sink({
+                                        "type": "briefing",
+                                        "agent_id": agent_id,
+                                        "content": content,
+                                    })
+                                return _cb
+                            child._on_briefing = _make_briefing_cb(pm_event_sink)
+
+                    logger.info("PM event routing wired for %s", pm_container.context.agent_id)
                 else:
                     logger.info("No FulltimeAgent (PM) found in project children, skipping backlog wiring")
 

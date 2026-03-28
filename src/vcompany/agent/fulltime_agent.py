@@ -131,6 +131,26 @@ class FulltimeAgent(AgentContainer):
             await self.backlog.append(BacklogItem(**event["item"]))
         elif event_type == "request_assignment" and self._project_state is not None:
             await self._project_state.assign_next_task(event["agent_id"])
+        elif event_type == "health_change":
+            logger.info(
+                "PM received health_change: agent=%s state=%s inner=%s",
+                event.get("agent_id"), event.get("state"), event.get("inner_state"),
+            )
+        elif event_type == "gsd_transition":
+            logger.info(
+                "PM received gsd_transition: agent=%s %s->%s",
+                event.get("agent_id"), event.get("from_phase"), event.get("to_phase"),
+            )
+        elif event_type == "briefing":
+            logger.info(
+                "PM received briefing from %s (content_len=%d)",
+                event.get("agent_id"), len(event.get("content", "")),
+            )
+        elif event_type == "escalation":
+            logger.info(
+                "PM received escalation: agent=%s reason=%s",
+                event.get("agent_id"), event.get("reason"),
+            )
         else:
             logger.warning("Unhandled event type: %s", event_type)
 
