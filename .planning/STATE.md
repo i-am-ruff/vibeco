@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
-status: Ready to plan
-stopped_at: null
-last_updated: "2026-03-28"
+status: Ready to execute
+stopped_at: "Completed 11-01-PLAN.md: BLOCKED and STOPPING FSM states"
+last_updated: "2026-03-28T15:49:08.037Z"
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 2
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,20 +19,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 11 -- Container Architecture Fixes
+**Current focus:** Phase 11 — Container Architecture Fixes
 
 ## Current Position
 
-Phase: 11 of 17 (Container Architecture Fixes)
-Plan: 0 of 0 in current phase
-Status: Ready to plan
-Last activity: 2026-03-28 -- v2.1 roadmap created (7 phases, 27 requirements)
-
-Progress: [░░░░░░░░░░] 0%
+Phase: 11 (Container Architecture Fixes) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0 (v2.1)
 - Average duration: -
 - Total execution time: 0 hours
@@ -44,10 +41,12 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 **Recent Trend:**
+
 - Last 5 plans (v2.0): 6min, 4min, 3min, 8min, 4min
 - Trend: Stable (~4min avg)
 
 *Updated after each plan completion*
+| Phase 11 P01 | 1097 | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -61,6 +60,9 @@ Recent decisions affecting current work:
 - [v2.1 roadmap]: Phase 11 foundational fixes first -- hierarchy, BLOCKED state, comm port, STOPPING
 - [v2.1 roadmap]: PM review gates (Phase 14) are the core feature -- depends on work initiation + event routing
 - [v2.1 roadmap]: Agent completeness (Phase 16) parallelizable with Phases 12-15
+- [Phase 11]: block()/unblock() sync on AgentContainer since FSM transitions are sync
+- [Phase 11]: GsdAgent mark_blocked/clear_blocked kept as thin wrappers for backward API compat (ARCH-03)
+- [Phase 11]: ContinuousLifecycle extended with begin_stop/finish_stop to maintain AgentContainer.stop() contract
 
 ### Pending Todos
 
@@ -74,6 +76,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28
-Stopped at: v2.1 roadmap created, ready to plan Phase 11
+Last session: 2026-03-28T15:49:08.034Z
+Stopped at: Completed 11-01-PLAN.md: BLOCKED and STOPPING FSM states
 Resume file: None
