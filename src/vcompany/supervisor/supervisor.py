@@ -9,11 +9,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
+from vcompany.autonomy.delegation import (
+    DelegationPolicy,
+    DelegationRequest,
+    DelegationResult,
+    DelegationTracker,
+)
 from vcompany.container.child_spec import ChildSpec, RestartPolicy
 from vcompany.container.container import AgentContainer
+from vcompany.container.context import ContainerContext
 from vcompany.container.factory import create_container
 from vcompany.container.health import HealthNode, HealthReport, HealthTree
 from vcompany.resilience.bulk_failure import BulkFailureDetector
@@ -51,6 +59,7 @@ class Supervisor:
         on_escalation: Callable[[str], Awaitable[None]] | None = None,
         data_dir: Path | None = None,
         on_health_change: Callable[[HealthReport], Awaitable[None]] | None = None,
+        delegation_policy: DelegationPolicy | None = None,
     ) -> None:
         self.supervisor_id = supervisor_id
         self.strategy = strategy
@@ -63,6 +72,11 @@ class Supervisor:
         self._children: dict[str, AgentContainer] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._child_events: dict[str, asyncio.Event] = {}
+        # AUTO-03/04: Delegation tracking
+        self._delegation_tracker: DelegationTracker | None = (
+            DelegationTracker(delegation_policy) if delegation_policy is not None else None
+        )
+        self._delegated_children: dict[str, str] = {}  # agent_id -> requester_id
         self._restart_tracker = RestartTracker(
             max_restarts=max_restarts,
             window_seconds=window_seconds,
@@ -113,6 +127,60 @@ class Supervisor:
             children=nodes,
         )
 
+    # --- Delegation (AUTO-03/04) ---
+
+    async def handle_delegation_request(self, request: DelegationRequest) -> DelegationResult:
+        """Validate and execute a delegation request.
+
+        Checks the request against delegation policy (concurrent caps, rate
+        limits, allowed agent types). If approved, spawns a TEMPORARY agent
+        and tracks it for cleanup on termination.
+
+        Args:
+            request: The delegation request from an agent.
+
+        Returns:
+            DelegationResult with approval status and spawned agent_id.
+        """
+        if self._delegation_tracker is None:
+            return DelegationResult(approved=False, reason="Delegation not enabled")
+
+        ok, reason = self._delegation_tracker.can_delegate(request.requester_id, request.agent_type)
+        if not ok:
+            return DelegationResult(approved=False, reason=reason)
+
+        agent_id = f"delegated-{request.requester_id}-{uuid.uuid4().hex[:6]}"
+
+        # Derive project_id from first child spec if available
+        project_id = None
+        if self._child_specs:
+            project_id = self._child_specs[0].context.project_id
+
+        context = ContainerContext(
+            agent_id=agent_id,
+            agent_type=request.agent_type,
+            parent_id=self.supervisor_id,
+            project_id=project_id,
+        )
+        # Apply context overrides
+        for key, value in request.context_overrides.items():
+            if hasattr(context, key):
+                object.__setattr__(context, key, value)
+
+        spec = ChildSpec(
+            child_id=agent_id,
+            agent_type=request.agent_type,
+            context=context,
+            restart_policy=RestartPolicy.TEMPORARY,
+        )
+
+        self._child_specs.append(spec)
+        await self._start_child(spec)
+        self._delegation_tracker.record_delegation(request.requester_id, agent_id)
+        self._delegated_children[agent_id] = request.requester_id
+
+        return DelegationResult(approved=True, agent_id=agent_id)
+
     # --- Lifecycle ---
 
     async def start(self) -> None:
@@ -153,6 +221,13 @@ class Supervisor:
 
         def callback(report: HealthReport) -> None:
             self._health_reports[child_id] = report
+
+            # AUTO-04: Clean up delegation tracking for terminated delegated children
+            if child_id in self._delegated_children and report.state in ("stopped", "destroyed"):
+                requester_id = self._delegated_children.pop(child_id)
+                if self._delegation_tracker is not None:
+                    self._delegation_tracker.record_completion(requester_id, child_id)
+
             if self._restarting:
                 return  # Suppress during supervisor-initiated restarts
             if report.state in ("errored", "stopped"):

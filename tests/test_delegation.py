@@ -172,3 +172,134 @@ class TestDelegationTracker:
         tracker = self._make_tracker()
         # Should not raise
         tracker.record_completion("agent-1", "nonexistent")
+
+
+# --- Supervisor Integration Tests ---
+
+from vcompany.container.child_spec import ChildSpec, RestartPolicy
+from vcompany.container.context import ContainerContext
+from vcompany.supervisor.strategies import RestartStrategy
+from vcompany.supervisor.supervisor import Supervisor
+
+
+def _make_spec(child_id: str, restart_policy: RestartPolicy = RestartPolicy.PERMANENT) -> ChildSpec:
+    """Create a minimal ChildSpec for testing."""
+    return ChildSpec(
+        child_id=child_id,
+        agent_type="test",
+        context=ContainerContext(agent_id=child_id, agent_type="test"),
+        restart_policy=restart_policy,
+    )
+
+
+class TestSupervisorDelegation:
+    """Supervisor delegation request handling and cleanup."""
+
+    @pytest.mark.asyncio
+    async def test_handle_delegation_no_policy_returns_not_approved(self, tmp_path) -> None:
+        """Without delegation_policy, requests are rejected."""
+        sup = Supervisor(
+            supervisor_id="test-sup",
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            child_specs=[_make_spec("a")],
+            data_dir=tmp_path,
+        )
+        await sup.start()
+        try:
+            req = DelegationRequest(requester_id="a", task_description="do stuff")
+            result = await sup.handle_delegation_request(req)
+            assert result.approved is False
+            assert "not enabled" in result.reason.lower()
+        finally:
+            await sup.stop()
+
+    @pytest.mark.asyncio
+    async def test_handle_delegation_spawns_temporary_child(self, tmp_path) -> None:
+        """Valid delegation spawns a TEMPORARY child container."""
+        policy = DelegationPolicy(max_concurrent_delegations=3, max_delegations_per_hour=10)
+        sup = Supervisor(
+            supervisor_id="test-sup",
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            child_specs=[_make_spec("a")],
+            data_dir=tmp_path,
+            delegation_policy=policy,
+        )
+        await sup.start()
+        try:
+            req = DelegationRequest(requester_id="a", task_description="build feature")
+            result = await sup.handle_delegation_request(req)
+            assert result.approved is True
+            assert result.agent_id is not None
+            assert result.agent_id.startswith("delegated-a-")
+            # Verify spawned child exists and is running
+            child = sup.children.get(result.agent_id)
+            assert child is not None
+            assert child.state == "running"
+            # Verify the spec is TEMPORARY
+            spec = sup._get_spec(result.agent_id)
+            assert spec is not None
+            assert spec.restart_policy == RestartPolicy.TEMPORARY
+        finally:
+            await sup.stop()
+
+    @pytest.mark.asyncio
+    async def test_delegated_child_stopped_triggers_completion(self, tmp_path) -> None:
+        """When a delegated child stops, tracker records completion."""
+        policy = DelegationPolicy(max_concurrent_delegations=1, max_delegations_per_hour=10)
+        sup = Supervisor(
+            supervisor_id="test-sup",
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            child_specs=[_make_spec("a")],
+            data_dir=tmp_path,
+            delegation_policy=policy,
+        )
+        await sup.start()
+        try:
+            req = DelegationRequest(requester_id="a", task_description="task")
+            result = await sup.handle_delegation_request(req)
+            assert result.approved is True
+            agent_id = result.agent_id
+
+            # At concurrent cap
+            req2 = DelegationRequest(requester_id="a", task_description="task2")
+            result2 = await sup.handle_delegation_request(req2)
+            assert result2.approved is False
+
+            # Stop the delegated child -- should release capacity
+            child = sup.children[agent_id]
+            await child.stop()
+
+            # Give event loop a tick to process the callback
+            import asyncio
+            await asyncio.sleep(0)
+
+            # Now should be able to delegate again
+            req3 = DelegationRequest(requester_id="a", task_description="task3")
+            result3 = await sup.handle_delegation_request(req3)
+            assert result3.approved is True
+        finally:
+            await sup.stop()
+
+    @pytest.mark.asyncio
+    async def test_max_concurrent_cap_rejects(self, tmp_path) -> None:
+        """Delegation rejected when max concurrent reached."""
+        policy = DelegationPolicy(max_concurrent_delegations=1, max_delegations_per_hour=10)
+        sup = Supervisor(
+            supervisor_id="test-sup",
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            child_specs=[_make_spec("a")],
+            data_dir=tmp_path,
+            delegation_policy=policy,
+        )
+        await sup.start()
+        try:
+            req1 = DelegationRequest(requester_id="a", task_description="task1")
+            result1 = await sup.handle_delegation_request(req1)
+            assert result1.approved is True
+
+            req2 = DelegationRequest(requester_id="a", task_description="task2")
+            result2 = await sup.handle_delegation_request(req2)
+            assert result2.approved is False
+            assert "concurrent" in result2.reason.lower()
+        finally:
+            await sup.stop()
