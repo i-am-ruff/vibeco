@@ -27,6 +27,8 @@ STATE_INDICATORS: dict[str, str] = {
     "stopped": "\u26ab",        # black circle
     "creating": "\U0001f7e1",   # yellow circle
     "destroyed": "\u2b1b",      # black square
+    "blocked": "\U0001f7e0",    # orange circle -- ARCH-02/ARCH-04 new state
+    "stopping": "\U0001f7e1",   # yellow circle -- transient, same as creating
 }
 
 _DEFAULT_INDICATOR = "\u2753"   # question mark for unknown states
@@ -313,8 +315,14 @@ def build_health_tree_embed(
     Returns:
         discord.Embed with color-coded state indicators per agent.
     """
-    # Determine embed color: green if all projects running, red otherwise
-    all_running = all(p.state == "running" for p in tree.projects) if tree.projects else True
+    # Determine embed color: green if all agents/projects running, red otherwise
+    all_running = True
+    if tree.company_agents:
+        all_running = all_running and all(
+            c.report.state == "running" for c in tree.company_agents
+        )
+    if tree.projects:
+        all_running = all_running and all(p.state == "running" for p in tree.projects)
     color = discord.Color.green() if all_running else discord.Color.red()
 
     embed = discord.Embed(
@@ -323,11 +331,29 @@ def build_health_tree_embed(
         timestamp=datetime.now(timezone.utc),
     )
 
+    # Render company-level agents (Strategist, etc.) before project sections
+    if tree.company_agents:
+        lines: list[str] = []
+        for child in tree.company_agents:
+            r = child.report
+            emoji = STATE_INDICATORS.get(r.state, _DEFAULT_INDICATOR)
+            inner = f" ({r.inner_state})" if r.inner_state else ""
+            blocked = f" -- {r.blocked_reason}" if r.blocked_reason else ""
+            lines.append(f"{emoji} **{r.agent_id}**: {r.state}{inner}{blocked}")
+        value = "\n".join(lines)
+        if len(value) > 1024:
+            value = value[:1021] + "..."
+        embed.add_field(
+            name="Company Agents",
+            value=value,
+            inline=False,
+        )
+
     projects = tree.projects
     if project_filter is not None:
         projects = [p for p in projects if p.supervisor_id == project_filter]
 
-    if not projects and not tree.projects:
+    if not projects and not tree.projects and not tree.company_agents:
         embed.description = "No projects active"
         return embed
 
@@ -353,13 +379,14 @@ def build_health_tree_embed(
             children = [c for c in children if c.report.agent_id == agent_filter]
 
         if children:
-            lines: list[str] = []
+            agent_lines: list[str] = []
             for child in children:
                 r = child.report
                 emoji = STATE_INDICATORS.get(r.state, _DEFAULT_INDICATOR)
                 inner = f" ({r.inner_state})" if r.inner_state else ""
-                lines.append(f"{emoji} **{r.agent_id}**: {r.state}{inner}")
-            value = "\n".join(lines)
+                blocked = f" -- {r.blocked_reason}" if r.blocked_reason else ""
+                agent_lines.append(f"{emoji} **{r.agent_id}**: {r.state}{inner}{blocked}")
+            value = "\n".join(agent_lines)
         else:
             value = "No agents"
 

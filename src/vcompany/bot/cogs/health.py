@@ -78,7 +78,7 @@ class HealthCog(commands.Cog):
             report: HealthReport from the container that changed state.
         """
         try:
-            if report.state not in ("errored", "running", "stopped"):
+            if report.state not in ("errored", "running", "stopped", "blocked", "stopping"):
                 return
 
             # Find the alerts channel in the first guild
@@ -95,7 +95,8 @@ class HealthCog(commands.Cog):
 
             emoji = STATE_INDICATORS.get(report.state, "")
             inner = f" ({report.inner_state})" if report.inner_state else ""
-            msg = f"{emoji} **{report.agent_id}** -> {report.state}{inner}"
+            blocked = f" -- {report.blocked_reason}" if report.blocked_reason else ""
+            msg = f"{emoji} **{report.agent_id}** -> {report.state}{inner}{blocked}"
             await self.bot.message_queue.enqueue(QueuedMessage(
                 priority=MessagePriority.STATUS,
                 timestamp=time.monotonic(),

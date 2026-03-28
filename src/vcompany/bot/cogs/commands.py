@@ -202,6 +202,21 @@ class CommandsCog(commands.Cog):
                 )
                 await self.bot.company_root.start()
 
+                # Add Strategist as a direct company-level agent (ARCH-02)
+                strategist_ctx = ContainerContext(
+                    agent_id="strategist",
+                    agent_type="company",
+                    parent_id="company-root",
+                    project_id=None,
+                )
+                strategist_spec = ChildSpec(
+                    child_id="strategist",
+                    agent_type="company",
+                    context=strategist_ctx,
+                )
+                await self.bot.company_root.add_company_agent(strategist_spec)
+                logger.info("Strategist CompanyAgent added to CompanyRoot in /new-project")
+
             specs = []
             for agent in config.agents:
                 ctx = ContainerContext(

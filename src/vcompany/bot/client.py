@@ -259,6 +259,21 @@ class VcoBot(commands.Bot):
                 )
                 await self.company_root.start()
 
+                # Add Strategist as a direct company-level agent (ARCH-02)
+                strategist_ctx = ContainerContext(
+                    agent_id="strategist",
+                    agent_type="company",
+                    parent_id="company-root",
+                    project_id=None,
+                )
+                strategist_spec = ChildSpec(
+                    child_id="strategist",
+                    agent_type="company",
+                    context=strategist_ctx,
+                )
+                await self.company_root.add_company_agent(strategist_spec)
+                logger.info("Strategist CompanyAgent added to CompanyRoot")
+
                 # MessageQueue for outbound notifications (RESL-01)
                 async def _send_message(msg: QueuedMessage) -> None:
                     channel = self.get_channel(msg.channel_id)
