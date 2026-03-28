@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Agent Container Architecture
-status: v2.0 milestone complete
-stopped_at: Completed 10-01-PLAN.md
-last_updated: "2026-03-28T05:20:10.253Z"
+milestone: v2.1
+milestone_name: Behavioral Integration
+status: Defining requirements
+stopped_at: null
+last_updated: "2026-03-28"
 progress:
-  total_phases: 12
-  completed_phases: 12
-  total_plans: 29
-  completed_plans: 29
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 10 — messagequeue-notification-routing
+**Current focus:** v2.1 Behavioral Integration — defining requirements
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
+Phase: Not started (defining requirements)
+Plan: —
 
 ## Performance Metrics
 

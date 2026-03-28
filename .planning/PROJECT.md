@@ -10,6 +10,24 @@ Every agent runs inside an Erlang-style supervision tree with lifecycle state ma
 
 Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly — all operable from Discord.
 
+## Current Milestone: v2.1 Behavioral Integration
+
+**Goal:** Make the v2.0 container infrastructure operational — agents do real work, PM leads development through conversational review gates, health tree shows the full supervision hierarchy.
+
+**Target features:**
+- Work initiation: agents receive GSD commands and start working autonomously
+- PM-led conversational review gates (approve/modify/clarify multi-turn flow)
+- Auto work distribution from backlog via PM
+- Full PM event routing (health, GSD transitions, briefings, escalations)
+- Strategist operating through CompanyAgent container
+- Inter-container communication via CommunicationPort
+- BLOCKED as real FSM state
+- PM outbound actions (integration, milestone injection, recruitment, escalation)
+- Correct supervision hierarchy (Strategist under CompanyRoot)
+- Full health tree rendering
+- Stuck-agent detection
+- Message throttling (1 per 30s per agent)
+
 ## Current State
 
 **Shipped:** v2.0 Agent Container Architecture (2026-03-28)
@@ -140,4 +158,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after v2.0 milestone completion*
+*Last updated: 2026-03-28 after v2.1 milestone start*
