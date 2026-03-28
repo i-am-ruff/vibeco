@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
 status: Ready to plan
-stopped_at: "Completed 15-01-PLAN.md: PM action methods, callback slots, stuck detector, ProjectSupervisor lifecycle helpers"
-last_updated: "2026-03-28T17:18:03.501Z"
+stopped_at: "Completed 15-02-PLAN.md: Phase 15 PM action callbacks wired in VcoBot.on_ready"
+last_updated: "2026-03-28T17:21:30Z"
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Current Position
 
 Phase: 15
-Plan: Not started
+Plan: 02 (complete)
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Plan: Not started
 | Phase 14-pm-review-gates P01 | 15 | 2 tasks | 3 files |
 | Phase 14-pm-review-gates P02 | 10 | 2 tasks | 3 files |
 | Phase 15-pm-actions-auto-distribution P01 | 12 | 2 tasks | 2 files |
+| Phase 15-pm-actions-auto-distribution P02 | 3 | 1 task | 1 file |
 
 ## Accumulated Context
 
@@ -85,6 +86,8 @@ Recent decisions affecting current work:
 - [Phase 15]: Stuck detector uses asyncio.get_event_loop().time() for monotonic timestamps, suppression set cleared on gsd_transition
 - [Phase 15]: escalate_to_strategist fires callback from _handle_event escalation branch (replaces Phase 13 log-only behavior)
 - [Phase 15]: stop() override on FulltimeAgent cancels stuck detector task before delegating to parent
+- [Phase 15 P02]: set_pm_event_sink moved to after all Phase 15 callback wiring -- prevents race condition where supervisor emits events before handlers are set
+- [Phase 15 P02]: _make_gsd_cb/_make_briefing_cb hoisted from for-loop body to be available for _on_recruit_agent reuse
 
 ### Pending Todos
 

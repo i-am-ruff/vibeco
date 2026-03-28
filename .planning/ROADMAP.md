@@ -43,7 +43,7 @@ See `.planning/milestones/v2.0-ROADMAP.md` for full details.
 - [x] **Phase 12: Work Initiation** - Agents receive GSD commands in tmux and start working autonomously (completed 2026-03-28)
 - [x] **Phase 13: PM Event Routing** - All agent events (health, GSD transitions, briefings, escalations) flow to PM (completed 2026-03-28)
 - [x] **Phase 14: PM Review Gates** - PM-led conversational approve/modify/clarify gates at every GSD stage transition (completed 2026-03-28)
-- [ ] **Phase 15: PM Actions & Auto Distribution** - PM outbound triggers and automatic next-item assignment from backlog
+- [x] **Phase 15: PM Actions & Auto Distribution** - PM outbound triggers and automatic next-item assignment from backlog (completed 2026-03-28)
 - [ ] **Phase 16: Agent Completeness & Strategist** - Strategist operates through container, agents persist full state and delegate work
 - [ ] **Phase 17: Health Tree Rendering** - Full supervision hierarchy with inner states, uptime, and last activity
 
@@ -114,7 +114,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 15-01-PLAN.md — PM action methods, callback slots, stuck detector on FulltimeAgent; add/remove helpers on ProjectSupervisor
-- [ ] 15-02-PLAN.md — VcoBot.on_ready wiring for all Phase 15 PM action callbacks
+- [x] 15-02-PLAN.md — VcoBot.on_ready wiring for all Phase 15 PM action callbacks
 
 ### Phase 16: Agent Completeness & Strategist
 **Goal**: Strategist operates through its CompanyAgent container, ContinuousAgents delegate and persist state, GsdAgents recover full work context
@@ -148,6 +148,6 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 → 15 → 16 → 17
 | 12. Work Initiation | v2.1 | 1/1 | Complete    | 2026-03-28 |
 | 13. PM Event Routing | v2.1 | 1/1 | Complete    | 2026-03-28 |
 | 14. PM Review Gates | v2.1 | 2/2 | Complete    | 2026-03-28 |
-| 15. PM Actions & Auto Distribution | v2.1 | 1/2 | In Progress|  |
+| 15. PM Actions & Auto Distribution | v2.1 | 2/2 | Complete   | 2026-03-28 |
 | 16. Agent Completeness & Strategist | v2.1 | 0/0 | Not started | - |
 | 17. Health Tree Rendering | v2.1 | 0/0 | Not started | - |
