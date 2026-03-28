@@ -1,4 +1,4 @@
-"""Tests for CommandsCog operator slash commands (DISC-03 through DISC-11)."""
+"""Tests for CommandsCog operator slash commands (DISC-03 through DISC-11, MIGR-01)."""
 
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,7 +8,6 @@ import pytest
 
 from vcompany.bot.cogs.commands import CommandsCog
 from vcompany.models.config import AgentConfig, ProjectConfig
-from vcompany.orchestrator.agent_manager import DispatchResult
 
 
 def _make_config() -> ProjectConfig:
@@ -38,14 +37,14 @@ def _make_config() -> ProjectConfig:
 
 
 def _make_bot(*, ready: bool = True) -> MagicMock:
-    """Create a mock VcoBot with standard attributes."""
+    """Create a mock VcoBot with standard attributes (v2: CompanyRoot)."""
     bot = MagicMock()
     bot.project_dir = Path("/tmp/testproject")
     bot.project_config = _make_config()
     bot._ready_flag = ready
     bot.is_bot_ready = ready
-    bot.agent_manager = MagicMock()
-    bot.monitor_loop = None
+    bot.company_root = MagicMock()
+    bot.company_root._find_container = AsyncMock(return_value=MagicMock(state="running"))
     return bot
 
 
@@ -146,52 +145,36 @@ class TestNewProject:
 
 
 class TestDispatch:
-    """/dispatch dispatches agents via asyncio.to_thread (DISC-04)."""
+    """/dispatch routes through CompanyRoot supervision tree (DISC-04, MIGR-01)."""
 
     @pytest.mark.asyncio
-    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
-    async def test_dispatch_single(self, mock_to_thread):
-        """Dispatches a single agent via to_thread."""
+    async def test_dispatch_single(self):
+        """Dispatches a single agent by checking container state via CompanyRoot."""
         bot = _make_bot()
         cog = CommandsCog(bot)
         interaction = _make_interaction()
-
-        mock_to_thread.return_value = DispatchResult(
-            success=True, agent_id="agent-1", pane_id="%0"
-        )
 
         await cog.dispatch_cmd.callback(cog, interaction, agent_id="agent-1")
 
-        mock_to_thread.assert_called_once_with(
-            bot.agent_manager.dispatch, "agent-1"
-        )
-        assert "dispatched" in interaction.followup.send.call_args[0][0].lower()
+        bot.company_root._find_container.assert_called_once_with("agent-1")
+        assert "agent-1" in interaction.followup.send.call_args[0][0].lower()
 
     @pytest.mark.asyncio
-    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
-    async def test_dispatch_all(self, mock_to_thread):
-        """Dispatches all agents via to_thread."""
+    async def test_dispatch_all(self):
+        """Dispatching all agents returns supervision tree message."""
         bot = _make_bot()
         cog = CommandsCog(bot)
         interaction = _make_interaction()
 
-        mock_to_thread.return_value = [
-            DispatchResult(success=True, agent_id="agent-1"),
-            DispatchResult(success=True, agent_id="agent-2"),
-        ]
-
         await cog.dispatch_cmd.callback(cog, interaction, agent_id="all")
 
-        mock_to_thread.assert_called_once_with(
-            bot.agent_manager.dispatch_all
-        )
-        assert "2 succeeded" in interaction.followup.send.call_args[0][0]
+        assert "supervision tree" in interaction.followup.send.call_args[0][0].lower()
 
     @pytest.mark.asyncio
-    async def test_dispatch_no_agent_manager(self):
-        """Reports error when agent_manager is None."""
+    async def test_dispatch_no_company_root(self):
+        """Reports error when company_root is None."""
         bot = _make_bot()
-        bot.agent_manager = None
+        bot.company_root = None
         cog = CommandsCog(bot)
         interaction = _make_interaction()
 
@@ -253,14 +236,15 @@ class TestStatus:
 
 
 class TestKill:
-    """/kill requires confirmation before executing (DISC-07)."""
+    """/kill routes through CompanyRoot supervision tree (DISC-07, MIGR-01)."""
 
     @pytest.mark.asyncio
-    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
     @patch("vcompany.bot.cogs.commands.ConfirmView")
-    async def test_kill_confirmed(self, MockConfirmView, mock_to_thread):
-        """Kills agent after confirmation."""
+    async def test_kill_confirmed(self, MockConfirmView):
+        """Kills agent by stopping container after confirmation."""
         bot = _make_bot()
+        mock_container = AsyncMock()
+        bot.company_root._find_container = AsyncMock(return_value=mock_container)
         cog = CommandsCog(bot)
         interaction = _make_interaction()
 
@@ -269,8 +253,6 @@ class TestKill:
         mock_view.value = True
         MockConfirmView.return_value = mock_view
 
-        mock_to_thread.return_value = True
-
         await cog.kill_cmd.callback(cog, interaction, agent_id="agent-1")
 
         # Verify confirmation was sent via response.send_message
@@ -278,14 +260,12 @@ class TestKill:
         assert "kill agent" in first_send[0][0].lower()
         assert first_send[1]["view"] is mock_view
 
-        # Verify kill was called via to_thread
-        mock_to_thread.assert_called_once_with(
-            bot.agent_manager.kill, "agent-1"
-        )
+        # Verify container.stop() was called
+        mock_container.stop.assert_called_once()
 
         # Verify success message via followup
         last_followup = interaction.followup.send.call_args
-        assert "killed" in last_followup[0][0].lower()
+        assert "stopped" in last_followup[0][0].lower()
 
     @pytest.mark.asyncio
     @patch("vcompany.bot.cogs.commands.ConfirmView")
@@ -325,10 +305,10 @@ class TestKill:
         assert "cancelled" in last_followup[0][0].lower()
 
     @pytest.mark.asyncio
-    async def test_kill_no_agent_manager(self):
-        """Reports error when agent_manager is None."""
+    async def test_kill_no_company_root(self):
+        """Reports error when company_root is None."""
         bot = _make_bot()
-        bot.agent_manager = None
+        bot.company_root = None
         cog = CommandsCog(bot)
         interaction = _make_interaction()
 
@@ -339,26 +319,21 @@ class TestKill:
 
 
 class TestRelaunch:
-    """/relaunch restarts an agent via asyncio.to_thread (DISC-08)."""
+    """/relaunch routes through CompanyRoot supervision tree (DISC-08, MIGR-01)."""
 
     @pytest.mark.asyncio
-    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
-    async def test_relaunch(self, mock_to_thread):
-        """Relaunches agent via to_thread."""
+    async def test_relaunch(self):
+        """Relaunches agent by stopping container (supervisor restarts)."""
         bot = _make_bot()
+        mock_container = AsyncMock()
+        bot.company_root._find_container = AsyncMock(return_value=mock_container)
         cog = CommandsCog(bot)
         interaction = _make_interaction()
 
-        mock_to_thread.return_value = DispatchResult(
-            success=True, agent_id="agent-1"
-        )
-
         await cog.relaunch_cmd.callback(cog, interaction, agent_id="agent-1")
 
-        mock_to_thread.assert_called_once_with(
-            bot.agent_manager.relaunch, "agent-1"
-        )
-        assert "relaunched" in interaction.followup.send.call_args[0][0].lower()
+        mock_container.stop.assert_called_once()
+        assert "stopped" in interaction.followup.send.call_args[0][0].lower()
 
     @pytest.mark.asyncio
     async def test_relaunch_unknown_agent(self):
@@ -373,10 +348,10 @@ class TestRelaunch:
         assert "unknown agent" in call_args[0][0].lower()
 
     @pytest.mark.asyncio
-    async def test_relaunch_no_agent_manager(self):
-        """Reports error when agent_manager is None."""
+    async def test_relaunch_no_company_root(self):
+        """Reports error when company_root is None."""
         bot = _make_bot()
-        bot.agent_manager = None
+        bot.company_root = None
         cog = CommandsCog(bot)
         interaction = _make_interaction()
 
@@ -445,72 +420,6 @@ class TestIntegrate:
 
         last_followup = interaction.followup.send.call_args
         assert "cancelled" in last_followup[0][0].lower()
-
-
-class TestAsyncThreadUsage:
-    """Verify asyncio.to_thread is used for blocking calls (DISC-11)."""
-
-    @pytest.mark.asyncio
-    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
-    async def test_dispatch_uses_to_thread(self, mock_to_thread):
-        """/dispatch uses asyncio.to_thread."""
-        bot = _make_bot()
-        cog = CommandsCog(bot)
-        interaction = _make_interaction()
-
-        mock_to_thread.return_value = DispatchResult(success=True, agent_id="agent-1")
-
-        await cog.dispatch_cmd.callback(cog, interaction, agent_id="agent-1")
-
-        mock_to_thread.assert_called_once()
-
-    @pytest.mark.asyncio
-    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
-    async def test_status_uses_to_thread(self, mock_to_thread):
-        """/status uses asyncio.to_thread."""
-        bot = _make_bot()
-        cog = CommandsCog(bot)
-        interaction = _make_interaction()
-
-        mock_to_thread.return_value = "## Status"
-
-        await cog.status_cmd.callback(cog, interaction)
-
-        mock_to_thread.assert_called_once()
-
-    @pytest.mark.asyncio
-    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
-    @patch("vcompany.bot.cogs.commands.ConfirmView")
-    async def test_kill_uses_to_thread(self, MockConfirmView, mock_to_thread):
-        """/kill uses asyncio.to_thread after confirmation."""
-        bot = _make_bot()
-        cog = CommandsCog(bot)
-        interaction = _make_interaction()
-
-        mock_view = MagicMock()
-        mock_view.wait = AsyncMock()
-        mock_view.value = True
-        MockConfirmView.return_value = mock_view
-
-        mock_to_thread.return_value = True
-
-        await cog.kill_cmd.callback(cog, interaction, agent_id="agent-1")
-
-        mock_to_thread.assert_called_once()
-
-    @pytest.mark.asyncio
-    @patch("vcompany.bot.cogs.commands.asyncio.to_thread", new_callable=AsyncMock)
-    async def test_relaunch_uses_to_thread(self, mock_to_thread):
-        """/relaunch uses asyncio.to_thread."""
-        bot = _make_bot()
-        cog = CommandsCog(bot)
-        interaction = _make_interaction()
-
-        mock_to_thread.return_value = DispatchResult(success=True, agent_id="agent-1")
-
-        await cog.relaunch_cmd.callback(cog, interaction, agent_id="agent-1")
-
-        mock_to_thread.assert_called_once()
 
 
 class TestRoleCheckUnauthorized:

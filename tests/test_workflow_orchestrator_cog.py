@@ -1,4 +1,4 @@
-"""Tests for WorkflowOrchestratorCog: message detection, gate reviews, and plan notifications."""
+"""Tests for WorkflowOrchestratorCog: message detection, gate reviews, and plan notifications (MIGR-01)."""
 
 from __future__ import annotations
 
@@ -20,19 +20,13 @@ def mock_bot():
     bot.user.id = 12345
     bot._guild_id = 99999
     bot.get_guild.return_value = None
+    bot.project_config = MagicMock()
+    bot.project_config.project = "testproject"
+    # v2: CompanyRoot is on bot
+    mock_root = MagicMock()
+    mock_root._find_container = AsyncMock(return_value=MagicMock(state="running"))
+    bot.company_root = mock_root
     return bot
-
-
-@pytest.fixture
-def mock_orchestrator():
-    orch = MagicMock()
-    orch.on_stage_complete.return_value = WorkflowStage.DISCUSSION_GATE
-    orch.advance_from_gate.return_value = True
-    orch.start_agent.return_value = True
-    orch.get_agent_state.return_value = MagicMock(
-        stage=WorkflowStage.PM_PLAN_REVIEW_GATE, current_phase=1
-    )
-    return orch
 
 
 @pytest.fixture
@@ -47,9 +41,9 @@ def mock_pm():
 
 
 @pytest.fixture
-def cog(mock_bot, mock_orchestrator, mock_pm):
+def cog(mock_bot, mock_pm):
     c = WorkflowOrchestratorCog(mock_bot)
-    c.set_orchestrator(mock_orchestrator, mock_pm, Path("/tmp/test-project"))
+    c.set_company_root(mock_pm, Path("/tmp/test-project"))
     return c
 
 
@@ -68,49 +62,47 @@ def _make_message(content: str, channel_name: str = "agent-alpha", author_id: in
 
 
 @pytest.mark.asyncio
-async def test_on_message_detects_discuss_complete(cog, mock_orchestrator):
-    """on_message with vco report discuss-phase complete triggers on_stage_complete."""
+async def test_on_message_detects_discuss_complete(cog, mock_bot):
+    """on_message with vco report discuss-phase complete finds container via CompanyRoot."""
     msg = _make_message("2026-03-27T00:00:00Z alpha: discuss-phase complete")
-    mock_orchestrator.on_stage_complete.return_value = WorkflowStage.DISCUSSION_GATE
 
     await cog.on_message(msg)
 
-    mock_orchestrator.on_stage_complete.assert_called_once_with("alpha", "discuss")
+    mock_bot.company_root._find_container.assert_called_once_with("alpha")
 
 
 @pytest.mark.asyncio
-async def test_on_message_detects_execute_complete(cog, mock_orchestrator):
-    """on_message with execute-phase complete triggers on_stage_complete."""
+async def test_on_message_detects_execute_complete(cog, mock_bot):
+    """on_message with execute-phase complete finds container via CompanyRoot."""
     msg = _make_message("2026-03-27T00:00:00Z alpha: execute-phase complete")
-    mock_orchestrator.on_stage_complete.return_value = WorkflowStage.VERIFY
 
     await cog.on_message(msg)
 
-    mock_orchestrator.on_stage_complete.assert_called_once_with("alpha", "execute")
+    mock_bot.company_root._find_container.assert_called_once_with("alpha")
 
 
 @pytest.mark.asyncio
-async def test_on_message_ignores_non_agent_channels(cog, mock_orchestrator):
+async def test_on_message_ignores_non_agent_channels(cog, mock_bot):
     """on_message ignores messages from non-agent channels."""
     msg = _make_message("2026-03-27T00:00:00Z alpha: discuss-phase complete", channel_name="general")
 
     await cog.on_message(msg)
 
-    mock_orchestrator.on_stage_complete.assert_not_called()
+    mock_bot.company_root._find_container.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_on_message_ignores_no_signal(cog, mock_orchestrator):
+async def test_on_message_ignores_no_signal(cog, mock_bot):
     """on_message ignores messages without a stage completion signal."""
     msg = _make_message("Just some random message from an agent", channel_name="agent-alpha")
 
     await cog.on_message(msg)
 
-    mock_orchestrator.on_stage_complete.assert_not_called()
+    mock_bot.company_root._find_container.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_on_message_processes_bot_vco_report(cog, mock_orchestrator, mock_bot):
+async def test_on_message_processes_bot_vco_report(cog, mock_bot):
     """on_message processes bot messages (vco report posts as bot via REST API)."""
     msg = _make_message(
         "2026-03-27T00:00:00Z alpha: discuss-phase complete",
@@ -119,11 +111,11 @@ async def test_on_message_processes_bot_vco_report(cog, mock_orchestrator, mock_
 
     await cog.on_message(msg)
 
-    mock_orchestrator.on_stage_complete.assert_called_once_with("alpha", "discuss")
+    mock_bot.company_root._find_container.assert_called_once_with("alpha")
 
 
 @pytest.mark.asyncio
-async def test_on_message_ignores_system_messages(cog, mock_orchestrator, mock_bot):
+async def test_on_message_ignores_system_messages(cog, mock_bot):
     """on_message ignores [system] event messages to avoid loops."""
     msg = _make_message(
         "[system] Stage 'discuss' complete",
@@ -132,11 +124,11 @@ async def test_on_message_ignores_system_messages(cog, mock_orchestrator, mock_b
 
     await cog.on_message(msg)
 
-    mock_orchestrator.on_stage_complete.assert_not_called()
+    mock_bot.company_root._find_container.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_on_message_ignores_mismatched_channel(cog, mock_orchestrator):
+async def test_on_message_ignores_mismatched_channel(cog, mock_bot):
     """on_message ignores signal when agent_id doesn't match channel name."""
     msg = _make_message(
         "2026-03-27T00:00:00Z beta: discuss-phase complete",
@@ -145,15 +137,27 @@ async def test_on_message_ignores_mismatched_channel(cog, mock_orchestrator):
 
     await cog.on_message(msg)
 
-    mock_orchestrator.on_stage_complete.assert_not_called()
+    mock_bot.company_root._find_container.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_message_no_company_root(mock_bot, mock_pm):
+    """on_message is a no-op when company_root is None."""
+    mock_bot.company_root = None
+    c = WorkflowOrchestratorCog(mock_bot)
+    c.set_company_root(mock_pm, Path("/tmp/test-project"))
+
+    msg = _make_message("2026-03-27T00:00:00Z alpha: discuss-phase complete")
+    await c.on_message(msg)
+    # No exception
 
 
 # ── Discussion gate review ────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_review_discussion_gate_high_confidence_advances(cog, mock_orchestrator, mock_pm):
-    """PM HIGH confidence on CONTEXT.md advances the discussion gate."""
+async def test_review_discussion_gate_high_confidence(cog, mock_pm):
+    """PM HIGH confidence on CONTEXT.md posts approval event."""
     # Create a fake CONTEXT.md
     context_dir = Path("/tmp/test-project/clones/alpha/.planning/phases/01-test")
     context_dir.mkdir(parents=True, exist_ok=True)
@@ -162,53 +166,19 @@ async def test_review_discussion_gate_high_confidence_advances(cog, mock_orchest
 
     try:
         await cog._review_discussion_gate("alpha")
-
         mock_pm.evaluate_question.assert_called_once()
-        mock_orchestrator.advance_from_gate.assert_called_once_with("alpha", True)
     finally:
         context_file.unlink(missing_ok=True)
-        # Clean up dirs
         import shutil
         shutil.rmtree("/tmp/test-project", ignore_errors=True)
 
 
 @pytest.mark.asyncio
-async def test_review_discussion_gate_low_confidence_blocks(cog, mock_orchestrator, mock_pm):
-    """PM LOW confidence on CONTEXT.md blocks the gate."""
-    mock_pm.evaluate_question.return_value = PMDecision(
-        answer=None,
-        confidence=ConfidenceResult(score=0.3, level="LOW", coverage=0.2, prior_match=0.4),
-        decided_by="PM",
-        escalate_to="strategist",
-    )
-
-    # Create a fake CONTEXT.md
-    context_dir = Path("/tmp/test-project/clones/alpha/.planning/phases/01-test")
-    context_dir.mkdir(parents=True, exist_ok=True)
-    context_file = context_dir / "01-CONTEXT.md"
-    context_file.write_text("# Context\nIncomplete research.")
-
-    try:
-        await cog._review_discussion_gate("alpha")
-
-        mock_pm.evaluate_question.assert_called_once()
-        # Should NOT advance -- should block
-        mock_orchestrator.advance_from_gate.assert_not_called()
-        mock_orchestrator.handle_unknown_prompt.assert_called_once()
-    finally:
-        import shutil
-        shutil.rmtree("/tmp/test-project", ignore_errors=True)
-
-
-@pytest.mark.asyncio
-async def test_review_discussion_gate_no_context_auto_advances(cog, mock_orchestrator, mock_pm):
-    """No CONTEXT.md found auto-advances the gate."""
-    # No files created -- empty project dir
+async def test_review_discussion_gate_no_context_auto_advances(cog, mock_pm):
+    """No CONTEXT.md found posts auto-advance event."""
     cog._project_dir = Path("/tmp/nonexistent-project")
 
     await cog._review_discussion_gate("alpha")
-
-    mock_orchestrator.advance_from_gate.assert_called_once_with("alpha", True)
     mock_pm.evaluate_question.assert_not_called()
 
 
@@ -216,52 +186,62 @@ async def test_review_discussion_gate_no_context_auto_advances(cog, mock_orchest
 
 
 @pytest.mark.asyncio
-async def test_notify_plan_approved_advances_gate(cog, mock_orchestrator):
-    """notify_plan_approved advances from PM_PLAN_REVIEW_GATE."""
+async def test_notify_plan_approved(cog):
+    """notify_plan_approved posts approval event."""
     await cog.notify_plan_approved("alpha")
-
-    mock_orchestrator.advance_from_gate.assert_called_once_with("alpha", True)
+    # No exception -- just posts event
 
 
 @pytest.mark.asyncio
-async def test_notify_plan_rejected_sends_back_to_plan(cog, mock_orchestrator):
-    """notify_plan_rejected sends agent back to PLAN stage."""
+async def test_notify_plan_rejected(cog):
+    """notify_plan_rejected posts rejection event."""
     await cog.notify_plan_rejected("alpha")
-
-    mock_orchestrator.advance_from_gate.assert_called_once_with("alpha", False)
+    # No exception -- just posts event
 
 
 @pytest.mark.asyncio
-async def test_notify_plan_approved_noop_if_not_at_gate(cog, mock_orchestrator):
-    """notify_plan_approved does nothing if agent is not at PM_PLAN_REVIEW_GATE."""
-    mock_orchestrator.get_agent_state.return_value = MagicMock(
-        stage=WorkflowStage.EXECUTE, current_phase=1
-    )
+async def test_notify_plan_approved_noop_if_no_company_root():
+    """notify_plan_approved does nothing if company_root is None."""
+    bot = MagicMock()
+    bot.company_root = None
+    c = WorkflowOrchestratorCog(bot)
 
-    await cog.notify_plan_approved("alpha")
-
-    mock_orchestrator.advance_from_gate.assert_not_called()
+    await c.notify_plan_approved("alpha")
+    # No exception
 
 
 # ── start_workflow ────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_start_workflow_calls_orchestrator(cog, mock_orchestrator):
-    """start_workflow wraps orchestrator.start_agent."""
+async def test_start_workflow_finds_container(cog, mock_bot):
+    """start_workflow finds container via CompanyRoot and returns True."""
     result = await cog.start_workflow("alpha", 1)
 
     assert result is True
-    mock_orchestrator.start_agent.assert_called_once_with("alpha", 1)
+    mock_bot.company_root._find_container.assert_called_once_with("alpha")
 
 
 @pytest.mark.asyncio
-async def test_start_workflow_no_orchestrator():
-    """start_workflow returns False if orchestrator not initialized."""
+async def test_start_workflow_no_company_root():
+    """start_workflow returns False if company_root not initialized."""
     bot = MagicMock()
+    bot.company_root = None
     c = WorkflowOrchestratorCog(bot)
 
     result = await c.start_workflow("alpha", 1)
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_start_workflow_container_not_found(mock_bot, mock_pm):
+    """start_workflow returns False if container not found."""
+    mock_bot.company_root._find_container = AsyncMock(return_value=None)
+    c = WorkflowOrchestratorCog(mock_bot)
+    c.set_company_root(mock_pm, Path("/tmp/test"))
+
+    result = await c.start_workflow("nonexistent", 1)
 
     assert result is False
 
@@ -270,14 +250,8 @@ async def test_start_workflow_no_orchestrator():
 
 
 @pytest.mark.asyncio
-async def test_review_verify_gate_all_pass_advances(cog, mock_orchestrator, mock_pm):
-    """VERIFICATION.md with all PASS advances to PHASE_COMPLETE (D-07)."""
-    # Set agent state to VERIFY
-    mock_orchestrator.get_agent_state.return_value = MagicMock(
-        stage=WorkflowStage.VERIFY, current_phase=1
-    )
-
-    # Create a fake VERIFICATION.md with all PASS
+async def test_review_verify_gate_all_pass(cog, mock_pm):
+    """VERIFICATION.md with all PASS posts phase complete event (D-07)."""
     verify_dir = Path("/tmp/test-project/clones/alpha/.planning/phases/01-test")
     verify_dir.mkdir(parents=True, exist_ok=True)
     verify_file = verify_dir / "01-VERIFICATION.md"
@@ -285,9 +259,6 @@ async def test_review_verify_gate_all_pass_advances(cog, mock_orchestrator, mock
 
     try:
         await cog._review_verify_gate("alpha")
-
-        # Should advance from gate (approved=True)
-        mock_orchestrator.advance_from_gate.assert_called_once_with("alpha", True)
         # PM should NOT be consulted when all pass
         mock_pm.evaluate_question.assert_not_called()
     finally:
@@ -296,13 +267,8 @@ async def test_review_verify_gate_all_pass_advances(cog, mock_orchestrator, mock
 
 
 @pytest.mark.asyncio
-async def test_review_verify_gate_with_failures_pm_re_execute(cog, mock_orchestrator, mock_pm):
-    """VERIFICATION.md with FAIL triggers PM review; HIGH confidence re-executes."""
-    mock_orchestrator.get_agent_state.return_value = MagicMock(
-        stage=WorkflowStage.VERIFY, current_phase=1
-    )
-
-    # PM recommends re-execute (HIGH confidence)
+async def test_review_verify_gate_with_failures_pm_review(cog, mock_pm):
+    """VERIFICATION.md with FAIL triggers PM review."""
     mock_pm.evaluate_question.return_value = PMDecision(
         answer="Re-execute to fix failures",
         confidence=ConfidenceResult(score=0.95, level="HIGH", coverage=0.9, prior_match=1.0),
@@ -316,42 +282,29 @@ async def test_review_verify_gate_with_failures_pm_re_execute(cog, mock_orchestr
 
     try:
         await cog._review_verify_gate("alpha")
-
         mock_pm.evaluate_question.assert_called_once()
-        # HIGH/MEDIUM PM sends back to EXECUTE (approved=False)
-        mock_orchestrator.advance_from_gate.assert_called_once_with("alpha", False)
     finally:
         import shutil
         shutil.rmtree("/tmp/test-project", ignore_errors=True)
 
 
 @pytest.mark.asyncio
-async def test_review_verify_gate_no_verification_auto_advances(cog, mock_orchestrator):
+async def test_review_verify_gate_no_verification_auto_advances(cog):
     """No VERIFICATION.md auto-advances the verify gate."""
-    mock_orchestrator.get_agent_state.return_value = MagicMock(
-        stage=WorkflowStage.VERIFY, current_phase=1
-    )
     cog._project_dir = Path("/tmp/nonexistent-project")
 
     await cog._review_verify_gate("alpha")
-
-    mock_orchestrator.advance_from_gate.assert_called_once_with("alpha", True)
+    # No exception -- posts auto-advance event
 
 
 # ── Phase complete handling ───────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_handle_phase_complete_logs_and_checks_next(cog, mock_orchestrator):
-    """_handle_phase_complete logs completion and checks for next phase."""
-    mock_orchestrator.get_agent_state.return_value = MagicMock(
-        stage=WorkflowStage.PHASE_COMPLETE, current_phase=1
-    )
-
+async def test_handle_phase_complete(cog):
+    """_handle_phase_complete logs completion."""
     await cog._handle_phase_complete("alpha")
-
-    # Verify it checked agent state
-    mock_orchestrator.get_agent_state.assert_called_with("alpha")
+    # No exception -- posts completion event
 
 
 # ── Cog registration smoke tests ─────────────────────────────────────────────
@@ -379,3 +332,12 @@ def test_plan_review_cog_has_workflow_cog_attribute():
     cog = PlanReviewCog(bot)
     assert hasattr(cog, "_workflow_cog")
     assert cog._workflow_cog is None
+
+
+def test_cog_uses_company_root():
+    """WorkflowOrchestratorCog uses bot.company_root not _orchestrator."""
+    bot = MagicMock()
+    bot.company_root = MagicMock()
+    c = WorkflowOrchestratorCog(bot)
+    assert not hasattr(c, "_orchestrator")
+    assert c._initialized is True

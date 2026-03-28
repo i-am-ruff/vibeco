@@ -4,7 +4,9 @@ Implements /new-project, /dispatch, /status, /standup, /kill, /relaunch, /integr
 All commands gated by vco-owner role via app_commands checks (DISC-10).
 All blocking calls wrapped in asyncio.to_thread (DISC-11).
 
-Implements DISC-03 through DISC-11.
+Routes agent lifecycle operations through CompanyRoot supervision tree (MIGR-01).
+
+Implements DISC-03 through DISC-11, MIGR-01.
 """
 
 from __future__ import annotations
@@ -47,8 +49,8 @@ def _no_project_msg() -> str:
 class CommandsCog(commands.Cog):
     """Operator slash commands for vCompany project orchestration.
 
-    Every command requires vco-owner role. All AgentManager / filesystem
-    operations use asyncio.to_thread to avoid blocking the event loop.
+    Every command requires vco-owner role. Agent lifecycle operations route
+    through CompanyRoot supervision tree (MIGR-01).
     """
 
     def __init__(self, bot: VcoBot) -> None:
@@ -66,11 +68,11 @@ class CommandsCog(commands.Cog):
 
     # ── /new-project ──────────────────────────────────────────────────
 
-    @app_commands.command(name="new-project", description="Set up a new project (channels + agents + dispatch)")
+    @app_commands.command(name="new-project", description="Set up a new project (channels + agents + supervision tree)")
     @app_commands.describe(name="Project name")
     @is_owner_app_check()
     async def new_project(self, interaction: discord.Interaction, name: str) -> None:
-        """Full project setup: channels + init + clone + dispatch (DISC-03).
+        """Full project setup: channels + init + clone + supervision tree (DISC-03, MIGR-01).
 
         Expects the Strategist to have already generated project files at
         ~/vco-projects/<name>/ (agents.yaml, planning/ artifacts).
@@ -159,60 +161,70 @@ class CommandsCog(commands.Cog):
                 await setup_project_channels(guild, name, owner_role, config.agents)
                 await interaction.channel.send(f"Discord channels created for **{name}**.")
 
-            # Step 4: Wire bot to project
-            from pathlib import Path
-            from vcompany.orchestrator.agent_manager import AgentManager
-            from vcompany.tmux.session import TmuxManager
-
+            # Step 4: Wire bot to project and create CompanyRoot supervision tree
             self.bot.project_dir = project_dir
             self.bot.project_config = config
-            from vcompany.bot.config import BotConfig
-            _bot_config = BotConfig()
-            self.bot.agent_manager = AgentManager(
-                project_dir, config, TmuxManager(),
-                bot_token=_bot_config.discord_bot_token,
-                guild_id=str(_bot_config.discord_guild_id),
+
+            from vcompany.container.child_spec import ChildSpec
+            from vcompany.container.context import ContainerContext
+            from vcompany.supervisor.company_root import CompanyRoot
+
+            if not hasattr(self.bot, "company_root") or self.bot.company_root is None:
+                async def on_escalation(msg: str) -> None:
+                    alerts_ch = self.bot._system_channels.get("alerts")
+                    if alerts_ch:
+                        await alerts_ch.send(f"ESCALATION: {msg}")
+
+                health_cog = self.bot.get_cog("HealthCog")
+                on_health_change = health_cog._notify_state_change if health_cog else None
+
+                self.bot.company_root = CompanyRoot(
+                    on_escalation=on_escalation,
+                    max_restarts=3,
+                    window_seconds=600,
+                    data_dir=project_dir / "state" / "supervision",
+                    on_health_change=on_health_change,
+                )
+                await self.bot.company_root.start()
+
+            specs = []
+            for agent in config.agents:
+                ctx = ContainerContext(
+                    agent_id=agent.id,
+                    agent_type=agent.type if hasattr(agent, "type") else "gsd",
+                    parent_id="project-supervisor",
+                    project_id=config.project,
+                    owned_dirs=agent.owns if hasattr(agent, "owns") else [],
+                )
+                specs.append(ChildSpec(child_id=agent.id, agent_type=ctx.agent_type, context=ctx))
+
+            await self.bot.company_root.add_project(
+                project_id=config.project,
+                child_specs=specs,
             )
 
-            # Step 5: Dispatch agents BEFORE starting monitor to avoid
-            # false-dead alerts from stale agents.json PIDs
-            results = await asyncio.to_thread(self.bot.agent_manager.dispatch_all)
-            ok = sum(1 for r in results if r.success)
             await interaction.channel.send(
-                f"Dispatched {ok}/{len(results)} agents. Waiting for Claude to start..."
+                f"Supervision tree started with {len(specs)} agents. "
+                "Agent containers are managed by the supervision tree."
             )
 
-            # Step 6: Wait for all Claude instances to boot, then wire orchestrator
-            # and send work commands. All agents boot in parallel — wait once
-            # instead of polling each sequentially.
-            await interaction.channel.send(
-                f"Waiting 30s for {len(config.agents)} Claude instances to boot..."
-            )
-            await asyncio.sleep(30)
-
+            # Step 5: Wire WorkflowOrchestratorCog with PM
             try:
-                from vcompany.orchestrator.workflow_orchestrator import WorkflowOrchestrator
                 from vcompany.strategist.pm import PMTier
 
                 pm = PMTier(project_dir=project_dir)
-                self.bot.workflow_orchestrator = WorkflowOrchestrator(
-                    project_dir=project_dir,
-                    config=config,
-                    agent_manager=self.bot.agent_manager,
-                )
-
                 wo_cog = self.bot.get_cog("WorkflowOrchestratorCog")
                 if wo_cog:
-                    wo_cog.set_orchestrator(self.bot.workflow_orchestrator, pm, project_dir)
+                    wo_cog.set_company_root(pm, project_dir)
 
                     # Wire PlanReviewCog notifications
                     plan_review_cog_ref = self.bot.get_cog("PlanReviewCog")
                     if plan_review_cog_ref:
                         plan_review_cog_ref._workflow_cog = wo_cog
 
-                    # Kick off all agents on Phase 1 via the orchestrator
+                    # Kick off all agents on Phase 1
                     await interaction.channel.send(
-                        "Starting agent workflows via WorkflowOrchestrator..."
+                        "Starting agent workflows via supervision tree..."
                     )
                     for agent in config.agents:
                         started = await wo_cog.start_workflow(agent.id, 1)
@@ -225,37 +237,12 @@ class CommandsCog(commands.Cog):
                                 f"Failed to start workflow for **{agent.id}**."
                             )
             except Exception:
-                logger.exception("Failed to initialize WorkflowOrchestrator in /new-project")
+                logger.exception("Failed to initialize WorkflowOrchestratorCog in /new-project")
                 await interaction.channel.send(
-                    "WorkflowOrchestrator initialization failed. Agents dispatched but not orchestrated."
+                    "WorkflowOrchestratorCog initialization failed. Agents dispatched but not orchestrated."
                 )
 
-            # Step 7: Start monitor AFTER agents have work commands
-            # This avoids false dead alerts during Claude startup
-            from vcompany.monitor.loop import MonitorLoop
-
-            alerts_cog = self.bot.get_cog("AlertsCog")
-            alert_callbacks = alerts_cog.make_sync_callbacks() if alerts_cog else {}
-
-            plan_review_cog = self.bot.get_cog("PlanReviewCog")
-            plan_review_callbacks = plan_review_cog.make_sync_callback() if plan_review_cog else {}
-            plan_detected_callback = plan_review_callbacks.get(
-                "on_plan_detected"
-            ) or alert_callbacks.get("on_plan_detected")
-
-            self.bot.monitor_loop = MonitorLoop(
-                project_dir=project_dir,
-                config=config,
-                tmux=self.bot.agent_manager._tmux,
-                on_agent_dead=alert_callbacks.get("on_agent_dead"),
-                on_agent_stuck=alert_callbacks.get("on_agent_stuck"),
-                on_plan_detected=plan_detected_callback,
-            )
-            self.wire_monitor_callbacks()
-            self.bot._monitor_task = asyncio.create_task(
-                self.bot.monitor_loop.run(), name="monitor-loop"
-            )
-            await interaction.channel.send("All agents running. Monitor started.")
+            await interaction.channel.send("All agents running. Supervision tree active.")
 
         except Exception as exc:
             logger.exception("Error in /new-project")
@@ -271,26 +258,28 @@ class CommandsCog(commands.Cog):
     @app_commands.describe(agent_id="Agent ID to dispatch, or 'all' for all agents")
     @is_owner_app_check()
     async def dispatch_cmd(self, interaction: discord.Interaction, agent_id: str) -> None:
-        """Dispatch an agent or all agents (DISC-04)."""
+        """Dispatch an agent via supervision tree (DISC-04, MIGR-01).
+
+        Agents are managed by the CompanyRoot supervision tree. Dispatch checks
+        container state and triggers start if needed.
+        """
         if self.bot.project_config is None:
             await interaction.response.send_message(_no_project_msg(), ephemeral=True)
             return
 
         try:
-            if self.bot.agent_manager is None:
+            if self.bot.company_root is None:
                 await interaction.response.send_message(
-                    "Agent manager is not initialized.", ephemeral=True
+                    "Supervision tree is not initialized.", ephemeral=True
                 )
                 return
 
             await interaction.response.defer()
 
             if agent_id == "all":
-                results = await asyncio.to_thread(self.bot.agent_manager.dispatch_all)
-                succeeded = sum(1 for r in results if r.success)
-                failed = sum(1 for r in results if not r.success)
                 await interaction.followup.send(
-                    f"Dispatched all agents: {succeeded} succeeded, {failed} failed."
+                    "All agents are managed by the supervision tree. "
+                    "Containers start automatically when added to a project."
                 )
             else:
                 # Validate agent exists in config
@@ -301,14 +290,16 @@ class CommandsCog(commands.Cog):
                     )
                     return
 
-                result = await asyncio.to_thread(self.bot.agent_manager.dispatch, agent_id)
-                if result.success:
+                container = await self.bot.company_root._find_container(agent_id)
+                if container is not None:
+                    state = container.state
                     await interaction.followup.send(
-                        f"Agent **{agent_id}** dispatched successfully."
+                        f"Agent **{agent_id}** container state: {state}. "
+                        "Managed by supervision tree."
                     )
                 else:
                     await interaction.followup.send(
-                        f"Failed to dispatch **{agent_id}**: {result.error}"
+                        f"Agent **{agent_id}** not found in supervision tree."
                     )
         except Exception as exc:
             logger.exception("Error in /dispatch")
@@ -351,33 +342,34 @@ class CommandsCog(commands.Cog):
     @app_commands.describe(agent_id="Agent ID to kill")
     @is_owner_app_check()
     async def kill_cmd(self, interaction: discord.Interaction, agent_id: str) -> None:
-        """Kill an agent with confirmation (DISC-07)."""
+        """Kill an agent via supervision tree with confirmation (DISC-07, MIGR-01)."""
         if self.bot.project_config is None:
             await interaction.response.send_message(_no_project_msg(), ephemeral=True)
             return
 
         try:
-            if self.bot.agent_manager is None:
+            if self.bot.company_root is None:
                 await interaction.response.send_message(
-                    "Agent manager is not initialized.", ephemeral=True
+                    "Supervision tree is not initialized.", ephemeral=True
                 )
                 return
 
             view = ConfirmView()
             view.interaction_user_id = interaction.user.id
             await interaction.response.send_message(
-                f"Kill agent **{agent_id}**? This will terminate the session.",
+                f"Kill agent **{agent_id}**? This will stop the container.",
                 view=view,
             )
             await view.wait()
 
             if view.value is True:
-                success = await asyncio.to_thread(self.bot.agent_manager.kill, agent_id)
-                if success:
-                    await interaction.followup.send(f"Agent **{agent_id}** killed.")
+                container = await self.bot.company_root._find_container(agent_id)
+                if container is not None:
+                    await container.stop()
+                    await interaction.followup.send(f"Agent **{agent_id}** stopped.")
                 else:
                     await interaction.followup.send(
-                        f"Agent **{agent_id}** not found or already stopped."
+                        f"Agent **{agent_id}** not found in supervision tree."
                     )
             else:
                 await interaction.followup.send("Kill cancelled.")
@@ -395,15 +387,18 @@ class CommandsCog(commands.Cog):
     @app_commands.describe(agent_id="Agent ID to relaunch")
     @is_owner_app_check()
     async def relaunch_cmd(self, interaction: discord.Interaction, agent_id: str) -> None:
-        """Relaunch an agent (DISC-08)."""
+        """Relaunch an agent via supervision tree (DISC-08, MIGR-01).
+
+        Stops the container; the supervisor restart policy will restart it.
+        """
         if self.bot.project_config is None:
             await interaction.response.send_message(_no_project_msg(), ephemeral=True)
             return
 
         try:
-            if self.bot.agent_manager is None:
+            if self.bot.company_root is None:
                 await interaction.response.send_message(
-                    "Agent manager is not initialized.", ephemeral=True
+                    "Supervision tree is not initialized.", ephemeral=True
                 )
                 return
 
@@ -417,14 +412,16 @@ class CommandsCog(commands.Cog):
                 return
 
             await interaction.response.defer()
-            result = await asyncio.to_thread(self.bot.agent_manager.relaunch, agent_id)
-            if result.success:
+            container = await self.bot.company_root._find_container(agent_id)
+            if container is not None:
+                # Stop triggers supervisor restart policy
+                await container.stop()
                 await interaction.followup.send(
-                    f"Agent **{agent_id}** relaunched successfully."
+                    f"Agent **{agent_id}** stopped. Supervisor will restart per restart policy."
                 )
             else:
                 await interaction.followup.send(
-                    f"Failed to relaunch **{agent_id}**: {result.error}"
+                    f"Agent **{agent_id}** not found in supervision tree."
                 )
         except Exception as exc:
             logger.exception("Error in /relaunch")
@@ -565,17 +562,6 @@ class CommandsCog(commands.Cog):
                 await interaction.followup.send("Integration cancelled.")
                 return
 
-            # Check if monitor is available and set pending
-            monitor = self.bot.monitor_loop
-            if monitor:
-                if not monitor.all_agents_idle():
-                    monitor.set_integration_pending(True)
-                    await interaction.followup.send(
-                        "Integration pending -- will trigger when all agents "
-                        "complete their current phase."
-                    )
-                    return
-
             # Run pipeline immediately
             await interaction.followup.send("Starting integration pipeline...")
             project_dir = self.bot.project_dir
@@ -591,17 +577,6 @@ class CommandsCog(commands.Cog):
             # Handle result
             embed = build_integration_embed(result)
             await interaction.followup.send(embed=embed)
-
-            if result.status == "test_failure" and result.attribution:
-                agent_mgr = self.bot.agent_manager
-                if agent_mgr:
-                    for aid, tests in result.attribution.items():
-                        if aid.startswith("_"):
-                            continue
-                        agent_mgr.dispatch_fix(aid, tests)
-                    await interaction.followup.send(
-                        "Fix tasks dispatched to responsible agents."
-                    )
 
             if result.status == "merge_conflict":
                 conflict_embed = build_conflict_embed(
@@ -672,10 +647,10 @@ class CommandsCog(commands.Cog):
         state = "enabled" if self._advisories_enabled else "disabled"
         await interaction.response.send_message(f"Monitor advisories are now **{state}**.")
 
-    @app_commands.command(name="remove-project", description="Remove a project: kill agents, delete Discord channels/category, and clean files")
+    @app_commands.command(name="remove-project", description="Remove a project: stop supervision tree, delete Discord channels/category, and clean files")
     @is_owner_app_check()
     async def remove_project(self, interaction: discord.Interaction, name: str) -> None:
-        """Remove a project entirely: agents, Discord channels, and local files."""
+        """Remove a project entirely: supervision tree, Discord channels, and local files (MIGR-01)."""
         try:
             guild = interaction.guild
             if guild is None:
@@ -685,25 +660,17 @@ class CommandsCog(commands.Cog):
             await interaction.response.defer()
             removed = []
 
-            # Step 1: Kill agents if running
-            if self.bot.agent_manager and self.bot.project_config:
-                for agent in self.bot.project_config.agents:
-                    try:
-                        self.bot.agent_manager.kill(agent.id, force=True)
-                    except Exception:
-                        pass
-                removed.append("agents killed")
+            # Step 1: Remove project from supervision tree
+            if self.bot.company_root is not None:
+                try:
+                    await self.bot.company_root.remove_project(name)
+                    removed.append("project removed from supervision tree")
+                except KeyError:
+                    removed.append("project not found in supervision tree")
+                except Exception:
+                    logger.exception("Error removing project from supervision tree")
 
-            # Step 2: Stop monitor if running for this project
-            if self.bot.monitor_loop:
-                self.bot.monitor_loop.stop()
-                if self.bot._monitor_task:
-                    self.bot._monitor_task.cancel()
-                self.bot.monitor_loop = None
-                self.bot._monitor_task = None
-                removed.append("monitor stopped")
-
-            # Step 3: Kill project tmux session
+            # Step 2: Kill project tmux session
             try:
                 from vcompany.tmux.session import TmuxManager
                 tmux = TmuxManager()
@@ -712,7 +679,7 @@ class CommandsCog(commands.Cog):
             except Exception:
                 pass
 
-            # Step 4: Delete Discord category and all channels under it
+            # Step 3: Delete Discord category and all channels under it
             category_name = f"vco-{name}"
             category = discord.utils.get(guild.categories, name=category_name)
             if category:
@@ -721,7 +688,7 @@ class CommandsCog(commands.Cog):
                 await category.delete()
                 removed.append(f"Discord category '{category_name}' deleted")
 
-            # Step 5: Delete project files
+            # Step 4: Delete project files
             import shutil
             from vcompany.shared.paths import PROJECTS_BASE
             project_dir = PROJECTS_BASE / name
@@ -729,11 +696,10 @@ class CommandsCog(commands.Cog):
                 await asyncio.to_thread(shutil.rmtree, project_dir)
                 removed.append(f"files at {project_dir} deleted")
 
-            # Step 6: Clear bot project reference
+            # Step 5: Clear bot project reference
             if self.bot.project_dir and self.bot.project_dir.name == name:
                 self.bot.project_dir = None
                 self.bot.project_config = None
-                self.bot.agent_manager = None
                 removed.append("bot project reference cleared")
 
             summary = "\n".join(f"- {r}" for r in removed) if removed else "Nothing to remove."
@@ -745,13 +711,6 @@ class CommandsCog(commands.Cog):
                 await interaction.followup.send(f"Error: {exc}")
             else:
                 await interaction.response.send_message(f"Error: {exc}")
-
-    def wire_monitor_callbacks(self) -> None:
-        """Wire callbacks into monitor loop. Called from on_ready after monitor init."""
-        monitor = self.bot.monitor_loop
-        if monitor:
-            monitor._on_checkin = self._on_checkin
-            monitor._on_advisory = self._on_advisory
 
 
 async def setup(bot: commands.Bot) -> None:
