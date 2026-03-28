@@ -1,4 +1,4 @@
-"""Tests for VcoBot client class (DISC-01)."""
+"""Tests for VcoBot client class (DISC-01, MIGR-01)."""
 
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -51,13 +51,11 @@ class TestVcoBotInit:
         assert bot.intents.message_content is True
 
     def test_initial_state(self):
-        """Bot starts with initialized=False, ready_flag=False."""
+        """Bot starts with initialized=False, ready_flag=False, company_root=None."""
         bot = _make_bot()
         assert bot._initialized is False
         assert bot._ready_flag is False
-        assert bot.agent_manager is None
-        assert bot.monitor_loop is None
-        assert bot.crash_tracker is None
+        assert bot.company_root is None
 
     def test_project_optional(self):
         """Bot can be created without project."""
@@ -65,6 +63,14 @@ class TestVcoBotInit:
         assert bot.project_dir is None
         assert bot.project_config is None
         assert bot._guild_id == 12345
+
+    def test_no_v1_attributes(self):
+        """Bot no longer has v1 agent_manager, monitor_loop, crash_tracker attributes."""
+        bot = _make_bot()
+        assert not hasattr(bot, "agent_manager")
+        assert not hasattr(bot, "monitor_loop")
+        assert not hasattr(bot, "crash_tracker")
+        assert not hasattr(bot, "workflow_orchestrator")
 
 
 class TestVcoBotSetupHook:
@@ -191,8 +197,43 @@ class TestVcoBotProjectless:
         mock_guild.create_role = AsyncMock()
         bot.get_guild = MagicMock(return_value=mock_guild)
 
-        await bot.on_ready()
+        # Prevent auto-detection from picking up real projects on disk
+        with patch.object(bot, "_detect_active_project", return_value=None):
+            await bot.on_ready()
 
         assert bot._initialized is True
         assert bot._ready_flag is True
-        assert bot.agent_manager is None
+        assert bot.company_root is None
+
+
+class TestVcoBotCompanyRoot:
+    """VcoBot uses CompanyRoot supervision tree (MIGR-01)."""
+
+    def test_company_root_attribute_exists(self):
+        """Bot has company_root attribute initialized to None."""
+        bot = _make_bot()
+        assert hasattr(bot, "company_root")
+        assert bot.company_root is None
+
+    @pytest.mark.asyncio
+    async def test_close_stops_company_root(self):
+        """close() calls company_root.stop() if company_root exists."""
+        bot = _make_bot()
+        mock_root = AsyncMock()
+        bot.company_root = mock_root
+
+        # Mock super().close()
+        with patch.object(type(bot).__bases__[0], "close", new_callable=AsyncMock):
+            await bot.close()
+
+        mock_root.stop.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_close_without_company_root(self):
+        """close() succeeds when company_root is None."""
+        bot = _make_bot()
+        bot.company_root = None
+
+        with patch.object(type(bot).__bases__[0], "close", new_callable=AsyncMock):
+            await bot.close()
+        # No exception raised
