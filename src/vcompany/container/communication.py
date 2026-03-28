@@ -6,9 +6,12 @@ No file IPC, no in-memory callbacks -- Discord implements this in later phases.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,3 +40,20 @@ class CommunicationPort(Protocol):
     async def receive_message(self) -> Message | None:
         """Receive the next pending message, or None if queue is empty."""
         ...
+
+
+class NoopCommunicationPort:
+    """Stub CommunicationPort for v2.1 wiring. Logs instead of sending.
+
+    Satisfies the CommunicationPort Protocol. Real Discord-backed
+    implementation comes in later phases.
+    """
+
+    async def send_message(self, target: str, content: str) -> bool:
+        """Log and discard the message. Returns True."""
+        logger.debug("comm_port.send_message(target=%s, len=%d)", target, len(content))
+        return True
+
+    async def receive_message(self) -> Message | None:
+        """Always returns None -- no messages in noop port."""
+        return None

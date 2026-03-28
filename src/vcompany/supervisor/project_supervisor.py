@@ -39,6 +39,7 @@ class ProjectSupervisor(Supervisor):
         data_dir: Path | None = None,
         tmux_manager: object | None = None,
         project_dir: Path | None = None,
+        comm_port: object | None = None,
     ) -> None:
         self._project_id = project_id
         super().__init__(
@@ -53,6 +54,7 @@ class ProjectSupervisor(Supervisor):
             tmux_manager=tmux_manager,
             project_dir=project_dir,
             session_name=f"vco-{project_id}",
+            comm_port=comm_port,
         )
 
     @property

@@ -63,6 +63,7 @@ class Supervisor:
         tmux_manager: object | None = None,
         project_dir: Path | None = None,
         session_name: str | None = None,
+        comm_port: object | None = None,
     ) -> None:
         self.supervisor_id = supervisor_id
         self.strategy = strategy
@@ -75,6 +76,8 @@ class Supervisor:
         self._tmux_manager = tmux_manager
         self._project_dir = project_dir
         self._session_name = session_name
+        # Communication port passed to all child containers
+        self._comm_port = comm_port
 
         self._children: dict[str, AgentContainer] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
@@ -280,6 +283,7 @@ class Supervisor:
         container = create_container(
             spec,
             data_dir=self._data_dir,
+            comm_port=self._comm_port,
             on_state_change=self._make_state_change_callback(spec.child_id),
             tmux_manager=self._tmux_manager,
             project_dir=self._project_dir,

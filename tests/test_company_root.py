@@ -123,3 +123,62 @@ class TestCompanyRoot:
 
         root = CompanyRoot(data_dir=tmp_path, on_escalation=handler)
         assert root._on_escalation is handler
+
+    @pytest.mark.asyncio
+    async def test_add_company_agent_creates_direct_child(self, tmp_path):
+        """add_company_agent creates an AgentContainer as a direct child of CompanyRoot."""
+        root = CompanyRoot(data_dir=tmp_path)
+        await root.start()
+
+        spec = _make_spec("strategist")
+        container = await root.add_company_agent(spec)
+
+        assert container is not None
+        assert "strategist" in root._company_agents
+        assert root._company_agents["strategist"] is container
+
+        await root.stop()
+
+    @pytest.mark.asyncio
+    async def test_health_tree_includes_company_agents(self, tmp_path):
+        """health_tree() includes company_agents nodes."""
+        root = CompanyRoot(data_dir=tmp_path)
+        await root.start()
+
+        spec = _make_spec("strategist")
+        await root.add_company_agent(spec)
+
+        tree = root.health_tree()
+        assert len(tree.company_agents) == 1
+        assert tree.company_agents[0].report.agent_id == "strategist"
+
+        await root.stop()
+
+    @pytest.mark.asyncio
+    async def test_health_tree_company_agent_has_correct_agent_id(self, tmp_path):
+        """health_tree() company_agents nodes have the correct agent_id."""
+        root = CompanyRoot(data_dir=tmp_path)
+        await root.start()
+
+        await root.add_company_agent(_make_spec("company-agent-1"))
+        await root.add_company_agent(_make_spec("company-agent-2"))
+
+        tree = root.health_tree()
+        agent_ids = {node.report.agent_id for node in tree.company_agents}
+        assert agent_ids == {"company-agent-1", "company-agent-2"}
+
+        await root.stop()
+
+    @pytest.mark.asyncio
+    async def test_stop_stops_company_agents(self, tmp_path):
+        """CompanyRoot.stop() stops all company agents."""
+        root = CompanyRoot(data_dir=tmp_path)
+        await root.start()
+
+        spec = _make_spec("strategist")
+        container = await root.add_company_agent(spec)
+
+        await root.stop()
+
+        assert container.state in ("stopped", "destroyed")
+        assert root._company_agents == {}

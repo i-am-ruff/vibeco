@@ -16,9 +16,10 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from vcompany.container.child_spec import ChildSpec
+from vcompany.container.communication import NoopCommunicationPort
 from vcompany.container.container import AgentContainer
-from vcompany.container.factory import register_defaults
-from vcompany.container.health import CompanyHealthTree, HealthReport, HealthTree
+from vcompany.container.factory import create_container, register_defaults
+from vcompany.container.health import CompanyHealthTree, HealthNode, HealthReport, HealthTree
 from vcompany.container.memory_store import MemoryStore
 from vcompany.resilience.degraded_mode import DegradedModeManager
 from vcompany.supervisor.project_supervisor import ProjectSupervisor
@@ -72,6 +73,9 @@ class CompanyRoot(Supervisor):
             on_health_change=on_health_change,
         )
         self._projects: dict[str, ProjectSupervisor] = {}
+        self._company_agents: dict[str, AgentContainer] = {}
+        # Shared NoopCommunicationPort for all containers -- real impl in later phases
+        self._comm_port = NoopCommunicationPort()
         self._tmux_manager = tmux_manager
         self._project_dir = project_dir
         # Degraded mode manager (RESL-03)
@@ -104,16 +108,45 @@ class CompanyRoot(Supervisor):
     def health_tree(self) -> CompanyHealthTree:
         """Build a company-wide health tree from all project supervisors.
 
-        Returns a CompanyHealthTree containing a HealthTree per project.
+        Returns a CompanyHealthTree containing a HealthTree per project and
+        HealthNodes for company-level agents (e.g. Strategist).
         """
+        company_nodes = [
+            HealthNode(report=agent.health_report())
+            for agent in self._company_agents.values()
+        ]
         project_trees: list[HealthTree] = []
         for _project_id, ps in self._projects.items():
             project_trees.append(ps.health_tree())
         return CompanyHealthTree(
             supervisor_id=self.supervisor_id,
             state=self._state,
+            company_agents=company_nodes,
             projects=project_trees,
         )
+
+    async def add_company_agent(self, spec: ChildSpec) -> AgentContainer:
+        """Create and start a company-level agent (e.g., Strategist).
+
+        Company agents are direct children of CompanyRoot, not under any
+        ProjectSupervisor. They appear in health_tree().company_agents.
+
+        Args:
+            spec: ChildSpec for the company agent.
+
+        Returns:
+            The started AgentContainer (or subclass).
+        """
+        container = create_container(
+            spec,
+            data_dir=self._data_dir,
+            comm_port=self._comm_port,
+            on_state_change=self._make_state_change_callback(spec.child_id),
+        )
+        await container.start()
+        self._company_agents[spec.child_id] = container
+        logger.info("Added company agent %s", spec.child_id)
+        return container
 
     async def add_project(
         self,
@@ -153,6 +186,7 @@ class CompanyRoot(Supervisor):
             data_dir=self._data_dir,
             tmux_manager=self._tmux_manager,
             project_dir=self._project_dir,
+            comm_port=self._comm_port,
         )
         await ps.start()
         self._projects[project_id] = ps
@@ -174,7 +208,12 @@ class CompanyRoot(Supervisor):
         logger.info("Removed project %s", project_id)
 
     async def _find_container(self, agent_id: str) -> AgentContainer | None:
-        """Search all ProjectSupervisors for a container by agent_id."""
+        """Search company agents and all ProjectSupervisors for a container by agent_id."""
+        # Check company agents first
+        container = self._company_agents.get(agent_id)
+        if container is not None:
+            return container
+        # Then check project supervisors
         for ps in self._projects.values():
             container = ps.children.get(agent_id)
             if container is not None:
@@ -254,6 +293,7 @@ class CompanyRoot(Supervisor):
                 data_dir=self._data_dir,
                 tmux_manager=self._tmux_manager,
                 project_dir=self._project_dir,
+                comm_port=self._comm_port,
             )
             await new_ps.start()
             self._projects[project_id] = new_ps
@@ -287,6 +327,15 @@ class CompanyRoot(Supervisor):
         # Close scheduler memory store
         if self._scheduler_memory is not None:
             await self._scheduler_memory.close()
+
+        # Stop company-level agents (Strategist, etc.)
+        for agent in list(self._company_agents.values()):
+            if agent.state not in ("stopped", "destroyed", "stopping"):
+                try:
+                    await agent.stop()
+                except Exception:
+                    logger.warning("Error stopping company agent", exc_info=True)
+        self._company_agents.clear()
 
         # Stop all dynamically added projects
         for ps in list(self._projects.values()):
