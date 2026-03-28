@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from vcompany.bot.cogs.workflow_orchestrator_cog import WorkflowOrchestratorCog
-from vcompany.orchestrator.workflow_orchestrator import WorkflowStage
+from vcompany.shared.workflow_types import WorkflowStage
 from vcompany.strategist.models import ConfidenceResult, PMDecision
 
 

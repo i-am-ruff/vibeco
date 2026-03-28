@@ -353,25 +353,6 @@ def test_bot_config_graceful_without_api_key():
 
 
 # ---------------------------------------------------------------------------
-# MonitorLoop status digest
+# MonitorLoop status digest -- REMOVED during MIGR-03
+# v1 MonitorLoop deleted; status digest handled by supervision tree.
 # ---------------------------------------------------------------------------
-
-
-def test_monitor_loop_accepts_digest_callback():
-    """MonitorLoop should accept on_status_digest and digest_interval params."""
-    from vcompany.monitor.loop import MonitorLoop
-
-    callback = MagicMock()
-    config = MagicMock()
-    config.agents = []
-    tmux = MagicMock()
-
-    loop = MonitorLoop(
-        project_dir=Path("/tmp/test"),
-        config=config,
-        tmux=tmux,
-        on_status_digest=callback,
-        digest_interval=900,
-    )
-    assert loop._on_status_digest is callback
-    assert loop._digest_interval == 900

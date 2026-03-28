@@ -1,6 +1,7 @@
-"""Tests for ConflictResolver and AgentManager.dispatch_fix.
+"""Tests for ConflictResolver.
 
 TDD RED phase: these tests define the expected behavior.
+Note: AgentManager.dispatch_fix tests removed during MIGR-03 (v1 module deletion).
 """
 
 from __future__ import annotations
@@ -12,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from vcompany.integration.conflict_resolver import ConflictResolver
-from vcompany.orchestrator.agent_manager import AgentManager, DispatchResult
 
 
 # ── ConflictResolver tests ────────────────────────────────────────────
@@ -150,88 +150,3 @@ async def test_resolve_all_multiple_files(mock_pm, conflict_file, no_conflict_fi
 
     assert isinstance(results, dict)
     assert len(results) == 2
-
-
-# ── AgentManager.dispatch_fix tests ───────────────────────────────────
-
-
-@pytest.fixture
-def agent_manager(tmp_path: Path):
-    """Create an AgentManager with mocked dependencies."""
-    config = MagicMock()
-    agent_cfg = MagicMock()
-    agent_cfg.id = "agent-backend"
-    agent_cfg.role = "backend"
-    config.agents = [agent_cfg]
-    config.project = "test-project"
-
-    tmux = MagicMock()
-    pane = MagicMock()
-    pane.pane_pid = "12345"
-    pane.pane_id = "%0"
-    tmux.create_session.return_value = MagicMock()
-    tmux.create_pane.return_value = pane
-
-    # Create state dir
-    (tmp_path / "state").mkdir(exist_ok=True)
-
-    mgr = AgentManager(project_dir=tmp_path, config=config, tmux=tmux)
-    # Pre-populate panes dict so dispatch_fix can find the pane
-    mgr._panes["agent-backend"] = pane
-    return mgr
-
-
-def test_dispatch_fix_sends_gsd_quick(agent_manager):
-    """AgentManager.dispatch_fix() sends /gsd:quick with test failure info to agent tmux pane."""
-    result = agent_manager.dispatch_fix(
-        agent_id="agent-backend",
-        failing_tests=["test_auth_login", "test_auth_logout"],
-        error_output="AssertionError: expected 200 got 401",
-    )
-
-    assert isinstance(result, DispatchResult)
-    assert result.success is True
-
-    # Verify tmux send_command was called
-    tmux = agent_manager._tmux
-    tmux.send_command.assert_called_once()
-    call_args = tmux.send_command.call_args
-    prompt = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("command", "")
-    assert "/gsd:quick" in prompt
-
-
-def test_dispatch_fix_returns_dispatch_result(agent_manager):
-    """AgentManager.dispatch_fix() returns DispatchResult with success status."""
-    result = agent_manager.dispatch_fix(
-        agent_id="agent-backend",
-        failing_tests=["test_something"],
-    )
-
-    assert isinstance(result, DispatchResult)
-    assert result.success is True
-    assert result.agent_id == "agent-backend"
-
-
-def test_dispatch_fix_includes_test_names(agent_manager):
-    """dispatch_fix includes failing test names and file paths in the prompt."""
-    agent_manager.dispatch_fix(
-        agent_id="agent-backend",
-        failing_tests=["tests/test_api.py::test_login", "tests/test_api.py::test_register"],
-        error_output="FAILED tests/test_api.py::test_login",
-    )
-
-    tmux = agent_manager._tmux
-    call_args = tmux.send_command.call_args
-    prompt = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("command", "")
-    assert "test_login" in prompt
-    assert "test_register" in prompt
-
-
-def test_dispatch_fix_unknown_agent(agent_manager):
-    """dispatch_fix for unknown agent returns failure."""
-    result = agent_manager.dispatch_fix(
-        agent_id="nonexistent",
-        failing_tests=["test_x"],
-    )
-
-    assert result.success is False

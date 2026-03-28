@@ -19,9 +19,8 @@ from typing import TYPE_CHECKING
 import discord
 from discord.ext import commands
 
-# Keep importing from v1 module for signal detection and stage enum.
-# Plan 03 will extract these to a shared utility module.
-from vcompany.orchestrator.workflow_orchestrator import (
+# Extracted from v1 workflow_orchestrator to shared utility during MIGR-03.
+from vcompany.shared.workflow_types import (
     WorkflowStage,
     detect_stage_signal,
 )
