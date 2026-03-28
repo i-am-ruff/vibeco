@@ -305,6 +305,7 @@ class VcoBot(commands.Bot):
                         owned_dirs=agent_cfg.owns,
                         gsd_mode=agent_cfg.gsd_mode,
                         system_prompt=agent_cfg.system_prompt,
+                        gsd_command="/gsd:discuss-phase 1" if agent_cfg.type == "gsd" else None,
                     )
                     specs.append(ChildSpec(child_id=agent_cfg.id, agent_type=ctx.agent_type, context=ctx))
 

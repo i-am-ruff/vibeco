@@ -225,6 +225,7 @@ class CommandsCog(commands.Cog):
                     parent_id="project-supervisor",
                     project_id=config.project,
                     owned_dirs=agent.owns,
+                    gsd_command="/gsd:discuss-phase 1" if agent.type == "gsd" else None,
                 )
                 specs.append(ChildSpec(child_id=agent.id, agent_type=ctx.agent_type, context=ctx))
 

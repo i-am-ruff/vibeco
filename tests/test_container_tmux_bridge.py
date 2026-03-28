@@ -35,6 +35,8 @@ def _mock_tmux():
     mock_tmux.send_command.return_value = True
     mock_tmux.get_pane_by_id.return_value = mock_pane
     mock_tmux.is_alive.return_value = True
+    # Return ready prompt immediately so _wait_for_claude_ready completes fast
+    mock_tmux.get_output.return_value = [">"]
     return mock_tmux
 
 
@@ -53,10 +55,19 @@ def _make_spec(
 
 @pytest.mark.asyncio
 async def test_start_creates_tmux_pane_for_gsd_agent(tmp_path: Path) -> None:
-    """start() creates a tmux pane and launches Claude Code for gsd agent."""
+    """start() creates a tmux pane and launches Claude Code for gsd agent.
+
+    When gsd_command is configured, send_command is called twice:
+    once for the claude launch command, once for the GSD command.
+    """
     mock = _mock_tmux()
     container = AgentContainer(
-        context=_ctx(agent_type="gsd"),
+        context=ContainerContext(
+            agent_id="test-agent",
+            agent_type="gsd",
+            project_id="myproject",
+            gsd_command="/gsd:discuss-phase 1",
+        ),
         data_dir=tmp_path,
         tmux_manager=mock,
         project_dir=tmp_path,
@@ -70,11 +81,66 @@ async def test_start_creates_tmux_pane_for_gsd_agent(tmp_path: Path) -> None:
     # Check window_name kwarg
     call_kwargs = mock.create_pane.call_args
     assert call_kwargs[1].get("window_name") == "test-agent" or call_kwargs[0][1] == "test-agent"
-    # send_command called with command containing claude
-    mock.send_command.assert_called_once()
+    # send_command called twice: once for claude launch, once for GSD command
+    assert mock.send_command.call_count == 2
+    first_call_arg = mock.send_command.call_args_list[0][0][1]
+    assert "claude --dangerously-skip-permissions" in first_call_arg
+    second_call_arg = mock.send_command.call_args_list[1][0][1]
+    assert second_call_arg == "/gsd:discuss-phase 1"
+    assert container._pane_id == "%99"
+
+    await container.stop()
+
+
+@pytest.mark.asyncio
+async def test_gsd_command_not_sent_when_none(tmp_path: Path) -> None:
+    """start() does not send a second send_command when gsd_command is None."""
+    mock = _mock_tmux()
+    container = AgentContainer(
+        context=_ctx(agent_type="gsd"),  # gsd_command defaults to None
+        data_dir=tmp_path,
+        tmux_manager=mock,
+        project_dir=tmp_path,
+        project_session_name="vco-myproject",
+    )
+    with patch("vcompany.container.container.asyncio.sleep", return_value=None):
+        await container.start()
+
+    # Only the claude launch command should be sent -- no GSD command
+    assert mock.send_command.call_count == 1
     cmd_arg = mock.send_command.call_args[0][1]
     assert "claude --dangerously-skip-permissions" in cmd_arg
-    assert container._pane_id == "%99"
+
+    await container.stop()
+
+
+@pytest.mark.asyncio
+async def test_gsd_command_not_sent_on_timeout(tmp_path: Path) -> None:
+    """start() does not send gsd_command if _wait_for_claude_ready times out."""
+    mock = _mock_tmux()
+    # get_output always returns a non-ready line so the poll never detects ready
+    mock.get_output.return_value = ["loading..."]
+    container = AgentContainer(
+        context=ContainerContext(
+            agent_id="test-agent",
+            agent_type="gsd",
+            project_id="myproject",
+            gsd_command="/gsd:discuss-phase 1",
+        ),
+        data_dir=tmp_path,
+        tmux_manager=mock,
+        project_dir=tmp_path,
+        project_session_name="vco-myproject",
+    )
+    with patch("vcompany.container.container.asyncio.sleep", return_value=None):
+        # Patch _wait_for_claude_ready to return False (timeout simulation)
+        with patch.object(container, "_wait_for_claude_ready", return_value=False):
+            await container.start()
+
+    # Only the claude launch command should be sent -- GSD command not sent on timeout
+    assert mock.send_command.call_count == 1
+    cmd_arg = mock.send_command.call_args[0][1]
+    assert "claude --dangerously-skip-permissions" in cmd_arg
 
     await container.stop()
 
