@@ -308,7 +308,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 09-01-PLAN.md -- AgentConfig type field + hasattr removal
+- [x] 09-01-PLAN.md -- AgentConfig type field + hasattr removal
 - [ ] 09-02-PLAN.md -- PM event dispatch, /new-project wiring, dead code cleanup
 
 ### Phase 10: MessageQueue Notification Routing (GAP CLOSURE)

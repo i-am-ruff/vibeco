@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
-status: Milestone complete
-stopped_at: Completed 08.2-02-PLAN.md
-last_updated: "2026-03-28T04:02:53.743Z"
+status: Ready to plan
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-03-28T04:53:14.068Z"
 progress:
-  total_phases: 10
-  completed_phases: 10
-  total_plans: 26
-  completed_plans: 26
+  total_phases: 12
+  completed_phases: 11
+  total_plans: 28
+  completed_plans: 28
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 08.2 — deep-integration
+**Current focus:** Phase 09 — agent-type-routing-and-pm-event-dispatch
 
 ## Current Position
 
-Phase: 08.2
+Phase: 10
 Plan: Not started
 
 ## Performance Metrics
@@ -72,6 +72,8 @@ Plan: Not started
 | Phase 08.1 P02 | 2min | 2 tasks | 2 files |
 | Phase 08.2 P01 | 6min | 2 tasks | 10 files |
 | Phase 08.2 P02 | 4min | 2 tasks | 5 files |
+| Phase 09 P01 | 3min | 2 tasks | 5 files |
+| Phase 09 P02 | 8min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -139,6 +141,9 @@ Recent decisions affecting current work:
 - [Phase 08.2]: _needs_tmux_session True only for gsd/continuous types -- fulltime/company are event-driven
 - [Phase 08.2]: TmuxManager created in on_ready and /new-project, injected into CompanyRoot
 - [Phase 08.2]: /status removed entirely -- /health is the canonical replacement
+- [Phase 09]: AgentConfig.type uses Pydantic Literal for validated enum with gsd default -- backward compatible
+- [Phase 09]: Duck-type check hasattr(container, 'make_completion_event') for GsdAgent detection in event dispatch
+- [Phase 09]: Local imports in /new-project command body to avoid circular imports at cog load time
 
 ### Pending Todos
 
@@ -153,6 +158,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T03:57:32.668Z
-Stopped at: Completed 08.2-02-PLAN.md
+Last session: 2026-03-28T04:48:58.699Z
+Stopped at: Completed 09-02-PLAN.md
 Resume file: None

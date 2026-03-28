@@ -30,8 +30,8 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 - [x] **TYPE-01**: GsdAgent with internal phase FSM (IDLE→DISCUSS→PLAN→EXECUTE→UAT→SHIP) absorbing WorkflowOrchestrator
 - [x] **TYPE-02**: GsdAgent saves checkpoint to memory_store after each state transition — crash recovery resumes from last completed state
 - [x] **TYPE-03**: ContinuousAgent with scheduled wake/sleep cycles (WAKE→GATHER→ANALYZE→ACT→REPORT→SLEEP) and persistent memory_store
-- [ ] **TYPE-04**: FulltimeAgent (PM) is event-driven — reacts to agent state transitions, health changes, escalations, briefings, milestone completion
-- [ ] **TYPE-05**: CompanyAgent (Strategist) is event-driven, alive for company duration, holds cross-project state, survives project restarts
+- [x] **TYPE-04**: FulltimeAgent (PM) is event-driven — reacts to agent state transitions, health changes, escalations, briefings, milestone completion
+- [x] **TYPE-05**: CompanyAgent (Strategist) is event-driven, alive for company duration, holds cross-project state, survives project restarts
 
 ### Health Reporting
 
@@ -46,7 +46,7 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 - [x] **AUTO-02**: GSD state machine consumes milestones from the living queue, not a static list
 - [x] **AUTO-03**: Delegation protocol — ContinuousAgent requests task spawns through supervisor with hard caps and rate limits
 - [x] **AUTO-04**: Supervisor validates delegation requests, enforces policy, spawns short-lived task agents
-- [ ] **AUTO-05**: Project state owned by PM — agents read assignments and write completions. Agent crash never corrupts project state
+- [x] **AUTO-05**: Project state owned by PM — agents read assignments and write completions. Agent crash never corrupts project state
 - [x] **AUTO-06**: Scheduler in CompanyRoot triggers WAKE on sleeping ContinuousAgents per their configured schedule
 
 ### Resilience
@@ -114,8 +114,8 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 | TYPE-01 | Phase 3 | Complete |
 | TYPE-02 | Phase 3 | Complete |
 | TYPE-03 | Phase 4 | Complete |
-| TYPE-04 | Phase 9 | Pending |
-| TYPE-05 | Phase 9 | Pending |
+| TYPE-04 | Phase 9 | Complete |
+| TYPE-05 | Phase 9 | Complete |
 | AUTO-06 | Phase 4 | Complete |
 | HLTH-02 | Phase 5 | Complete |
 | HLTH-03 | Phase 5 | Complete |
@@ -127,7 +127,7 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 | AUTO-02 | Phase 7 | Complete |
 | AUTO-03 | Phase 7 | Complete |
 | AUTO-04 | Phase 7 | Complete |
-| AUTO-05 | Phase 9 | Pending |
+| AUTO-05 | Phase 9 | Complete |
 | MIGR-01 | Phase 8 | Complete |
 | MIGR-02 | Phase 8 | Complete |
 | MIGR-03 | Phase 8 | Complete |
