@@ -140,7 +140,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 → 15 → 16 → 17
 |-------|-----------|----------------|--------|-----------|
 | 11. Container Architecture Fixes | v2.1 | 2/2 | Complete    | 2026-03-28 |
 | 12. Work Initiation | v2.1 | 1/1 | Complete    | 2026-03-28 |
-| 13. PM Event Routing | v2.1 | 1/1 | Complete   | 2026-03-28 |
+| 13. PM Event Routing | v2.1 | 1/1 | Complete    | 2026-03-28 |
 | 14. PM Review Gates | v2.1 | 0/0 | Not started | - |
 | 15. PM Actions & Auto Distribution | v2.1 | 0/0 | Not started | - |
 | 16. Agent Completeness & Strategist | v2.1 | 0/0 | Not started | - |
