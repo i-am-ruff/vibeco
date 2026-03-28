@@ -28,6 +28,7 @@ from vcompany.strategist.decision_log import DecisionLogger
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from vcompany.agent.company_agent import CompanyAgent
     from vcompany.bot.client import VcoBot
 
 logger = logging.getLogger(__name__)
@@ -52,19 +53,39 @@ class StrategistCog(commands.Cog):
         self._decision_logger: DecisionLogger | None = None
         self._owner_role_name = "vco-owner"
         self._pending_escalations: dict[int, asyncio.Future] = {}
+        # CompanyAgent container -- set via set_company_agent() in VcoBot.on_ready
+        self._company_agent: CompanyAgent | None = None
+
+    def set_company_agent(self, agent: CompanyAgent) -> None:
+        """Wire the CompanyAgent container that owns the Strategist conversation.
+
+        Called by VcoBot.on_ready after the agent is created and started.
+
+        Args:
+            agent: The CompanyAgent instance to route events through.
+        """
+        self._company_agent = agent
+        logger.info("StrategistCog wired to CompanyAgent %s", agent.context.agent_id)
 
     async def initialize(
         self,
-        persona_path: Path | None,
+        persona_path: Path | None = None,
         decisions_path: Path | None = None,
     ) -> None:
-        """Initialize the Strategist conversation and decision logger.
+        """Initialize channels and decision logger.
+
+        StrategistConversation is now owned by CompanyAgent (created via
+        initialize_conversation()). This method handles channel resolution
+        and DecisionLogger only.
 
         Args:
-            persona_path: Path to STRATEGIST-PERSONA.md, or None for default.
+            persona_path: Kept for backward compat signature; no longer used here.
             decisions_path: Path to state/decisions.jsonl file, or None if no project.
         """
-        self._conversation = StrategistConversation(persona_path=persona_path)
+        # Backward compat: create conversation directly if no CompanyAgent wired yet.
+        # This path is used in tests and early startup before on_ready wires the container.
+        if self._company_agent is None and persona_path is not None:
+            self._conversation = StrategistConversation(persona_path=persona_path)
         await self._resolve_channels()
         if decisions_path is not None:
             self._decision_logger = DecisionLogger(
@@ -73,7 +94,7 @@ class StrategistCog(commands.Cog):
             )
         else:
             logger.info("No decisions_path -- DecisionLogger disabled (no project loaded)")
-        logger.info("StrategistCog initialized with persistent conversation")
+        logger.info("StrategistCog initialized (channels resolved)")
 
     async def _resolve_channels(self) -> None:
         """Find #strategist and #decisions channels in the guild."""
@@ -159,8 +180,8 @@ class StrategistCog(commands.Cog):
                 future.set_result(message.content)
             return
 
-        # Check if conversation is initialized
-        if self._conversation is None:
+        # Check if conversation is initialized (via CompanyAgent or direct fallback)
+        if self._company_agent is None and self._conversation is None:
             await message.reply("Strategist not initialized yet.")
             return
 
@@ -221,6 +242,9 @@ class StrategistCog(commands.Cog):
     ) -> str:
         """Send message to Strategist and post response to channel.
 
+        Routes through CompanyAgent when wired (ARCH-01). Falls back to
+        direct conversation call for backward compat during early startup.
+
         Sends a "Thinking..." placeholder, waits for full response, then
         edits the placeholder with the answer. Long responses (>2000 chars)
         split into multiple messages.
@@ -234,7 +258,22 @@ class StrategistCog(commands.Cog):
         """
         placeholder = await channel.send("Thinking...")
 
-        response = await self._conversation.send(content)
+        if self._company_agent is not None:
+            # Route through CompanyAgent container (ARCH-01)
+            future: asyncio.Future[str] = asyncio.get_event_loop().create_future()
+            await self._company_agent.post_event({
+                "type": "strategist_message",
+                "content": content,
+                "channel_id": channel.id,
+                "_response_future": future,
+            })
+            response = await future
+        else:
+            # Fallback: direct conversation call (backward compat)
+            if self._conversation is None:
+                await placeholder.edit(content="Strategist not initialized.")
+                return ""
+            response = await self._conversation.send(content)
 
         # Post response (split if > 2000 chars)
         if len(response) > _DISCORD_MAX_CHARS:
@@ -254,9 +293,8 @@ class StrategistCog(commands.Cog):
     ) -> str | None:
         """Handle PM escalation: forward question to Strategist conversation.
 
-        Formats the question as a PM escalation and sends to the persistent
-        conversation. Collects the full response (does not stream to channel
-        for escalations -- they are internal).
+        Routes through CompanyAgent container when wired (ARCH-01). Falls
+        back to direct conversation call for backward compat.
 
         Args:
             agent_id: ID of the agent asking the question.
@@ -267,6 +305,19 @@ class StrategistCog(commands.Cog):
             Response text if Strategist is confident, None if owner
             escalation is needed.
         """
+        if self._company_agent is not None:
+            # Route through CompanyAgent container (ARCH-01)
+            future: asyncio.Future[str | None] = asyncio.get_event_loop().create_future()
+            await self._company_agent.post_event({
+                "type": "pm_escalation",
+                "agent_id": agent_id,
+                "question": question,
+                "confidence": confidence_score,
+                "_response_future": future,
+            })
+            return await future
+
+        # Fallback: direct conversation call (backward compat)
         if self._conversation is None:
             return None
 
