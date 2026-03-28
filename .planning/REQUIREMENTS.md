@@ -15,11 +15,11 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 
 ### PM Review Gates
 
-- [ ] **GATE-01**: Agent stops after each GSD stage transition (discuss→plan, plan→execute, etc.) and posts to its Discord channel: `[agent-id] @PM, finished [stage], need your review` with key file attachments
+- [x] **GATE-01**: Agent stops after each GSD stage transition (discuss→plan, plan→execute, etc.) and posts to its Discord channel: `[agent-id] @PM, finished [stage], need your review` with key file attachments
 - [ ] **GATE-02**: PM reads attached files, reviews against project context/memory, and responds with approve/modify/clarify in the agent's channel
 - [ ] **GATE-03**: Multi-turn conversation: PM and agent discuss until PM is satisfied — agent only advances when PM approves
-- [ ] **GATE-04**: Agent reads PM's response, understands approve vs modify vs clarify, and acts accordingly (continue / fix / explain)
-- [ ] **GATE-05**: Message throttling: maximum 1 message per 30 seconds per agent to keep Discord rate limits happy
+- [x] **GATE-04**: Agent reads PM's response, understands approve vs modify vs clarify, and acts accordingly (continue / fix / explain)
+- [x] **GATE-05**: Message throttling: maximum 1 message per 30 seconds per agent to keep Discord rate limits happy
 
 ### PM Event Routing
 
@@ -86,11 +86,11 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 | WORK-01 | Phase 12 | Complete |
 | WORK-02 | Phase 12 | Complete |
 | WORK-03 | Phase 15 | Pending |
-| GATE-01 | Phase 14 | Pending |
+| GATE-01 | Phase 14 | Complete |
 | GATE-02 | Phase 14 | Pending |
 | GATE-03 | Phase 14 | Pending |
-| GATE-04 | Phase 14 | Pending |
-| GATE-05 | Phase 14 | Pending |
+| GATE-04 | Phase 14 | Complete |
+| GATE-05 | Phase 14 | Complete |
 | PMRT-01 | Phase 13 | Complete |
 | PMRT-02 | Phase 13 | Complete |
 | PMRT-03 | Phase 13 | Complete |
