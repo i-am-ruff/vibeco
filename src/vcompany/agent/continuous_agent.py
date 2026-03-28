@@ -9,10 +9,11 @@ mid-cycle via HistoryState.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from statemachine.orderedset import OrderedSet
 
@@ -65,6 +66,13 @@ class ContinuousAgent(AgentContainer):
         self._cycle_count: int = 0
         # PMRT-03: Briefing callback hook -- wired by VcoBot.on_ready()
         self._on_briefing: Callable[[str, str], Awaitable[None]] | None = None
+        # AGNT-02: Persistent agent state
+        self._seen_items: set[str] = set()
+        self._pending_actions: list[dict] = []
+        self._briefing_log: list[str] = []
+        self._config: dict[str, Any] = {}
+        # AGNT-01: Delegation callback -- wired by supervisor
+        self._request_delegation: Callable[[Any], Awaitable[Any]] | None = None
 
     # --- Properties (override parent for compound state handling) ---
 
@@ -89,6 +97,26 @@ class ContinuousAgent(AgentContainer):
             if len(items) >= 2:
                 return str(items[1])
         return None
+
+    # --- Delegation (AGNT-01) ---
+
+    async def request_task(
+        self,
+        task_description: str,
+        agent_type: str = "gsd",
+        context_overrides: dict[str, str] | None = None,
+    ) -> Any:
+        """Delegate a task through supervisor via DelegationTracker (AGNT-01)."""
+        from vcompany.autonomy.delegation import DelegationRequest, DelegationResult
+        if self._request_delegation is None:
+            return DelegationResult(approved=False, reason="Delegation not wired")
+        request = DelegationRequest(
+            requester_id=self.context.agent_id,
+            task_description=task_description,
+            agent_type=agent_type,
+            context_overrides=context_overrides or {},
+        )
+        return await self._request_delegation(request)
 
     # --- Cycle Transition Methods (TYPE-03) ---
 
@@ -141,6 +169,11 @@ class ContinuousAgent(AgentContainer):
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
             await self.memory.checkpoint("continuous_cycle", checkpoint.model_dump_json())
+            # AGNT-02: Persist agent state keys
+            await self.memory.set("seen_items", json.dumps(list(self._seen_items)))
+            await self.memory.set("pending_actions", json.dumps(self._pending_actions))
+            await self.memory.set("briefing_log", json.dumps(self._briefing_log))
+            await self.memory.set("config", json.dumps(self._config))
 
     async def _restore_from_checkpoint(self) -> None:
         """Restore FSM state from the latest checkpoint if one exists.
@@ -191,6 +224,19 @@ class ContinuousAgent(AgentContainer):
         count_str = await self.memory.get("cycle_count")
         if count_str is not None:
             self._cycle_count = int(count_str)
+        # AGNT-02: Restore persistent agent state keys
+        raw = await self.memory.get("seen_items")
+        if raw is not None:
+            self._seen_items = set(json.loads(raw))
+        raw = await self.memory.get("pending_actions")
+        if raw is not None:
+            self._pending_actions = json.loads(raw)
+        raw = await self.memory.get("briefing_log")
+        if raw is not None:
+            self._briefing_log = json.loads(raw)
+        raw = await self.memory.get("config")
+        if raw is not None:
+            self._config = json.loads(raw)
         await self._restore_from_checkpoint()
 
     async def sleep(self) -> None:

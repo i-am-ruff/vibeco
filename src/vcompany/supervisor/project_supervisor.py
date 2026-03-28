@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from vcompany.autonomy.delegation import DelegationPolicy
 from vcompany.container.child_spec import ChildSpec
 from vcompany.supervisor.strategies import RestartStrategy
 from vcompany.supervisor.supervisor import Supervisor
@@ -43,6 +44,7 @@ class ProjectSupervisor(Supervisor):
         tmux_manager: object | None = None,
         project_dir: Path | None = None,
         comm_port: object | None = None,
+        delegation_policy: DelegationPolicy | None = DelegationPolicy(),
     ) -> None:
         self._project_id = project_id
         super().__init__(
@@ -58,6 +60,7 @@ class ProjectSupervisor(Supervisor):
             project_dir=project_dir,
             session_name=f"vco-{project_id}",
             comm_port=comm_port,
+            delegation_policy=delegation_policy,
         )
 
     @property
