@@ -58,7 +58,10 @@ See `.planning/milestones/v2.0-ROADMAP.md` for full details.
   2. When an agent becomes blocked, the health tree shows state BLOCKED with a reason string — not a boolean flag
   3. When a container shuts down, it transitions through STOPPING before reaching STOPPED — health tree shows STOPPING during graceful shutdown
   4. Every container created via on_ready or /new-project has a non-None comm_port — agents send messages through CommunicationPort, not raw channel.send()
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 11-01-PLAN.md — FSM states (BLOCKED, STOPPING), health model, container lifecycle, supervisor state checks
+- [ ] 11-02-PLAN.md — Strategist hierarchy, NoopCommunicationPort wiring, display layer updates
 
 ### Phase 12: Work Initiation
 **Goal**: After dispatch, agents autonomously begin GSD work — Claude Code receives a real GSD command in tmux
@@ -131,7 +134,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 → 15 → 16 → 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 11. Container Architecture Fixes | v2.1 | 0/0 | Not started | - |
+| 11. Container Architecture Fixes | v2.1 | 0/2 | In progress | - |
 | 12. Work Initiation | v2.1 | 0/0 | Not started | - |
 | 13. PM Event Routing | v2.1 | 0/0 | Not started | - |
 | 14. PM Review Gates | v2.1 | 0/0 | Not started | - |
