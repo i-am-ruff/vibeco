@@ -9,6 +9,7 @@ Implements D-11, D-12, D-13, D-22, MIGR-01.
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 import discord
@@ -190,8 +191,13 @@ class VcoBot(commands.Bot):
                 # Escalation callback for Discord alerts
                 async def on_escalation(msg: str) -> None:
                     alerts_ch = self._system_channels.get("alerts")
-                    if alerts_ch:
-                        await alerts_ch.send(f"ESCALATION: {msg}")
+                    if alerts_ch and self.message_queue:
+                        await self.message_queue.enqueue(QueuedMessage(
+                            priority=MessagePriority.ESCALATION,
+                            timestamp=time.monotonic(),
+                            channel_id=alerts_ch.id,
+                            content=f"ESCALATION: {msg}",
+                        ))
 
                 # Health change callback
                 health_cog = self.get_cog("HealthCog")
@@ -215,19 +221,25 @@ class VcoBot(commands.Bot):
                 # Degraded/recovered callbacks notify #alerts channel
                 async def on_degraded() -> None:
                     alerts_ch = self._system_channels.get("alerts")
-                    if alerts_ch:
-                        await alerts_ch.send(
-                            "WARNING: System entered degraded mode (Claude API unreachable). "
-                            "New dispatches blocked. Will auto-recover."
-                        )
+                    if alerts_ch and self.message_queue:
+                        await self.message_queue.enqueue(QueuedMessage(
+                            priority=MessagePriority.SUPERVISOR,
+                            timestamp=time.monotonic(),
+                            channel_id=alerts_ch.id,
+                            content="WARNING: System entered degraded mode (Claude API unreachable). "
+                            "New dispatches blocked. Will auto-recover.",
+                        ))
 
                 async def on_recovered() -> None:
                     alerts_ch = self._system_channels.get("alerts")
-                    if alerts_ch:
-                        await alerts_ch.send(
-                            "RECOVERED: System recovered from degraded mode. "
-                            "Claude API reachable. Normal operations resumed."
-                        )
+                    if alerts_ch and self.message_queue:
+                        await self.message_queue.enqueue(QueuedMessage(
+                            priority=MessagePriority.SUPERVISOR,
+                            timestamp=time.monotonic(),
+                            channel_id=alerts_ch.id,
+                            content="RECOVERED: System recovered from degraded mode. "
+                            "Claude API reachable. Normal operations resumed.",
+                        ))
 
                 # Create TmuxManager for real agent session management
                 tmux_manager = TmuxManager()

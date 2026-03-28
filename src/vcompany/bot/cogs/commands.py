@@ -171,10 +171,18 @@ class CommandsCog(commands.Cog):
             from vcompany.supervisor.company_root import CompanyRoot
 
             if not hasattr(self.bot, "company_root") or self.bot.company_root is None:
+                import time
+                from vcompany.resilience.message_queue import MessagePriority, QueuedMessage
+
                 async def on_escalation(msg: str) -> None:
                     alerts_ch = self.bot._system_channels.get("alerts")
-                    if alerts_ch:
-                        await alerts_ch.send(f"ESCALATION: {msg}")
+                    if alerts_ch and self.bot.message_queue:
+                        await self.bot.message_queue.enqueue(QueuedMessage(
+                            priority=MessagePriority.ESCALATION,
+                            timestamp=time.monotonic(),
+                            channel_id=alerts_ch.id,
+                            content=f"ESCALATION: {msg}",
+                        ))
 
                 health_cog = self.bot.get_cog("HealthCog")
                 on_health_change = health_cog._notify_state_change if health_cog else None

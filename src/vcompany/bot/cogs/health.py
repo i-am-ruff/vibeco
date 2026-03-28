@@ -7,6 +7,7 @@ Implements HLTH-03 (health tree rendering in Discord) and HLTH-04
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 import discord
@@ -15,6 +16,7 @@ from discord.ext import commands
 
 from vcompany.bot.embeds import STATE_INDICATORS, build_health_tree_embed
 from vcompany.bot.permissions import is_owner_app_check
+from vcompany.resilience.message_queue import MessagePriority, QueuedMessage
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
@@ -88,13 +90,21 @@ class HealthCog(commands.Cog):
             if alerts_channel is None:
                 return
 
+            if self.bot.message_queue is None:
+                return  # queue not started yet
+
             emoji = STATE_INDICATORS.get(report.state, "")
             inner = f" ({report.inner_state})" if report.inner_state else ""
             msg = f"{emoji} **{report.agent_id}** -> {report.state}{inner}"
-            await alerts_channel.send(msg)
+            await self.bot.message_queue.enqueue(QueuedMessage(
+                priority=MessagePriority.STATUS,
+                timestamp=time.monotonic(),
+                channel_id=alerts_channel.id,
+                content=msg,
+            ))
         except Exception:
             logger.exception(
-                "Failed to send state-change notification for %s",
+                "Failed to enqueue state-change notification for %s",
                 report.agent_id,
             )
 
