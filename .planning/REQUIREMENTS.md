@@ -83,38 +83,38 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WORK-01 | TBD | Pending |
-| WORK-02 | TBD | Pending |
-| WORK-03 | TBD | Pending |
-| GATE-01 | TBD | Pending |
-| GATE-02 | TBD | Pending |
-| GATE-03 | TBD | Pending |
-| GATE-04 | TBD | Pending |
-| GATE-05 | TBD | Pending |
-| PMRT-01 | TBD | Pending |
-| PMRT-02 | TBD | Pending |
-| PMRT-03 | TBD | Pending |
-| PMRT-04 | TBD | Pending |
-| PMAC-01 | TBD | Pending |
-| PMAC-02 | TBD | Pending |
-| PMAC-03 | TBD | Pending |
-| PMAC-04 | TBD | Pending |
-| PMAC-05 | TBD | Pending |
-| ARCH-01 | TBD | Pending |
-| ARCH-02 | TBD | Pending |
-| ARCH-03 | TBD | Pending |
-| ARCH-04 | TBD | Pending |
-| HLTH-05 | TBD | Pending |
-| HLTH-06 | TBD | Pending |
-| AGNT-01 | TBD | Pending |
-| AGNT-02 | TBD | Pending |
-| AGNT-03 | TBD | Pending |
-| LIFE-01 | TBD | Pending |
+| WORK-01 | Phase 12 | Pending |
+| WORK-02 | Phase 12 | Pending |
+| WORK-03 | Phase 15 | Pending |
+| GATE-01 | Phase 14 | Pending |
+| GATE-02 | Phase 14 | Pending |
+| GATE-03 | Phase 14 | Pending |
+| GATE-04 | Phase 14 | Pending |
+| GATE-05 | Phase 14 | Pending |
+| PMRT-01 | Phase 13 | Pending |
+| PMRT-02 | Phase 13 | Pending |
+| PMRT-03 | Phase 13 | Pending |
+| PMRT-04 | Phase 13 | Pending |
+| PMAC-01 | Phase 15 | Pending |
+| PMAC-02 | Phase 15 | Pending |
+| PMAC-03 | Phase 15 | Pending |
+| PMAC-04 | Phase 15 | Pending |
+| PMAC-05 | Phase 15 | Pending |
+| ARCH-01 | Phase 16 | Pending |
+| ARCH-02 | Phase 11 | Pending |
+| ARCH-03 | Phase 11 | Pending |
+| ARCH-04 | Phase 11 | Pending |
+| HLTH-05 | Phase 17 | Pending |
+| HLTH-06 | Phase 17 | Pending |
+| AGNT-01 | Phase 16 | Pending |
+| AGNT-02 | Phase 16 | Pending |
+| AGNT-03 | Phase 16 | Pending |
+| LIFE-01 | Phase 11 | Pending |
 
 **Coverage:**
 - v2.1 requirements: 27 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 27
+- Mapped to phases: 27
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-28*
