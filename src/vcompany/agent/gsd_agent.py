@@ -69,6 +69,13 @@ class GsdAgent(AgentContainer):
         # Note: blocked tracking now uses FSM state (ARCH-03) via parent block()/unblock()
         # PMRT-02: Phase transition callback hook -- wired by VcoBot.on_ready()
         self._on_phase_transition: Callable[[str, str, str], "Awaitable[None]"] | None = None
+        # GATE-01: Review gate Future -- blocks advance_phase() until PM decision
+        self._pending_review: asyncio.Future[str] | None = None
+        self._review_attempts: int = 0
+        self._max_review_attempts: int = 3
+        # GATE-04: Callback to post review request -- wired by VcoBot.on_ready()
+        # Args: agent_id, stage -> None
+        self._on_review_request: Callable[[str, str], "Awaitable[None]"] | None = None
 
     # --- Properties (override parent for compound state handling) ---
 
@@ -96,11 +103,18 @@ class GsdAgent(AgentContainer):
 
     # --- Phase Transition Methods (TYPE-01) ---
 
-    async def advance_phase(self, phase: str) -> None:
-        """Transition to the next GSD phase and checkpoint.
+    async def advance_phase(self, phase: str) -> str:
+        """Transition to the next GSD phase, checkpoint, and await PM gate decision.
+
+        After the phase transition, creates an asyncio.Future and blocks until
+        resolve_review() is called by PlanReviewCog. Returns the gate decision
+        string ("approve", "modify", or "clarify").
 
         Args:
             phase: Target phase name (discuss, plan, execute, uat, ship).
+
+        Returns:
+            Gate decision string: "approve", "modify", or "clarify".
 
         Raises:
             ValueError: If phase name is unknown.
@@ -121,6 +135,34 @@ class GsdAgent(AgentContainer):
         # PMRT-02: Notify PM of phase transition
         if self._on_phase_transition is not None:
             await self._on_phase_transition(self.context.agent_id, from_phase, phase)
+        # GATE-01: Create gate Future and await PM decision
+        loop = asyncio.get_running_loop()
+        self._pending_review = loop.create_future()
+        self._review_attempts = 0
+        # Post review request via callback (wired by VcoBot.on_ready)
+        if self._on_review_request is not None:
+            await self._on_review_request(self.context.agent_id, phase)
+        try:
+            decision = await self._pending_review
+        finally:
+            self._pending_review = None
+        return decision
+
+    def resolve_review(self, decision: str) -> bool:
+        """Resolve the pending review gate with a PM decision.
+
+        Called by PlanReviewCog when the PM provides approve/modify/clarify.
+
+        Args:
+            decision: The gate decision string ("approve", "modify", or "clarify").
+
+        Returns:
+            True if a pending gate was resolved, False if no gate was active.
+        """
+        if self._pending_review is not None and not self._pending_review.done():
+            self._pending_review.set_result(decision)
+            return True
+        return False
 
     # --- Checkpoint Methods (TYPE-02) ---
 
@@ -173,6 +215,15 @@ class GsdAgent(AgentContainer):
                 self.context.agent_id,
                 checkpoint.phase,
             )
+            # GATE-01: Warn if restored to a non-idle phase -- a review may have been
+            # pending at crash time. Auto-repost requires Discord wiring (Plan 02).
+            if checkpoint.phase not in ("idle", "stopped", "errored"):
+                logger.warning(
+                    "Agent %s restored to phase '%s' -- a pending review request may need "
+                    "to be reposted. Discord wiring required (Plan 02).",
+                    self.context.agent_id,
+                    checkpoint.phase,
+                )
         except Exception:
             logger.warning(
                 "Failed to restore checkpoint for %s, falling back to idle",

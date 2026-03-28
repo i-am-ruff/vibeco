@@ -21,8 +21,18 @@ def _ctx(agent_id: str = "test-gsd-1", agent_type: str = "gsd") -> ContainerCont
 
 
 async def _make_agent(tmp_path: Path, agent_id: str = "test-gsd-1") -> GsdAgent:
-    """Create and start a GsdAgent."""
+    """Create and start a GsdAgent with an auto-approve review callback.
+
+    Wires _on_review_request to immediately resolve the gate with 'approve'
+    so tests don't block waiting for a PM that doesn't exist in test context.
+    """
     agent = GsdAgent(context=_ctx(agent_id=agent_id), data_dir=tmp_path)
+
+    async def _auto_approve(aid: str, stage: str) -> None:
+        """Immediately resolve the gate with 'approve' for test isolation."""
+        agent.resolve_review("approve")
+
+    agent._on_review_request = _auto_approve
     await agent.start()
     return agent
 
