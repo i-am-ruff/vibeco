@@ -46,7 +46,7 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 - [x] **AUTO-02**: GSD state machine consumes milestones from the living queue, not a static list
 - [x] **AUTO-03**: Delegation protocol — ContinuousAgent requests task spawns through supervisor with hard caps and rate limits
 - [x] **AUTO-04**: Supervisor validates delegation requests, enforces policy, spawns short-lived task agents
-- [ ] **AUTO-05**: Project state owned by PM — agents read assignments and write completions. Agent crash never corrupts project state
+- [x] **AUTO-05**: Project state owned by PM — agents read assignments and write completions. Agent crash never corrupts project state
 - [x] **AUTO-06**: Scheduler in CompanyRoot triggers WAKE on sleeping ContinuousAgents per their configured schedule
 
 ### Resilience
@@ -127,7 +127,7 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 | AUTO-02 | Phase 7 | Complete |
 | AUTO-03 | Phase 7 | Complete |
 | AUTO-04 | Phase 7 | Complete |
-| AUTO-05 | Phase 7 | Pending |
+| AUTO-05 | Phase 7 | Complete |
 | MIGR-01 | Phase 8 | Pending |
 | MIGR-02 | Phase 8 | Pending |
 | MIGR-03 | Phase 8 | Pending |
