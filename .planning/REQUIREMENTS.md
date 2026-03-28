@@ -11,7 +11,7 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 
 - [x] **WORK-01**: After container starts and tmux launches Claude Code, the system sends a GSD command (`/gsd:discuss-phase N`) to the agent's tmux pane — agent begins working autonomously
 - [x] **WORK-02**: Container detects Claude Code readiness (prompt available) before sending the GSD command — no blind timing-based waits
-- [ ] **WORK-03**: When an agent completes its current backlog item, PM assigns the next one from BacklogQueue and the agent starts it automatically
+- [x] **WORK-03**: When an agent completes its current backlog item, PM assigns the next one from BacklogQueue and the agent starts it automatically
 
 ### PM Review Gates
 
@@ -30,11 +30,11 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 
 ### PM Actions
 
-- [ ] **PMAC-01**: PM can trigger integration review through ProjectSupervisor
-- [ ] **PMAC-02**: PM can inject milestones into BacklogQueue (insert_urgent, append)
-- [ ] **PMAC-03**: PM can request agent recruitment/removal through ProjectSupervisor
-- [ ] **PMAC-04**: PM can escalate decisions to Strategist
-- [ ] **PMAC-05**: PM detects agents stuck in the same GSD state beyond a configurable threshold and intervenes via Discord message
+- [x] **PMAC-01**: PM can trigger integration review through ProjectSupervisor
+- [x] **PMAC-02**: PM can inject milestones into BacklogQueue (insert_urgent, append)
+- [x] **PMAC-03**: PM can request agent recruitment/removal through ProjectSupervisor
+- [x] **PMAC-04**: PM can escalate decisions to Strategist
+- [x] **PMAC-05**: PM detects agents stuck in the same GSD state beyond a configurable threshold and intervenes via Discord message
 
 ### Container Architecture
 
@@ -85,7 +85,7 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 |-------------|-------|--------|
 | WORK-01 | Phase 12 | Complete |
 | WORK-02 | Phase 12 | Complete |
-| WORK-03 | Phase 15 | Pending |
+| WORK-03 | Phase 15 | Complete |
 | GATE-01 | Phase 14 | Complete |
 | GATE-02 | Phase 14 | Complete |
 | GATE-03 | Phase 14 | Complete |
@@ -95,11 +95,11 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 | PMRT-02 | Phase 13 | Complete |
 | PMRT-03 | Phase 13 | Complete |
 | PMRT-04 | Phase 13 | Complete |
-| PMAC-01 | Phase 15 | Pending |
-| PMAC-02 | Phase 15 | Pending |
-| PMAC-03 | Phase 15 | Pending |
-| PMAC-04 | Phase 15 | Pending |
-| PMAC-05 | Phase 15 | Pending |
+| PMAC-01 | Phase 15 | Complete |
+| PMAC-02 | Phase 15 | Complete |
+| PMAC-03 | Phase 15 | Complete |
+| PMAC-04 | Phase 15 | Complete |
+| PMAC-05 | Phase 15 | Complete |
 | ARCH-01 | Phase 16 | Pending |
 | ARCH-02 | Phase 11 | Complete |
 | ARCH-03 | Phase 11 | Complete |

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
 status: Ready to plan
-stopped_at: "Completed 14-02-PLAN.md: PM review gate response handler and VcoBot wiring"
-last_updated: "2026-03-28T17:05:51.365Z"
+stopped_at: "Completed 15-01-PLAN.md: PM action methods, callback slots, stuck detector, ProjectSupervisor lifecycle helpers"
+last_updated: "2026-03-28T17:18:03.501Z"
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 8
+  completed_plans: 7
 ---
 
 # Project State
@@ -52,6 +52,7 @@ Plan: Not started
 | Phase 13-pm-event-routing P01 | 591 | 2 tasks | 5 files |
 | Phase 14-pm-review-gates P01 | 15 | 2 tasks | 3 files |
 | Phase 14-pm-review-gates P02 | 10 | 2 tasks | 3 files |
+| Phase 15-pm-actions-auto-distribution P01 | 12 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,9 @@ Recent decisions affecting current work:
 - [Phase 14-pm-review-gates]: Bot [PM] messages detected before bot-author guard in on_message -- otherwise automated PM response loop is silently dropped
 - [Phase 14-pm-review-gates]: GATE-01 (_on_review_request) wired on all GsdAgents outside pm_container guard; GATE-02 (_on_gsd_review) inside guard
 - [Phase 14-pm-review-gates]: dispatch_pm_review auto-approves non-plan stages with logging; full PMTier integration deferred to Phase 15
+- [Phase 15]: Stuck detector uses asyncio.get_event_loop().time() for monotonic timestamps, suppression set cleared on gsd_transition
+- [Phase 15]: escalate_to_strategist fires callback from _handle_event escalation branch (replaces Phase 13 log-only behavior)
+- [Phase 15]: stop() override on FulltimeAgent cancels stuck detector task before delegating to parent
 
 ### Pending Todos
 
@@ -94,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T17:05:22.425Z
-Stopped at: Completed 14-02-PLAN.md: PM review gate response handler and VcoBot wiring
+Last session: 2026-03-28T17:18:03.498Z
+Stopped at: Completed 15-01-PLAN.md: PM action methods, callback slots, stuck detector, ProjectSupervisor lifecycle helpers
 Resume file: None

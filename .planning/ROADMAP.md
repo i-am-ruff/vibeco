@@ -113,7 +113,7 @@ Plans:
   4. When an agent is stuck in the same GSD state beyond the configured threshold, PM sends a message to the agent's Discord channel to intervene
 **Plans**: 2 plans
 Plans:
-- [ ] 15-01-PLAN.md — PM action methods, callback slots, stuck detector on FulltimeAgent; add/remove helpers on ProjectSupervisor
+- [x] 15-01-PLAN.md — PM action methods, callback slots, stuck detector on FulltimeAgent; add/remove helpers on ProjectSupervisor
 - [ ] 15-02-PLAN.md — VcoBot.on_ready wiring for all Phase 15 PM action callbacks
 
 ### Phase 16: Agent Completeness & Strategist
@@ -148,6 +148,6 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 → 15 → 16 → 17
 | 12. Work Initiation | v2.1 | 1/1 | Complete    | 2026-03-28 |
 | 13. PM Event Routing | v2.1 | 1/1 | Complete    | 2026-03-28 |
 | 14. PM Review Gates | v2.1 | 2/2 | Complete    | 2026-03-28 |
-| 15. PM Actions & Auto Distribution | v2.1 | 0/2 | In progress | - |
+| 15. PM Actions & Auto Distribution | v2.1 | 1/2 | In Progress|  |
 | 16. Agent Completeness & Strategist | v2.1 | 0/0 | Not started | - |
 | 17. Health Tree Rendering | v2.1 | 0/0 | Not started | - |
