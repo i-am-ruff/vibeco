@@ -336,3 +336,160 @@ class TestMessageQueueWiring:
         """Bot starts with message_queue=None."""
         bot = _make_bot()
         assert bot.message_queue is None
+
+
+class TestPMBacklogWiring:
+    """PM backlog and project state wiring tests (AUTO-01, AUTO-02, AUTO-05)."""
+
+    @pytest.mark.asyncio
+    async def test_pm_backlog_assigned_after_add_project(self):
+        """PM's backlog and _project_state are assigned after add_project (AUTO-01)."""
+        from vcompany.agent.fulltime_agent import FulltimeAgent
+        from vcompany.autonomy.backlog import BacklogQueue
+        from vcompany.autonomy.project_state import ProjectStateManager
+
+        bot = _make_bot()
+
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.name = "TestGuild"
+        mock_guild.roles = []
+        mock_guild.create_role = AsyncMock()
+        bot.get_guild = MagicMock(return_value=mock_guild)
+
+        # Create a mock PM container that is an actual FulltimeAgent subtype
+        pm_mock = MagicMock(spec=FulltimeAgent)
+        pm_mock.backlog = None
+        pm_mock._project_state = None
+        pm_mock.memory = AsyncMock()
+        pm_mock.memory.get = AsyncMock(return_value=None)
+        pm_mock.memory.set = AsyncMock()
+        pm_mock.context = MagicMock()
+        pm_mock.context.agent_id = "pm-agent"
+
+        # Make isinstance(pm_mock, FulltimeAgent) return True
+        pm_mock.__class__ = FulltimeAgent
+
+        mock_project_sup = MagicMock()
+        mock_project_sup.children = MagicMock()
+        mock_project_sup.children.values = MagicMock(return_value=[pm_mock])
+
+        with patch("vcompany.bot.client.CompanyRoot") as MockRoot, \
+             patch("vcompany.bot.client.MessageQueue") as MockQueue, \
+             patch("vcompany.bot.client.BacklogQueue") as MockBacklog, \
+             patch("vcompany.bot.client.ProjectStateManager") as MockState:
+
+            mock_root = AsyncMock()
+            mock_root.start = AsyncMock()
+            mock_root.add_project = AsyncMock(return_value=mock_project_sup)
+            MockRoot.return_value = mock_root
+
+            mock_queue_instance = AsyncMock()
+            MockQueue.return_value = mock_queue_instance
+
+            mock_backlog_instance = MagicMock()
+            mock_backlog_instance.load = AsyncMock()
+            MockBacklog.return_value = mock_backlog_instance
+
+            mock_state_instance = MagicMock()
+            MockState.return_value = mock_state_instance
+
+            await bot.on_ready()
+
+            # BacklogQueue was created with PM's memory
+            MockBacklog.assert_called_once_with(pm_mock.memory)
+            mock_backlog_instance.load.assert_called_once()
+
+            # ProjectStateManager was created with backlog and PM's memory
+            MockState.assert_called_once_with(mock_backlog_instance, pm_mock.memory)
+
+            # Both assigned to PM
+            assert pm_mock.backlog is mock_backlog_instance
+            assert pm_mock._project_state is mock_state_instance
+
+            # PM stored on bot
+            assert bot._pm_container is pm_mock
+
+    @pytest.mark.asyncio
+    async def test_no_pm_graceful_skip(self):
+        """Wiring skips gracefully when no FulltimeAgent exists in children (AUTO-01)."""
+        bot = _make_bot()
+
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.name = "TestGuild"
+        mock_guild.roles = []
+        mock_guild.create_role = AsyncMock()
+        bot.get_guild = MagicMock(return_value=mock_guild)
+
+        # Project with no FulltimeAgent children (all are generic mocks)
+        gsd_mock = MagicMock()
+        gsd_mock.__class__ = type("NotFulltimeAgent", (), {})
+
+        mock_project_sup = MagicMock()
+        mock_project_sup.children = MagicMock()
+        mock_project_sup.children.values = MagicMock(return_value=[gsd_mock])
+
+        with patch("vcompany.bot.client.CompanyRoot") as MockRoot, \
+             patch("vcompany.bot.client.MessageQueue") as MockQueue, \
+             patch("vcompany.bot.client.BacklogQueue") as MockBacklog:
+
+            mock_root = AsyncMock()
+            mock_root.start = AsyncMock()
+            mock_root.add_project = AsyncMock(return_value=mock_project_sup)
+            MockRoot.return_value = mock_root
+
+            mock_queue_instance = AsyncMock()
+            MockQueue.return_value = mock_queue_instance
+
+            await bot.on_ready()
+
+            # BacklogQueue never created since no PM found
+            MockBacklog.assert_not_called()
+
+            # PM container stays None
+            assert bot._pm_container is None
+
+    def test_pm_container_init_none(self):
+        """Bot starts with _pm_container=None."""
+        bot = _make_bot()
+        assert bot._pm_container is None
+
+
+class TestGsdAgentEventContract:
+    """GsdAgent completion/failure events match PM event handler contract (AUTO-02)."""
+
+    def test_gsd_completion_event_matches_pm_contract(self):
+        """GsdAgent.make_completion_event produces dict matching PM _handle_event contract."""
+        from vcompany.agent.gsd_agent import GsdAgent
+
+        # Create a minimal mock that has the method we need
+        mock_context = MagicMock()
+        mock_context.agent_id = "gsd-test-1"
+        mock_context.agent_type = "gsd"
+
+        agent = MagicMock(spec=GsdAgent)
+        agent.context = mock_context
+        # Use real method
+        agent.make_completion_event = GsdAgent.make_completion_event.__get__(agent)
+
+        event = agent.make_completion_event("item-123", "done")
+        assert event["type"] == "task_completed"
+        assert event["agent_id"] == "gsd-test-1"
+        assert event["item_id"] == "item-123"
+        assert event["result"] == "done"
+
+    def test_gsd_failure_event_matches_pm_contract(self):
+        """GsdAgent.make_failure_event produces dict matching PM _handle_event contract."""
+        from vcompany.agent.gsd_agent import GsdAgent
+
+        mock_context = MagicMock()
+        mock_context.agent_id = "gsd-test-2"
+
+        agent = MagicMock(spec=GsdAgent)
+        agent.context = mock_context
+        agent.make_failure_event = GsdAgent.make_failure_event.__get__(agent)
+
+        event = agent.make_failure_event("item-456", "timeout")
+        assert event["type"] == "task_failed"
+        assert event["agent_id"] == "gsd-test-2"
+        assert event["item_id"] == "item-456"
+        assert event["reason"] == "timeout"
