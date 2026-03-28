@@ -98,20 +98,9 @@ class HealthCog(commands.Cog):
                 report.agent_id,
             )
 
-    async def setup_notifications(self) -> None:
-        """Wire notification callback to CompanyRoot if available.
-
-        Called after the cog is added to the bot. If company_root exists,
-        sets _on_health_change to enable HLTH-04 push notifications.
-        """
-        company_root = getattr(self.bot, "company_root", None)
-        if company_root is not None:
-            company_root._on_health_change = self._notify_state_change
-            logger.info("Health notifications wired to CompanyRoot")
 
 
 async def setup(bot: commands.Bot) -> None:
     """Module-level setup function for discord.py Cog loading."""
     cog = HealthCog(bot)
     await bot.add_cog(cog)
-    await cog.setup_notifications()

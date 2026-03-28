@@ -1,6 +1,6 @@
 """Embed builders for Discord bot messages.
 
-Provides build_status_embed (for !status), build_alert_embed (for #alerts),
+Provides build_alert_embed (for #alerts),
 build_plan_review_embed (for plan review), build_conflict_embed (for merge conflicts),
 build_integration_embed (for integration results), build_standup_embed (for standup threads),
 and build_checkin_embed (for checkins).
@@ -30,50 +30,6 @@ STATE_INDICATORS: dict[str, str] = {
 }
 
 _DEFAULT_INDICATOR = "\u2753"   # question mark for unknown states
-
-
-# DEPRECATED: /status removed in Phase 8.2. Kept for backward compatibility.
-def build_status_embed(status_text: str) -> discord.Embed:
-    """Parse generate_project_status output into a rich Discord embed.
-
-    Splits on "## " headers to create embed fields. Title "Agent Fleet Status",
-    color blue, timestamp set to now.
-
-    Args:
-        status_text: Raw text from generate_project_status().
-
-    Returns:
-        discord.Embed with fields for each section.
-    """
-    embed = discord.Embed(
-        title="Agent Fleet Status",
-        color=discord.Color.blue(),
-        timestamp=datetime.now(timezone.utc),
-    )
-
-    # Split on markdown H2 headers
-    sections = status_text.split("## ")
-    field_count = 0
-
-    for section in sections:
-        if not section.strip():
-            continue
-        if field_count >= 25:
-            break
-
-        lines = section.strip().split("\n", 1)
-        name = lines[0].strip()[:256]
-        value = lines[1].strip() if len(lines) > 1 else "No details"
-        value = value[:1024]
-
-        embed.add_field(name=name, value=value, inline=False)
-        field_count += 1
-
-    if field_count == 0:
-        # No sections found, put the whole text as description
-        embed.description = status_text[:4096]
-
-    return embed
 
 
 _ALERT_COLORS: dict[str, discord.Color] = {
