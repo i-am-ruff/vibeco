@@ -45,8 +45,8 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 
 ### Health & Monitoring
 
-- [ ] **HLTH-05**: Health tree shows CompanyRoot at top with its state, Strategist/CompanyAgents as children, then ProjectSupervisors with their agents
-- [ ] **HLTH-06**: Health tree shows inner_state, uptime, and last_activity per agent matching the architecture doc's example format
+- [x] **HLTH-05**: Health tree shows CompanyRoot at top with its state, Strategist/CompanyAgents as children, then ProjectSupervisors with their agents
+- [x] **HLTH-06**: Health tree shows inner_state, uptime, and last_activity per agent matching the architecture doc's example format
 
 ### Agent Completeness
 
@@ -104,8 +104,8 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 | ARCH-02 | Phase 11 | Complete |
 | ARCH-03 | Phase 11 | Complete |
 | ARCH-04 | Phase 11 | Complete |
-| HLTH-05 | Phase 17 | Pending |
-| HLTH-06 | Phase 17 | Pending |
+| HLTH-05 | Phase 17 | Complete |
+| HLTH-06 | Phase 17 | Complete |
 | AGNT-01 | Phase 16 | Complete |
 | AGNT-02 | Phase 16 | Complete |
 | AGNT-03 | Phase 16 | Complete |

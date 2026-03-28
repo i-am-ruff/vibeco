@@ -45,7 +45,7 @@ See `.planning/milestones/v2.0-ROADMAP.md` for full details.
 - [x] **Phase 14: PM Review Gates** - PM-led conversational approve/modify/clarify gates at every GSD stage transition (completed 2026-03-28)
 - [x] **Phase 15: PM Actions & Auto Distribution** - PM outbound triggers and automatic next-item assignment from backlog (completed 2026-03-28)
 - [x] **Phase 16: Agent Completeness & Strategist** - Strategist operates through container, agents persist full state and delegate work (completed 2026-03-28)
-- [ ] **Phase 17: Health Tree Rendering** - Full supervision hierarchy with inner states, uptime, and last activity
+- [x] **Phase 17: Health Tree Rendering** - Full supervision hierarchy with inner states, uptime, and last activity (completed 2026-03-28)
 
 ## Phase Details
 
@@ -139,7 +139,7 @@ Plans:
   2. Each agent in the health tree displays inner_state (e.g., GSD sub-state), uptime, and last_activity — not just lifecycle state
 **Plans**: 1 plan
 Plans:
-- [ ] 17-01-PLAN.md — Update build_health_tree_embed with CompanyRoot header and per-agent uptime/last_activity
+- [x] 17-01-PLAN.md — Update build_health_tree_embed with CompanyRoot header and per-agent uptime/last_activity
 
 ## Progress
 
@@ -155,4 +155,4 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 14. PM Review Gates | v2.1 | 2/2 | Complete    | 2026-03-28 |
 | 15. PM Actions & Auto Distribution | v2.1 | 2/2 | Complete    | 2026-03-28 |
 | 16. Agent Completeness & Strategist | v2.1 | 2/2 | Complete    | 2026-03-28 |
-| 17. Health Tree Rendering | v2.1 | 0/0 | Not started | - |
+| 17. Health Tree Rendering | v2.1 | 1/1 | Complete   | 2026-03-28 |
