@@ -340,31 +340,32 @@ class VcoBot(commands.Bot):
                     async def pm_event_sink(event: dict[str, Any]) -> None:
                         await pm_container.post_event(event)
 
-                    # PMRT-01 + PMRT-04: health_change and escalation events via supervisor callback
-                    project_sup.set_pm_event_sink(pm_event_sink)
+                    # Factory closures -- defined here so Phase 15 wiring can reuse them
+                    # for newly recruited agents without re-defining inline.
+                    def _make_gsd_cb(sink: Callable[[dict[str, Any]], Any]) -> Callable:
+                        async def _cb(agent_id: str, from_phase: str, to_phase: str) -> None:
+                            await sink({
+                                "type": "gsd_transition",
+                                "agent_id": agent_id,
+                                "from_phase": from_phase,
+                                "to_phase": to_phase,
+                            })
+                        return _cb
+
+                    def _make_briefing_cb(sink: Callable[[dict[str, Any]], Any]) -> Callable:
+                        async def _cb(agent_id: str, content: str) -> None:
+                            await sink({
+                                "type": "briefing",
+                                "agent_id": agent_id,
+                                "content": content,
+                            })
+                        return _cb
 
                     # PMRT-02 + PMRT-03: GSD transitions and briefings via agent callbacks
                     for child in project_sup.children.values():
                         if isinstance(child, GsdAgent):
-                            def _make_gsd_cb(sink: Callable[[dict[str, Any]], Any]) -> Callable:
-                                async def _cb(agent_id: str, from_phase: str, to_phase: str) -> None:
-                                    await sink({
-                                        "type": "gsd_transition",
-                                        "agent_id": agent_id,
-                                        "from_phase": from_phase,
-                                        "to_phase": to_phase,
-                                    })
-                                return _cb
                             child._on_phase_transition = _make_gsd_cb(pm_event_sink)
                         elif isinstance(child, ContinuousAgent):
-                            def _make_briefing_cb(sink: Callable[[dict[str, Any]], Any]) -> Callable:
-                                async def _cb(agent_id: str, content: str) -> None:
-                                    await sink({
-                                        "type": "briefing",
-                                        "agent_id": agent_id,
-                                        "content": content,
-                                    })
-                                return _cb
                             child._on_briefing = _make_briefing_cb(pm_event_sink)
 
                     logger.info("PM event routing wired for %s", pm_container.context.agent_id)
@@ -395,6 +396,103 @@ class VcoBot(commands.Bot):
                         pm_container._on_gsd_review = _make_gsd_review_cb(plan_review_cog)
 
                     logger.info("Phase 14 review gate callbacks wired")
+
+                # ── Phase 15: PM action callbacks ─────────────────────────
+                if pm_container is not None:
+                    plan_review_cog_for_assign = self.get_cog("PlanReviewCog")
+
+                    async def _on_assign_task(agent_id: str, item: Any) -> None:
+                        # Write assignment to agent's own MemoryStore
+                        for child in project_sup.children.values():
+                            if isinstance(child, GsdAgent) and child.context.agent_id == agent_id:
+                                await child.set_assignment(item.model_dump())
+                                break
+                        # Send GSD command to agent's tmux pane
+                        if plan_review_cog_for_assign is not None:
+                            gsd_cmd = "/gsd:discuss-phase 1"
+                            for child in project_sup.children.values():
+                                if isinstance(child, GsdAgent) and child.context.agent_id == agent_id:
+                                    gsd_cmd = child.context.gsd_command or "/gsd:discuss-phase 1"
+                                    break
+                            await plan_review_cog_for_assign._send_tmux_command(agent_id, gsd_cmd)
+
+                    pm_container._on_assign_task = _on_assign_task
+
+                    async def _on_trigger_integration_review() -> None:
+                        alerts_ch = self._system_channels.get("alerts")
+                        if alerts_ch and self.message_queue:
+                            await self.message_queue.enqueue(QueuedMessage(
+                                priority=MessagePriority.SUPERVISOR,
+                                timestamp=time.monotonic(),
+                                channel_id=alerts_ch.id,
+                                content=(
+                                    f"[PM] Integration review requested for project "
+                                    f"{self.project_config.project}. "
+                                    "Please review agent branches for merge readiness."
+                                ),
+                            ))
+
+                    pm_container._on_trigger_integration_review = _on_trigger_integration_review
+
+                    async def _on_recruit_agent(spec: Any) -> None:
+                        await project_sup.add_child_spec(spec)
+                        # Wire PM event callbacks on the new agent (same as initial wiring)
+                        new_child = project_sup.children.get(spec.child_id)
+                        if isinstance(new_child, GsdAgent):
+                            new_child._on_phase_transition = _make_gsd_cb(pm_event_sink)
+                            if plan_review_cog is not None:
+                                new_child._on_review_request = _make_review_cb(plan_review_cog)
+
+                    async def _on_remove_agent(agent_id: str) -> None:
+                        await project_sup.remove_child(agent_id)
+
+                    pm_container._on_recruit_agent = _on_recruit_agent
+                    pm_container._on_remove_agent = _on_remove_agent
+
+                    strategist_cog_ref = self.get_cog("StrategistCog")
+                    if strategist_cog_ref is not None:
+                        async def _on_escalate_to_strategist(
+                            agent_id: str, question: str, score: float
+                        ) -> str | None:
+                            return await strategist_cog_ref.handle_pm_escalation(
+                                agent_id, question, score
+                            )
+                        pm_container._on_escalate_to_strategist = _on_escalate_to_strategist
+
+                    async def _on_send_intervention(agent_id: str, message: str) -> None:
+                        if self.message_queue and guild:
+                            agent_channel = discord.utils.get(
+                                guild.text_channels, name=agent_id
+                            )
+                            if agent_channel:
+                                await self.message_queue.enqueue(QueuedMessage(
+                                    priority=MessagePriority.SUPERVISOR,
+                                    timestamp=time.monotonic(),
+                                    channel_id=agent_channel.id,
+                                    content=f"[PM] {message}",
+                                ))
+                            else:
+                                alerts_ch = self._system_channels.get("alerts")
+                                if alerts_ch:
+                                    await self.message_queue.enqueue(QueuedMessage(
+                                        priority=MessagePriority.SUPERVISOR,
+                                        timestamp=time.monotonic(),
+                                        channel_id=alerts_ch.id,
+                                        content=f"[PM] {message}",
+                                    ))
+
+                    pm_container._on_send_intervention = _on_send_intervention
+
+                    logger.info(
+                        "Phase 15 PM action callbacks wired for %s",
+                        pm_container.context.agent_id,
+                    )
+
+                # PMRT-01 + PMRT-04: health_change and escalation events via supervisor callback.
+                # Called LAST -- after all callbacks are wired -- to avoid race condition
+                # where events arrive before handlers are set (Research Pitfall 3).
+                if pm_container is not None:
+                    project_sup.set_pm_event_sink(pm_event_sink)
 
                 logger.info("Supervision tree started with %d agents", len(specs))
             except Exception:
