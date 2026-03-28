@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
-status: Ready to plan
-stopped_at: "Completed 11-02-PLAN.md: Wire Strategist, NoopCommunicationPort, and display layer"
-last_updated: "2026-03-28T16:02:07.045Z"
+status: In progress
+stopped_at: "Completed 12-01-PLAN.md: Work initiation -- gsd_command injection + readiness poll"
+last_updated: "2026-03-28T16:11:29Z"
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 11 — Container Architecture Fixes
+**Current focus:** Phase 12 — Work Initiation
 
 ## Current Position
 
 Phase: 12
-Plan: Not started
+Plan: 01 (complete)
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Plan: Not started
 *Updated after each plan completion*
 | Phase 11 P01 | 1097 | 2 tasks | 11 files |
 | Phase 11 P02 | 596 | 2 tasks | 9 files |
+| Phase 12 P01 | 113 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,9 @@ Recent decisions affecting current work:
 - [Phase 11]: ContinuousLifecycle extended with begin_stop/finish_stop to maintain AgentContainer.stop() contract
 - [Phase 11]: NoopCommunicationPort is a plain class satisfying CommunicationPort Protocol structurally; no inheritance needed
 - [Phase 11]: Strategist CompanyAgent created in both on_ready and /new-project paths inside company_root is None guard
+- [Phase 12]: Poll for '>' prompt as Claude Code ready indicator -- loose check, no over-engineering
+- [Phase 12]: gsd_command stored on ContainerContext, not ChildSpec -- it's agent config, not supervision policy
+- [Phase 12]: Fixed '/gsd:discuss-phase 1' for v2.1; dynamic phase assignment deferred to later phase
 
 ### Pending Todos
 
@@ -79,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T16:01:27.702Z
-Stopped at: Completed 11-02-PLAN.md: Wire Strategist, NoopCommunicationPort, and display layer
+Last session: 2026-03-28T16:11:29Z
+Stopped at: Completed 12-01-PLAN.md: Work initiation -- gsd_command injection + readiness poll
 Resume file: None

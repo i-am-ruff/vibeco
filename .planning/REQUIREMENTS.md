@@ -9,8 +9,8 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 
 ### Work Initiation
 
-- [ ] **WORK-01**: After container starts and tmux launches Claude Code, the system sends a GSD command (`/gsd:discuss-phase N`) to the agent's tmux pane — agent begins working autonomously
-- [ ] **WORK-02**: Container detects Claude Code readiness (prompt available) before sending the GSD command — no blind timing-based waits
+- [x] **WORK-01**: After container starts and tmux launches Claude Code, the system sends a GSD command (`/gsd:discuss-phase N`) to the agent's tmux pane — agent begins working autonomously
+- [x] **WORK-02**: Container detects Claude Code readiness (prompt available) before sending the GSD command — no blind timing-based waits
 - [ ] **WORK-03**: When an agent completes its current backlog item, PM assigns the next one from BacklogQueue and the agent starts it automatically
 
 ### PM Review Gates
@@ -83,8 +83,8 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WORK-01 | Phase 12 | Pending |
-| WORK-02 | Phase 12 | Pending |
+| WORK-01 | Phase 12 | Complete |
+| WORK-02 | Phase 12 | Complete |
 | WORK-03 | Phase 15 | Pending |
 | GATE-01 | Phase 14 | Pending |
 | GATE-02 | Phase 14 | Pending |
