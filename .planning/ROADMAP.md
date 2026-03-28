@@ -70,7 +70,9 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. After /dispatch, the agent's tmux pane receives a GSD command (e.g., `/gsd:discuss-phase 1`) and Claude Code begins executing it — no human intervention required
   2. Container waits for Claude Code readiness (prompt detection) before sending the GSD command — no blind sleep/timeout waits
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 12-01-PLAN.md — Readiness poll, GSD command injection, ContainerContext gsd_command field
 
 ### Phase 13: PM Event Routing
 **Goal**: PM receives all significant agent events in its event queue — not just task completions
@@ -135,7 +137,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 → 15 → 16 → 17
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 11. Container Architecture Fixes | v2.1 | 2/2 | Complete    | 2026-03-28 |
-| 12. Work Initiation | v2.1 | 0/0 | Not started | - |
+| 12. Work Initiation | v2.1 | 0/1 | Not started | - |
 | 13. PM Event Routing | v2.1 | 0/0 | Not started | - |
 | 14. PM Review Gates | v2.1 | 0/0 | Not started | - |
 | 15. PM Actions & Auto Distribution | v2.1 | 0/0 | Not started | - |
