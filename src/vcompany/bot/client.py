@@ -14,6 +14,9 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
+from vcompany.agent.fulltime_agent import FulltimeAgent
+from vcompany.autonomy.backlog import BacklogQueue
+from vcompany.autonomy.project_state import ProjectStateManager
 from vcompany.container.child_spec import ChildSpec
 from vcompany.container.context import ContainerContext
 from vcompany.models.config import ProjectConfig
@@ -73,6 +76,9 @@ class VcoBot(commands.Bot):
 
         # Pitfall 6 guard: cogs can check if bot is ready before operating
         self._ready_flag: bool = False
+
+        # PM container reference for GsdAgent event routing (AUTO-01, AUTO-02)
+        self._pm_container: FulltimeAgent | None = None
 
     async def setup_hook(self) -> None:
         """Load Cog extensions and sync slash commands to guild (D-12, DISC-01)."""
@@ -265,10 +271,31 @@ class VcoBot(commands.Bot):
                     )
                     specs.append(ChildSpec(child_id=agent_cfg.id, agent_type=ctx.agent_type, context=ctx))
 
-                await self.company_root.add_project(
+                project_sup = await self.company_root.add_project(
                     project_id=self.project_config.project,
                     child_specs=specs,
                 )
+
+                # Wire PM backlog and project state (AUTO-01, AUTO-02, AUTO-05)
+                pm_container: FulltimeAgent | None = None
+                for child in project_sup.children.values():
+                    if isinstance(child, FulltimeAgent):
+                        pm_container = child
+                        break
+
+                if pm_container is not None:
+                    backlog = BacklogQueue(pm_container.memory)
+                    await backlog.load()
+                    state_mgr = ProjectStateManager(backlog, pm_container.memory)
+                    pm_container.backlog = backlog
+                    pm_container._project_state = state_mgr
+                    self._pm_container = pm_container
+                    logger.info(
+                        "PM backlog and project state wired for %s",
+                        pm_container.context.agent_id,
+                    )
+                else:
+                    logger.info("No FulltimeAgent (PM) found in project children, skipping backlog wiring")
 
                 logger.info("Supervision tree started with %d agents", len(specs))
             except Exception:
