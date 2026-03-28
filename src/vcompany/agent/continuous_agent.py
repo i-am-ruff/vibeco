@@ -12,7 +12,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from statemachine.orderedset import OrderedSet
 
@@ -63,6 +63,8 @@ class ContinuousAgent(AgentContainer):
         self._lifecycle = ContinuousLifecycle(model=self, state_field="_fsm_state")
         self._checkpoint_lock = asyncio.Lock()
         self._cycle_count: int = 0
+        # PMRT-03: Briefing callback hook -- wired by VcoBot.on_ready()
+        self._on_briefing: Callable[[str, str], Awaitable[None]] | None = None
 
     # --- Properties (override parent for compound state handling) ---
 
@@ -90,11 +92,13 @@ class ContinuousAgent(AgentContainer):
 
     # --- Cycle Transition Methods (TYPE-03) ---
 
-    async def advance_cycle(self, phase: str) -> None:
+    async def advance_cycle(self, phase: str, *, briefing_content: str = "") -> None:
         """Transition to the next cycle phase and checkpoint.
 
         Args:
             phase: Target phase name (gather, analyze, act, report, sleep_prep).
+            briefing_content: Report content when phase == "report". Passed to
+                the _on_briefing callback if wired (PMRT-03).
 
         Raises:
             ValueError: If phase name is unknown.
@@ -111,6 +115,9 @@ class ContinuousAgent(AgentContainer):
             raise ValueError(f"Unknown cycle phase: {phase}")
         method()
         await self._checkpoint_cycle()
+        # PMRT-03: Notify PM when agent reports
+        if phase == "report" and self._on_briefing is not None:
+            await self._on_briefing(self.context.agent_id, briefing_content)
 
     async def complete_cycle(self) -> None:
         """Increment cycle_count and persist it after a full cycle."""

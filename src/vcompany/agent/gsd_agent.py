@@ -16,7 +16,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from statemachine.orderedset import OrderedSet
 
@@ -67,6 +67,8 @@ class GsdAgent(AgentContainer):
         self._lifecycle = GsdLifecycle(model=self, state_field="_fsm_state")
         self._checkpoint_lock = asyncio.Lock()
         # Note: blocked tracking now uses FSM state (ARCH-03) via parent block()/unblock()
+        # PMRT-02: Phase transition callback hook -- wired by VcoBot.on_ready()
+        self._on_phase_transition: Callable[[str, str, str], "Awaitable[None]"] | None = None
 
     # --- Properties (override parent for compound state handling) ---
 
@@ -113,8 +115,12 @@ class GsdAgent(AgentContainer):
         method = transitions.get(phase)
         if method is None:
             raise ValueError(f"Unknown phase: {phase}")
+        from_phase = self.inner_state or "idle"
         method()
         await self._checkpoint_phase()
+        # PMRT-02: Notify PM of phase transition
+        if self._on_phase_transition is not None:
+            await self._on_phase_transition(self.context.agent_id, from_phase, phase)
 
     # --- Checkpoint Methods (TYPE-02) ---
 

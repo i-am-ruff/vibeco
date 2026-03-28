@@ -64,6 +64,7 @@ class Supervisor:
         project_dir: Path | None = None,
         session_name: str | None = None,
         comm_port: object | None = None,
+        pm_event_sink: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self.supervisor_id = supervisor_id
         self.strategy = strategy
@@ -71,6 +72,7 @@ class Supervisor:
         self._parent = parent
         self._on_escalation = on_escalation
         self._on_health_change = on_health_change
+        self._pm_event_sink = pm_event_sink
         self._data_dir = data_dir or Path("/tmp/vcompany-supervisor")
         # Tmux bridge params -- injected into child containers
         self._tmux_manager = tmux_manager
@@ -100,6 +102,21 @@ class Supervisor:
         self._restarting: bool = False
         self._state: str = "stopped"
         self._health_reports: dict[str, HealthReport] = {}
+
+    # --- PM Event Sink ---
+
+    def set_pm_event_sink(
+        self, sink: Callable[[dict[str, Any]], Awaitable[None]] | None
+    ) -> None:
+        """Set or replace the PM event sink callable (PMRT-01, PMRT-04).
+
+        Called after the PM container is identified (post-construction)
+        because the PM agent's identity is not known at Supervisor __init__ time.
+
+        Args:
+            sink: Async callable accepting an event dict, or None to clear.
+        """
+        self._pm_event_sink = sink
 
     # --- Properties ---
 
@@ -256,6 +273,34 @@ class Supervisor:
                 try:
                     loop = asyncio.get_running_loop()
                     loop.create_task(self._on_health_change(report))
+                except RuntimeError:
+                    pass  # No running event loop
+
+            # PMRT-01: Post health_change events to PM event sink
+            if self._pm_event_sink is not None and report.state in (
+                "errored",
+                "running",
+                "blocked",
+                "stopped",
+            ):
+                try:
+                    loop = asyncio.get_running_loop()
+                    health_event: dict[str, Any] = {
+                        "type": "health_change",
+                        "agent_id": report.agent_id,
+                        "state": report.state,
+                        "inner_state": report.inner_state,
+                        "error_count": report.error_count,
+                    }
+                    loop.create_task(self._pm_event_sink(health_event))
+                    # PMRT-04: Also post escalation event when agent enters BLOCKED
+                    if report.state == "blocked":
+                        escalation_event: dict[str, Any] = {
+                            "type": "escalation",
+                            "agent_id": report.agent_id,
+                            "reason": report.blocked_reason or "unknown",
+                        }
+                        loop.create_task(self._pm_event_sink(escalation_event))
                 except RuntimeError:
                     pass  # No running event loop
 
