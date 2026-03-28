@@ -76,6 +76,8 @@ class GsdAgent(AgentContainer):
         # GATE-04: Callback to post review request -- wired by VcoBot.on_ready()
         # Args: agent_id, stage -> None
         self._on_review_request: Callable[[str, str], "Awaitable[None]"] | None = None
+        # AGNT-03: In-memory assignment cache -- restored on start()
+        self._current_assignment: dict[str, Any] | None = None
 
     # --- Properties (override parent for compound state handling) ---
 
@@ -237,6 +239,15 @@ class GsdAgent(AgentContainer):
         """Transition to running, open memory, and restore from checkpoint."""
         await super().start()
         await self._restore_from_checkpoint()
+        # AGNT-03: Restore assignment context from own MemoryStore
+        assignment = await self.get_assignment()
+        if assignment is not None:
+            self._current_assignment = assignment
+            logger.info(
+                "Restored assignment for %s: item_id=%s",
+                self.context.agent_id,
+                assignment.get("item_id", "unknown"),
+            )
 
     async def sleep(self) -> None:
         """Transition to sleeping and checkpoint current phase."""
@@ -286,11 +297,12 @@ class GsdAgent(AgentContainer):
         return json.loads(raw)
 
     async def set_assignment(self, assignment: dict[str, Any]) -> None:
-        """Write assignment to own MemoryStore.
+        """Write assignment to own MemoryStore and update in-memory cache.
 
         Args:
             assignment: Assignment data dict to persist.
         """
+        self._current_assignment = assignment
         await self.memory.set("current_assignment", json.dumps(assignment))
 
     def make_completion_event(self, item_id: str, result: str = "success") -> dict[str, Any]:
