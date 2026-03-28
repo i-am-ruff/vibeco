@@ -6,12 +6,15 @@ agent containers. Defaults to ONE_FOR_ONE strategy (independent agents).
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from vcompany.container.child_spec import ChildSpec
 from vcompany.supervisor.strategies import RestartStrategy
 from vcompany.supervisor.supervisor import Supervisor
+
+logger = logging.getLogger("vcompany.supervisor.project_supervisor")
 
 
 class ProjectSupervisor(Supervisor):
@@ -61,3 +64,19 @@ class ProjectSupervisor(Supervisor):
     def project_id(self) -> str:
         """The project identifier this supervisor manages."""
         return self._project_id
+
+    # --- Public Agent Lifecycle Helpers (PMAC-03) ---
+
+    async def add_child_spec(self, spec: ChildSpec) -> None:
+        """Add and start a new agent child (PM-initiated recruitment)."""
+        self._child_specs.append(spec)
+        await self._start_child(spec)
+        logger.info("Added child %s to project %s", spec.child_id, self._project_id)
+
+    async def remove_child(self, child_id: str) -> None:
+        """Stop and deregister a child agent (PM-initiated removal)."""
+        child = self._children.get(child_id)
+        if child is not None and child.state not in ("stopped", "destroyed", "stopping"):
+            await child.stop()
+        self._child_specs = [s for s in self._child_specs if s.child_id != child_id]
+        logger.info("Removed child %s from project %s", child_id, self._project_id)
