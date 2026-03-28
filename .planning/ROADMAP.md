@@ -125,7 +125,10 @@ Plans:
   2. ContinuousAgent can call request_task() to delegate work through supervisor via DelegationTracker
   3. ContinuousAgent persists seen_items, pending_actions, briefing_log, and config to memory_store — survives restart
   4. When a GsdAgent restarts, it restores current phase, task, and assignment from ProjectStateManager — not just FSM state
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 16-01-PLAN.md — Strategist inversion: move conversation into CompanyAgent._handle_event(), StrategistCog becomes thin adapter
+- [ ] 16-02-PLAN.md — Agent completeness: ContinuousAgent delegation + persistence, GsdAgent assignment restore
 
 ### Phase 17: Health Tree Rendering
 **Goal**: /health command shows the complete supervision hierarchy matching the architecture doc's format
@@ -139,7 +142,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 11 → 12 → 13 → 14 → 15 → 16 → 17
+Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 (Phases 12/13 and 16 can proceed in parallel after Phase 11)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -149,5 +152,5 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 → 15 → 16 → 17
 | 13. PM Event Routing | v2.1 | 1/1 | Complete    | 2026-03-28 |
 | 14. PM Review Gates | v2.1 | 2/2 | Complete    | 2026-03-28 |
 | 15. PM Actions & Auto Distribution | v2.1 | 2/2 | Complete    | 2026-03-28 |
-| 16. Agent Completeness & Strategist | v2.1 | 0/0 | Not started | - |
+| 16. Agent Completeness & Strategist | v2.1 | 0/2 | Planning    | - |
 | 17. Health Tree Rendering | v2.1 | 0/0 | Not started | - |
