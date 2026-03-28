@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
-status: Milestone complete
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-03-28T01:39:59.204Z"
+status: Ready to execute
+stopped_at: Completed 08.1-01-PLAN.md
+last_updated: "2026-03-28T02:38:38.503Z"
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 8
-  total_plans: 22
-  completed_plans: 22
+  total_plans: 24
+  completed_plans: 23
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 08 — companyroot-wiring-and-migration
+**Current focus:** Phase 08.1 — integration-wiring
 
 ## Current Position
 
-Phase: 08
-Plan: Not started
+Phase: 08.1 (integration-wiring) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Plan: Not started
 | Phase 08 P01 | 3min | 2 tasks | 4 files |
 | Phase 08 P02 | 10min | 2 tasks | 6 files |
 | Phase 08 P03 | 46min | 2 tasks | 25 files |
+| Phase 08.1 P01 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,7 @@ Recent decisions affecting current work:
 - [Phase 08]: set_company_root() replaces set_orchestrator() -- CompanyRoot accessed via bot attribute
 - [Phase 08]: Extracted WorkflowStage/detect_stage_signal to shared/workflow_types.py for cross-module reuse
 - [Phase 08]: CLI commands use TmuxManager directly (independent of supervision tree/bot)
+- [Phase 08.1]: Claude API health check uses minimal messages.create ping for DegradedModeManager
 
 ### Pending Todos
 
@@ -142,6 +144,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T01:34:52.017Z
-Stopped at: Completed 08-03-PLAN.md
+Last session: 2026-03-28T02:38:38.500Z
+Stopped at: Completed 08.1-01-PLAN.md
 Resume file: None
