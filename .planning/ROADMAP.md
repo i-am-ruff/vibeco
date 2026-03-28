@@ -128,7 +128,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Resilience** - Rate-aware communication, upstream outage detection, and degraded mode for Claude server unavailability *(completed 2026-03-27)*
 - [x] **Phase 7: Autonomy Features** - Living milestone backlog, delegation protocol, and decoupled project/agent lifecycles *(completed 2026-03-28)*
 - [x] **Phase 8: CompanyRoot Wiring and Migration** - CompanyRoot replaces VcoBot.on_ready(), slash command conversion, v1 module removal, communication layer abstraction *(completed 2026-03-28)*
-- [ ] **Phase 8.1: Integration Wiring** - Wire cross-phase integration gaps (HealthCog, BacklogQueue, MessageQueue, DegradedMode)
+- [x] **Phase 8.1: Integration Wiring** - Wire cross-phase integration gaps (HealthCog, BacklogQueue, MessageQueue, DegradedMode) *(completed 2026-03-28)*
+- [ ] **Phase 8.2: Deep Integration** - Make v2 container system operational end-to-end
 
 ## Phase Details
 
@@ -273,6 +274,18 @@ Plans:
 - [x] 08.1-01-PLAN.md -- Wire HealthCog loading, DegradedMode health_check, and MessageQueue into bot startup
 - [x] 08.1-02-PLAN.md -- Wire BacklogQueue/ProjectStateManager to FulltimeAgent and GsdAgent consumption loop
 
+### Phase 8.2: Deep Integration (INSERTED)
+**Goal**: Make v2 container system operational end-to-end: dispatch/kill/relaunch use container lifecycle, health reflects real tmux state, /status removed, agent running state correlates with actual liveness
+**Depends on**: Phase 8.1
+**Requirements**: MIGR-01, HLTH-02, HLTH-03
+**Success Criteria** (what must be TRUE):
+  1. `/dispatch` creates an AgentContainer, starts it via the supervision tree, and launches the tmux session — container state tracks real tmux liveness
+  2. `/kill` and `/relaunch` operate through the container lifecycle (stop/destroy/restart), not raw tmux commands
+  3. `/health` shows the real supervision hierarchy (CompanyRoot → ProjectSupervisor → agents) with state that matches actual tmux session liveness — no phantom containers
+  4. `/status` command is removed — `/health` is the replacement
+  5. State-change notifications fire to #alerts when real agent state changes (tmux session dies → container ERRORED → notification)
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
@@ -289,3 +302,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 6. Resilience | 0/3 | Planned | - |
 | 7. Autonomy Features | 2/3 | In Progress|  |
 | 8. CompanyRoot Wiring and Migration | 2/3 | In Progress|  |
+
