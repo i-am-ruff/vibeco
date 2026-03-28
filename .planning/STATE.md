@@ -107,6 +107,12 @@ None yet.
 - BLOCKED state is currently a bool, not FSM state -- Phase 11 prerequisite for health accuracy
 - CompanyAgent._handle_event() is pass -- Strategist logic still in StrategistCog (Phase 16)
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260328-tzg | Fix PM review gate: modify/clarify loop + all-stage review | 2026-03-28 | 25a1136 | [260328-tzg](./quick/260328-tzg-fix-pm-review-gate-make-modify-clarify-l/) |
+
 ## Session Continuity
 
 Last session: 2026-03-28T17:44:35.019Z
