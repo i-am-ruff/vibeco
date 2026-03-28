@@ -126,7 +126,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Remaining Agent Types and Scheduler** - ContinuousAgent, FulltimeAgent (PM), CompanyAgent (Strategist), and scheduler for wake cycles *(completed 2026-03-27)*
 - [x] **Phase 5: Health Tree** - Health aggregation across the supervision tree with Discord /health rendering and state-change notifications (completed 2026-03-27)
 - [x] **Phase 6: Resilience** - Rate-aware communication, upstream outage detection, and degraded mode for Claude server unavailability *(completed 2026-03-27)*
-- [ ] **Phase 7: Autonomy Features** - Living milestone backlog, delegation protocol, and decoupled project/agent lifecycles
+- [x] **Phase 7: Autonomy Features** - Living milestone backlog, delegation protocol, and decoupled project/agent lifecycles *(completed 2026-03-28)*
 - [ ] **Phase 8: CompanyRoot Wiring and Migration** - CompanyRoot replaces VcoBot.on_ready(), slash command conversion, v1 module removal, communication layer abstraction
 
 ## Phase Details
