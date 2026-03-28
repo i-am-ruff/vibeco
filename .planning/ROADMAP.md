@@ -287,8 +287,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 08.2-01-PLAN.md -- Container tmux bridge + supervisor liveness monitoring + tests
-- [ ] 08.2-02-PLAN.md -- Command updates (dispatch/kill/relaunch use tmux lifecycle, /status removed) + test updates
+- [x] 08.2-01-PLAN.md -- Container tmux bridge + supervisor liveness monitoring + tests
+- [x] 08.2-02-PLAN.md -- Command updates (dispatch/kill/relaunch use tmux lifecycle, /status removed) + test updates
 
 ## Progress
 
