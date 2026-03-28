@@ -86,3 +86,38 @@ class TestFactoryRegistry:
         registry = get_registry()
         registry["hacked"] = AgentContainer
         assert "hacked" not in get_registry()
+
+
+class TestFactoryAgentTypeRouting:
+    """Tests for factory routing from AgentConfig.type (TYPE-04, TYPE-05)."""
+
+    def setup_method(self):
+        """Register default agent types before each test."""
+        from vcompany.container import factory
+        factory._REGISTRY.clear()
+        from vcompany.container.factory import register_defaults
+        register_defaults()
+
+    def test_factory_routes_fulltime_type(self, tmp_path):
+        """type='fulltime' AgentConfig produces FulltimeAgent via ContainerFactory."""
+        from vcompany.agent.fulltime_agent import FulltimeAgent
+
+        spec = ChildSpec(
+            child_id="pm-1",
+            agent_type="fulltime",
+            context=ContainerContext(agent_id="pm-1", agent_type="fulltime"),
+        )
+        container = create_container(spec, data_dir=tmp_path)
+        assert isinstance(container, FulltimeAgent)
+
+    def test_factory_routes_company_type(self, tmp_path):
+        """type='company' AgentConfig produces CompanyAgent via ContainerFactory."""
+        from vcompany.agent.company_agent import CompanyAgent
+
+        spec = ChildSpec(
+            child_id="strategist-1",
+            agent_type="company",
+            context=ContainerContext(agent_id="strategist-1", agent_type="company"),
+        )
+        container = create_container(spec, data_dir=tmp_path)
+        assert isinstance(container, CompanyAgent)

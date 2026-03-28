@@ -108,3 +108,77 @@ class TestInvalidConfig:
         sample_agents_yaml["agents"][0]["gsd_mode"] = "invalid"
         with pytest.raises(ValidationError):
             ProjectConfig(**sample_agents_yaml)
+
+
+class TestAgentConfigType:
+    """Tests for agent type field validation and routing (TYPE-04, TYPE-05)."""
+
+    def test_agent_config_type_defaults_to_gsd(self) -> None:
+        """AgentConfig without explicit type has type=='gsd' (backward compatible)."""
+        cfg = AgentConfig(
+            id="test-1",
+            role="backend",
+            owns=["src/"],
+            consumes="INTERFACES.md",
+            gsd_mode="full",
+            system_prompt="prompt.md",
+        )
+        assert cfg.type == "gsd"
+
+    def test_agent_config_type_fulltime(self) -> None:
+        """AgentConfig with type='fulltime' stores correctly."""
+        cfg = AgentConfig(
+            id="pm-1",
+            role="PM",
+            owns=["planning/"],
+            consumes="INTERFACES.md",
+            gsd_mode="full",
+            system_prompt="pm.md",
+            type="fulltime",
+        )
+        assert cfg.type == "fulltime"
+
+    def test_agent_config_type_company(self) -> None:
+        """AgentConfig with type='company' stores correctly."""
+        cfg = AgentConfig(
+            id="strategist-1",
+            role="Strategist",
+            owns=["strategy/"],
+            consumes="INTERFACES.md",
+            gsd_mode="full",
+            system_prompt="strategist.md",
+            type="company",
+        )
+        assert cfg.type == "company"
+
+    def test_agent_config_type_continuous(self) -> None:
+        """AgentConfig with type='continuous' stores correctly."""
+        cfg = AgentConfig(
+            id="monitor-1",
+            role="Monitor",
+            owns=["monitoring/"],
+            consumes="INTERFACES.md",
+            gsd_mode="full",
+            system_prompt="monitor.md",
+            type="continuous",
+        )
+        assert cfg.type == "continuous"
+
+    def test_agent_config_type_invalid_rejected(self) -> None:
+        """AgentConfig with invalid type raises ValidationError."""
+        with pytest.raises(ValidationError):
+            AgentConfig(
+                id="bad-1",
+                role="Bad",
+                owns=["src/"],
+                consumes="INTERFACES.md",
+                gsd_mode="full",
+                system_prompt="bad.md",
+                type="invalid",
+            )
+
+    def test_sample_fixture_no_type_still_parses(self, sample_agents_yaml: dict) -> None:
+        """Existing sample_agents_yaml fixture (no type key) still parses with default 'gsd'."""
+        config = ProjectConfig(**sample_agents_yaml)
+        for agent in config.agents:
+            assert agent.type == "gsd"
