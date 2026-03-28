@@ -4,7 +4,7 @@ milestone: v2.1
 milestone_name: Behavioral Integration
 status: Ready to plan
 stopped_at: "Completed 16-01-PLAN.md: Strategist conversation moved to CompanyAgent, StrategistCog wired as thin adapter"
-last_updated: "2026-03-28T17:36:08.023Z"
+last_updated: "2026-03-28T17:36:35.848Z"
 progress:
   total_phases: 7
   completed_phases: 6
@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Phase: 16
+Phase: 17
 Plan: Not started
 
 ## Performance Metrics
