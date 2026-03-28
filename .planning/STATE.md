@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
 status: Ready to plan
-stopped_at: "Completed 14-01-PLAN.md: PM review gates agent mechanism and PlanReviewCog throttled posting"
-last_updated: "2026-03-28T16:54:58.433Z"
+stopped_at: "Completed 14-02-PLAN.md: PM review gate response handler and VcoBot wiring"
+last_updated: "2026-03-28T17:05:22.429Z"
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -51,6 +51,7 @@ Plan: Not started
 | Phase 12 P01 | 113 | 2 tasks | 5 files |
 | Phase 13-pm-event-routing P01 | 591 | 2 tasks | 5 files |
 | Phase 14-pm-review-gates P01 | 15 | 2 tasks | 3 files |
+| Phase 14-pm-review-gates P02 | 10 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,9 @@ Recent decisions affecting current work:
 - [Phase 13-pm-event-routing]: Factory closures (_make_gsd_cb, _make_briefing_cb) in VcoBot.on_ready prevent Python closure-over-loop-variable bug
 - [Phase 14-pm-review-gates]: asyncio.Future gate in advance_phase() always blocks; tests use auto-approve _on_review_request callback for isolation
 - [Phase 14-pm-review-gates]: post_review_request() is the wiring entry point -- VcoBot.on_ready will assign it to each GsdAgent._on_review_request in Plan 02
+- [Phase 14-pm-review-gates]: Bot [PM] messages detected before bot-author guard in on_message -- otherwise automated PM response loop is silently dropped
+- [Phase 14-pm-review-gates]: GATE-01 (_on_review_request) wired on all GsdAgents outside pm_container guard; GATE-02 (_on_gsd_review) inside guard
+- [Phase 14-pm-review-gates]: dispatch_pm_review auto-approves non-plan stages with logging; full PMTier integration deferred to Phase 15
 
 ### Pending Todos
 
@@ -90,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T16:54:58.430Z
-Stopped at: Completed 14-01-PLAN.md: PM review gates agent mechanism and PlanReviewCog throttled posting
+Last session: 2026-03-28T17:05:22.425Z
+Stopped at: Completed 14-02-PLAN.md: PM review gate response handler and VcoBot wiring
 Resume file: None
