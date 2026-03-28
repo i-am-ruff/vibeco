@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
-status: Ready to plan
-stopped_at: Completed 07-03-PLAN.md
-last_updated: "2026-03-28T00:17:03.550Z"
+status: Milestone complete
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-03-28T01:39:59.204Z"
 progress:
   total_phases: 8
-  completed_phases: 7
-  total_plans: 19
-  completed_plans: 19
+  completed_phases: 8
+  total_plans: 22
+  completed_plans: 22
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 07 — autonomy-features
+**Current focus:** Phase 08 — companyroot-wiring-and-migration
 
 ## Current Position
 
-Phase: 8
+Phase: 08
 Plan: Not started
 
 ## Performance Metrics
@@ -65,6 +65,9 @@ Plan: Not started
 | Phase 07 P01 | 2min | 1 tasks | 3 files |
 | Phase 07 P02 | 3min | 2 tasks | 4 files |
 | Phase 07 P03 | 3min | 1 tasks | 4 files |
+| Phase 08 P01 | 3min | 2 tasks | 4 files |
+| Phase 08 P02 | 10min | 2 tasks | 6 files |
+| Phase 08 P03 | 46min | 2 tasks | 25 files |
 
 ## Accumulated Context
 
@@ -118,6 +121,13 @@ Recent decisions affecting current work:
 - [Phase 07]: DelegationTracker uses injectable clock for testable rate limiting
 - [Phase 07]: Delegation cleanup in state change callback before _restarting check ensures terminated children always release capacity
 - [Phase 07]: PM is single writer to backlog -- agents post events, never write to PM MemoryStore directly
+- [Phase 08]: DiscordCommunicationPort uses structural subtyping (no Protocol inheritance) for v3 extensibility
+- [Phase 08]: commands.when_mentioned replaces command_prefix='\!' to disable prefix commands
+- [Phase 08]: WorkflowOrchestratorCog keeps v1 WorkflowStage/detect_stage_signal imports until plan 03 extracts to shared utility
+- [Phase 08]: Gate reviews simplified to Discord events -- container FSM handles state transitions
+- [Phase 08]: set_company_root() replaces set_orchestrator() -- CompanyRoot accessed via bot attribute
+- [Phase 08]: Extracted WorkflowStage/detect_stage_signal to shared/workflow_types.py for cross-module reuse
+- [Phase 08]: CLI commands use TmuxManager directly (independent of supervision tree/bot)
 
 ### Pending Todos
 
@@ -132,6 +142,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T00:13:02.757Z
-Stopped at: Completed 07-03-PLAN.md
+Last session: 2026-03-28T01:34:52.017Z
+Stopped at: Completed 08-03-PLAN.md
 Resume file: None

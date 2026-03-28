@@ -252,8 +252,8 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 08-01-PLAN.md -- DiscordCommunicationPort implementation + slash command prefix cleanup
-- [ ] 08-02-PLAN.md -- CompanyRoot wiring into VcoBot.on_ready(), CommandsCog and WorkflowOrchestratorCog adaptation
+- [x] 08-01-PLAN.md -- DiscordCommunicationPort implementation + slash command prefix cleanup
+- [x] 08-02-PLAN.md -- CompanyRoot wiring into VcoBot.on_ready(), CommandsCog and WorkflowOrchestratorCog adaptation
 - [ ] 08-03-PLAN.md -- v1 module removal, CLI command updates, test cleanup
 
 ## Progress
@@ -271,4 +271,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 5. Health Tree | 2/2 | Complete   | 2026-03-27 |
 | 6. Resilience | 0/3 | Planned | - |
 | 7. Autonomy Features | 2/3 | In Progress|  |
-| 8. CompanyRoot Wiring and Migration | 0/3 | Planned | - |
+| 8. CompanyRoot Wiring and Migration | 2/3 | In Progress|  |
