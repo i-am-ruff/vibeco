@@ -44,7 +44,7 @@ See `.planning/milestones/v2.0-ROADMAP.md` for full details.
 - [x] **Phase 13: PM Event Routing** - All agent events (health, GSD transitions, briefings, escalations) flow to PM (completed 2026-03-28)
 - [x] **Phase 14: PM Review Gates** - PM-led conversational approve/modify/clarify gates at every GSD stage transition (completed 2026-03-28)
 - [x] **Phase 15: PM Actions & Auto Distribution** - PM outbound triggers and automatic next-item assignment from backlog (completed 2026-03-28)
-- [ ] **Phase 16: Agent Completeness & Strategist** - Strategist operates through container, agents persist full state and delegate work
+- [x] **Phase 16: Agent Completeness & Strategist** - Strategist operates through container, agents persist full state and delegate work (completed 2026-03-28)
 - [ ] **Phase 17: Health Tree Rendering** - Full supervision hierarchy with inner states, uptime, and last activity
 
 ## Phase Details
@@ -127,7 +127,7 @@ Plans:
   4. When a GsdAgent restarts, it restores current phase, task, and assignment from ProjectStateManager — not just FSM state
 **Plans**: 2 plans
 Plans:
-- [ ] 16-01-PLAN.md — Strategist inversion: move conversation into CompanyAgent._handle_event(), StrategistCog becomes thin adapter
+- [x] 16-01-PLAN.md — Strategist inversion: move conversation into CompanyAgent._handle_event(), StrategistCog becomes thin adapter
 - [x] 16-02-PLAN.md — Agent completeness: ContinuousAgent delegation + persistence, GsdAgent assignment restore
 
 ### Phase 17: Health Tree Rendering
@@ -152,5 +152,5 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 13. PM Event Routing | v2.1 | 1/1 | Complete    | 2026-03-28 |
 | 14. PM Review Gates | v2.1 | 2/2 | Complete    | 2026-03-28 |
 | 15. PM Actions & Auto Distribution | v2.1 | 2/2 | Complete    | 2026-03-28 |
-| 16. Agent Completeness & Strategist | v2.1 | 1/2 | In Progress|  |
+| 16. Agent Completeness & Strategist | v2.1 | 2/2 | Complete   | 2026-03-28 |
 | 17. Health Tree Rendering | v2.1 | 0/0 | Not started | - |

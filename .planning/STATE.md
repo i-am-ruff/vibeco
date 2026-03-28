@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
 status: Ready to plan
-stopped_at: "Completed 16-02-PLAN.md: ContinuousAgent delegation+persistence, GsdAgent assignment restore, ProjectSupervisor delegation default"
-last_updated: "2026-03-28T17:33:33.011Z"
+stopped_at: "Completed 16-01-PLAN.md: Strategist conversation moved to CompanyAgent, StrategistCog wired as thin adapter"
+last_updated: "2026-03-28T17:36:08.023Z"
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -55,6 +55,7 @@ Plan: Not started
 | Phase 15-pm-actions-auto-distribution P01 | 12 | 2 tasks | 2 files |
 | Phase 15-pm-actions-auto-distribution P02 | 3 | 1 task | 1 file |
 | Phase 16-agent-completeness-strategist P02 | 525603 | 2 tasks | 3 files |
+| Phase 16-agent-completeness-strategist P01 | 15 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Recent decisions affecting current work:
 - [Phase 15 P02]: _make_gsd_cb/_make_briefing_cb hoisted from for-loop body to be available for _on_recruit_agent reuse
 - [Phase 16-agent-completeness-strategist]: DelegationResult(approved=False) returned when _request_delegation is None -- safe default until VcoBot wires it
 - [Phase 16-agent-completeness-strategist]: ProjectSupervisor default delegation_policy=DelegationPolicy() enables conservative delegation without requiring call-site changes
+- [Phase 16-agent-completeness-strategist]: Future embedded in event dict for request-response: StrategistCog embeds asyncio.Future in the event dict and awaits it, allowing synchronous-looking results from the async event handler
+- [Phase 16-agent-completeness-strategist]: PM escalation routed directly to CompanyAgent.post_event() in client.py (bypasses cog) for clean ARCH-01 compliance; cog handle_pm_escalation preserved with fallback
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T17:33:33.002Z
-Stopped at: Completed 16-02-PLAN.md: ContinuousAgent delegation+persistence, GsdAgent assignment restore, ProjectSupervisor delegation default
+Last session: 2026-03-28T17:36:08.020Z
+Stopped at: Completed 16-01-PLAN.md: Strategist conversation moved to CompanyAgent, StrategistCog wired as thin adapter
 Resume file: None
