@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Agent Container Architecture
-status: Ready to execute
-stopped_at: Completed 08.1-01-PLAN.md
-last_updated: "2026-03-28T02:38:38.503Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 08.1-02-PLAN.md
+last_updated: "2026-03-28T02:43:11.283Z"
 progress:
   total_phases: 9
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 24
-  completed_plans: 23
+  completed_plans: 24
 ---
 
 # Project State
@@ -69,6 +69,7 @@ Plan: 2 of 2
 | Phase 08 P02 | 10min | 2 tasks | 6 files |
 | Phase 08 P03 | 46min | 2 tasks | 25 files |
 | Phase 08.1 P01 | 2min | 2 tasks | 2 files |
+| Phase 08.1 P02 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,7 @@ Recent decisions affecting current work:
 - [Phase 08]: Extracted WorkflowStage/detect_stage_signal to shared/workflow_types.py for cross-module reuse
 - [Phase 08]: CLI commands use TmuxManager directly (independent of supervision tree/bot)
 - [Phase 08.1]: Claude API health check uses minimal messages.create ping for DegradedModeManager
+- [Phase 08.1]: PM found via isinstance iteration over project_sup.children after add_project()
 
 ### Pending Todos
 
@@ -144,6 +146,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T02:38:38.500Z
-Stopped at: Completed 08.1-01-PLAN.md
+Last session: 2026-03-28T02:43:11.280Z
+Stopped at: Completed 08.1-02-PLAN.md
 Resume file: None

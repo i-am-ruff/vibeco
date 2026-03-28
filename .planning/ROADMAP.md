@@ -271,7 +271,7 @@ Plans:
 
 Plans:
 - [x] 08.1-01-PLAN.md -- Wire HealthCog loading, DegradedMode health_check, and MessageQueue into bot startup
-- [ ] 08.1-02-PLAN.md -- Wire BacklogQueue/ProjectStateManager to FulltimeAgent and GsdAgent consumption loop
+- [x] 08.1-02-PLAN.md -- Wire BacklogQueue/ProjectStateManager to FulltimeAgent and GsdAgent consumption loop
 
 ## Progress
 

@@ -57,10 +57,10 @@ Requirements for v2.0 Agent Container Architecture. Each maps to roadmap phases.
 
 ### Integration & Migration
 
-- [ ] **MIGR-01**: CompanyRoot replaces flat VcoBot.on_ready() — supervision tree initializes all containers
-- [ ] **MIGR-02**: All Discord commands converted to slash commands (no more `!` prefix)
-- [ ] **MIGR-03**: v1 modules fully removed after v2 passes regression tests (MonitorLoop, CrashTracker, WorkflowOrchestrator, AgentManager)
-- [ ] **MIGR-04**: Communication layer designed with clean interface that Discord implements — preparing for v3 channel abstraction
+- [x] **MIGR-01**: CompanyRoot replaces flat VcoBot.on_ready() — supervision tree initializes all containers
+- [x] **MIGR-02**: All Discord commands converted to slash commands (no more `!` prefix)
+- [x] **MIGR-03**: v1 modules fully removed after v2 passes regression tests (MonitorLoop, CrashTracker, WorkflowOrchestrator, AgentManager)
+- [x] **MIGR-04**: Communication layer designed with clean interface that Discord implements — preparing for v3 channel abstraction
 
 ## v1 Requirements (Completed)
 
@@ -128,10 +128,10 @@ All 85 v1 requirements completed. See `.planning/milestones/v1.0-REQUIREMENTS.md
 | AUTO-03 | Phase 7 | Complete |
 | AUTO-04 | Phase 7 | Complete |
 | AUTO-05 | Phase 7 | Complete |
-| MIGR-01 | Phase 8 | Pending |
-| MIGR-02 | Phase 8 | Pending |
-| MIGR-03 | Phase 8 | Pending |
-| MIGR-04 | Phase 8 | Pending |
+| MIGR-01 | Phase 8 | Complete |
+| MIGR-02 | Phase 8 | Complete |
+| MIGR-03 | Phase 8 | Complete |
+| MIGR-04 | Phase 8 | Complete |
 
 **Coverage:**
 - v2 requirements: 34 total
