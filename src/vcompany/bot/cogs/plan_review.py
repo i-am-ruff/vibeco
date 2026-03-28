@@ -1,11 +1,11 @@
 """PlanReviewCog: Plan gate workflow for agent plan review.
 
-When monitor detects a new PLAN.md, this Cog:
+When a new PLAN.md is detected, this Cog:
 1. Reads the plan content and validates safety table (SAFE-01/D-16)
 2. Posts rich embed summary to #plan-review with Approve/Reject buttons (D-07/D-08)
 3. Attaches full PLAN.md as a file (D-07)
 4. Waits for reviewer response (GATE-03)
-5. On approve: updates plan_gate_status, checks if all plans approved -> triggers execution (D-11/D-12)
+5. On approve: notifies WorkflowOrchestratorCog, triggers execution via TmuxManager (D-11/D-12)
 6. On reject: sends feedback to agent tmux pane for replanning (D-09/GATE-04)
 """
 
@@ -182,12 +182,7 @@ class PlanReviewCog(commands.Cog):
                         f"[PM] Plan approved for {agent_id}. {review.note}\n"
                         f"Sending execute command."
                     )
-                    if self.bot.agent_manager:
-                        pane = self.bot.agent_manager._panes.get(agent_id)
-                        if pane:
-                            self.bot.agent_manager._tmux.send_command(
-                                pane, "/gsd:execute-phase 1"
-                            )
+                    await self._send_tmux_command(agent_id, "/gsd:execute-phase 1")
                 else:
                     await channel.send(
                         f"[PM] Plan needs revision for {agent_id}: {review.note}"
@@ -210,10 +205,7 @@ class PlanReviewCog(commands.Cog):
         )
         await asyncio.to_thread(self._append_pm_context, knowledge_entry)
 
-        if self.bot.agent_manager:
-            pane = self.bot.agent_manager._panes.get(agent_id)
-            if pane:
-                self.bot.agent_manager._tmux.send_command(pane, "/gsd:execute-phase 1")
+        await self._send_tmux_command(agent_id, "/gsd:execute-phase 1")
 
     async def _verify_agent_execution(self, agent_id: str, channel: discord.TextChannel) -> None:
         """PM verifies that execution completed successfully."""
@@ -377,31 +369,11 @@ class PlanReviewCog(commands.Cog):
             await self._workflow_cog.notify_plan_rejected(agent_id)
 
         # Send rejection feedback to agent tmux pane (D-09)
-        if self.bot.agent_manager:
-            try:
-                tmux = self.bot.agent_manager._tmux
-                # Load agent registry to get pane reference
-                from vcompany.models.agent_state import AgentsRegistry
-                registry_path = self.bot.project_dir / "state" / "agents.json"
-                if registry_path.exists():
-                    registry = AgentsRegistry.model_validate_json(
-                        await asyncio.to_thread(registry_path.read_text)
-                    )
-                    entry = registry.agents.get(agent_id)
-                    if entry and entry.pane_id:
-                        feedback_cmd = (
-                            f"Your plan {Path(plan_path).name} was rejected. "
-                            f"Feedback: {feedback}. Please revise the plan."
-                        )
-                        sent = await asyncio.to_thread(
-                            tmux.send_command, entry.pane_id, feedback_cmd
-                        )
-                        if sent:
-                            logger.info("Sent rejection feedback to %s (pane %s)", agent_id, entry.pane_id)
-                        else:
-                            logger.error("Failed to send rejection feedback to %s (pane %s)", agent_id, entry.pane_id)
-            except Exception:
-                logger.exception("Failed to send rejection feedback to %s", agent_id)
+        feedback_cmd = (
+            f"Your plan {Path(plan_path).name} was rejected. "
+            f"Feedback: {feedback}. Please revise the plan."
+        )
+        await self._send_tmux_command(agent_id, feedback_cmd)
 
         if self._plan_review_channel:
             await self._plan_review_channel.send(
@@ -414,38 +386,14 @@ class PlanReviewCog(commands.Cog):
 
         Only called when ALL plans for a phase are approved.
         """
-        if not self.bot.agent_manager:
-            logger.error("Cannot trigger execution: agent_manager not available")
-            return
+        phase = getattr(state, "current_phase", "unknown")
+        execute_cmd = f"/gsd:execute-phase {phase}"
+        await self._send_tmux_command(agent_id, execute_cmd)
 
-        try:
-            tmux = self.bot.agent_manager._tmux
-            from vcompany.models.agent_state import AgentsRegistry
-            registry_path = self.bot.project_dir / "state" / "agents.json"
-            if registry_path.exists():
-                registry = AgentsRegistry.model_validate_json(
-                    await asyncio.to_thread(registry_path.read_text)
-                )
-                entry = registry.agents.get(agent_id)
-                if entry and entry.pane_id:
-                    # Extract phase number from state
-                    phase = getattr(state, 'current_phase', 'unknown')
-                    execute_cmd = f"/gsd:execute-phase {phase}"
-                    sent = await asyncio.to_thread(
-                        tmux.send_command, entry.pane_id, execute_cmd
-                    )
-                    if sent:
-                        logger.info("Triggered execution for %s: %s (pane %s)", agent_id, execute_cmd, entry.pane_id)
-                    else:
-                        logger.error("Failed to trigger execution for %s: %s (pane %s)", agent_id, execute_cmd, entry.pane_id)
-
-                    # Reset gate state to idle after triggering
-                    if hasattr(state, 'plan_gate_status'):
-                        state.plan_gate_status = "idle"
-                        state.approved_plans = []
-
-        except Exception:
-            logger.exception("Failed to trigger execution for %s", agent_id)
+        # Reset gate state to idle after triggering
+        if hasattr(state, "plan_gate_status"):
+            state.plan_gate_status = "idle"
+            state.approved_plans = []
 
         if self._alerts_channel:
             await self._alerts_channel.send(
@@ -453,9 +401,14 @@ class PlanReviewCog(commands.Cog):
             )
 
     def _get_agent_state(self, agent_id: str):
-        """Get AgentMonitorState from MonitorLoop."""
-        if self.bot.monitor_loop:
-            return self.bot.monitor_loop._agent_states.get(agent_id)
+        """Get AgentMonitorState if available via bot attribute.
+
+        Returns None if no monitor state tracking is active (supervision tree
+        handles health monitoring via event-driven callbacks instead).
+        """
+        monitor = getattr(self.bot, "monitor_loop", None)
+        if monitor is not None:
+            return getattr(monitor, "_agent_states", {}).get(agent_id)
         return None
 
     def _update_gate_state(self, agent_id: str, plan_path: str, *, status: str) -> None:
@@ -480,6 +433,44 @@ class PlanReviewCog(commands.Cog):
             state.plan_gate_status = "rejected"
             if plan_path in state.pending_plans:
                 state.pending_plans.remove(plan_path)
+
+    async def _send_tmux_command(self, agent_id: str, command: str) -> bool:
+        """Send a command to an agent's tmux pane via TmuxManager.
+
+        Looks up the agent's pane_id from agents.json registry, then uses
+        TmuxManager to send the command. Returns True on success.
+        """
+        if not self.bot.project_dir:
+            logger.error("Cannot send tmux command: no project_dir")
+            return False
+
+        try:
+            from vcompany.models.agent_state import AgentsRegistry
+            from vcompany.tmux.session import TmuxManager
+
+            registry_path = self.bot.project_dir / "state" / "agents.json"
+            if not registry_path.exists():
+                logger.warning("agents.json not found, cannot send command to %s", agent_id)
+                return False
+
+            registry = AgentsRegistry.model_validate_json(
+                await asyncio.to_thread(registry_path.read_text)
+            )
+            entry = registry.agents.get(agent_id)
+            if not entry or not entry.pane_id:
+                logger.warning("No pane_id for agent %s in registry", agent_id)
+                return False
+
+            tmux = TmuxManager()
+            sent = await asyncio.to_thread(tmux.send_command, entry.pane_id, command)
+            if sent:
+                logger.info("Sent command to %s (pane %s): %s", agent_id, entry.pane_id, command[:80])
+            else:
+                logger.error("Failed to send command to %s (pane %s)", agent_id, entry.pane_id)
+            return sent
+        except Exception:
+            logger.exception("Failed to send tmux command to %s", agent_id)
+            return False
 
     async def _log_plan_decision(
         self, agent_id: str, plan_path: str, decision: str, confidence_level: str

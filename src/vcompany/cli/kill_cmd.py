@@ -1,38 +1,53 @@
-"""vco kill command -- terminate a running agent session."""
+"""vco kill command -- terminate a running agent session or entire project.
+
+Uses TmuxManager directly. When the bot is running, prefer the /kill slash
+command which routes through the supervision tree for graceful shutdown.
+"""
 
 import sys
-from pathlib import Path
 
 import click
 
-from vcompany.shared.paths import PROJECTS_BASE
-from vcompany.models.config import load_config
-from vcompany.orchestrator.agent_manager import AgentManager
+from vcompany.tmux.session import TmuxManager
 
 
 @click.command()
 @click.argument("project_name")
-@click.argument("agent_id")
-@click.option("--force", is_flag=True, help="Skip SIGTERM, send SIGKILL immediately")
-def kill(project_name: str, agent_id: str, force: bool) -> None:
-    """Kill a running agent session."""
-    project_dir = PROJECTS_BASE / project_name
-    if not project_dir.is_dir():
-        click.echo(f"Error: Project '{project_name}' not found at {project_dir}", err=True)
-        sys.exit(1)
+@click.argument("agent_id", required=False, default=None)
+@click.option("--all", "kill_all", is_flag=True, help="Kill entire tmux session for the project")
+def kill(project_name: str, agent_id: str | None, kill_all: bool) -> None:
+    """Kill a running agent session or the whole project session."""
+    tmux = TmuxManager()
+    session_name = f"vco-{project_name}"
 
-    config_path = project_dir / "agents.yaml"
-    try:
-        config = load_config(config_path)
-    except Exception as e:
-        click.echo(f"Error loading config: {e}", err=True)
-        sys.exit(1)
+    if kill_all:
+        if tmux.kill_session(session_name):
+            click.echo(f"Killed session '{session_name}' (all agents)")
+        else:
+            click.echo(f"Error: Session '{session_name}' not found", err=True)
+            sys.exit(1)
+    elif agent_id:
+        # Find the agent's window in the session and kill it
+        session = tmux.get_session(session_name)
+        if session is None:
+            click.echo(f"Error: Session '{session_name}' not found", err=True)
+            sys.exit(1)
 
-    manager = AgentManager(project_dir, config)
-    success = manager.kill(agent_id, force=force)
+        killed = False
+        for window in session.windows:
+            if window.window_name == agent_id:
+                try:
+                    window.kill()
+                    killed = True
+                    click.echo(f"Killed agent '{agent_id}' (window in {session_name})")
+                except Exception as e:
+                    click.echo(f"Error killing agent '{agent_id}': {e}", err=True)
+                    sys.exit(1)
+                break
 
-    if success:
-        click.echo(f"Killed agent '{agent_id}'")
+        if not killed:
+            click.echo(f"Error: Agent '{agent_id}' not found in session '{session_name}'", err=True)
+            sys.exit(1)
     else:
-        click.echo(f"Error: Agent '{agent_id}' not found in registry", err=True)
+        click.echo("Specify agent ID or use --all", err=True)
         sys.exit(1)

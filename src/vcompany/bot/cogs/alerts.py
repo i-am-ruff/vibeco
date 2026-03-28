@@ -1,8 +1,9 @@
-"""AlertsCog: Monitors agent health and posts alerts to Discord channels.
+"""AlertsCog: Posts agent health alerts to Discord channels.
 
-Receives MonitorLoop and CrashTracker callbacks (sync), bridges them to
-async Discord sends via run_coroutine_threadsafe (Pitfall 4). Buffers alerts
-during disconnects and flushes on reconnect (D-15, DISC-12).
+Receives supervision tree health notifications and bridges them to async
+Discord sends. Buffers alerts during disconnects and flushes on reconnect
+(D-15, DISC-12). Also provides make_sync_callbacks() for bridging sync
+callbacks to async Discord sends via run_coroutine_threadsafe.
 """
 
 from __future__ import annotations
@@ -26,11 +27,11 @@ if TYPE_CHECKING:
 
 
 class AlertsCog(commands.Cog):
-    """Posts monitor and crash tracker alerts to #alerts and #plan-review.
+    """Posts health and crash alerts to #alerts and #plan-review.
 
     Buffers embeds when bot is disconnected and flushes on reconnect (D-15).
-    Provides make_sync_callbacks() to bridge sync MonitorLoop/CrashTracker
-    callbacks to async Discord sends via run_coroutine_threadsafe (Pitfall 4).
+    Provides make_sync_callbacks() to bridge sync supervision tree callbacks
+    to async Discord sends via run_coroutine_threadsafe.
     """
 
     def __init__(self, bot: VcoBot) -> None:
@@ -135,11 +136,11 @@ class AlertsCog(commands.Cog):
         self._alert_buffer.append(embed)
 
     def make_sync_callbacks(self) -> dict:
-        """Create sync callback wrappers for MonitorLoop and CrashTracker.
+        """Create sync callback wrappers for supervision tree health notifications.
 
         Returns dict with keys: on_agent_dead, on_agent_stuck, on_plan_detected,
         on_circuit_open. Each is a sync callable that schedules the async alert
-        method via run_coroutine_threadsafe (Pitfall 4).
+        method via run_coroutine_threadsafe.
         """
         loop = self.bot.loop
 
