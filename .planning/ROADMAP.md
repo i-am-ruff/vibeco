@@ -235,8 +235,8 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- BacklogQueue data structure with PM operations and GsdAgent consumption
-- [ ] 07-02-PLAN.md -- Delegation protocol with policy enforcement and supervisor integration
+- [x] 07-01-PLAN.md -- BacklogQueue data structure with PM operations and GsdAgent consumption
+- [x] 07-02-PLAN.md -- Delegation protocol with policy enforcement and supervisor integration
 - [ ] 07-03-PLAN.md -- ProjectStateManager, PM event handling, crash-safe state ownership
 
 ### Phase 8: CompanyRoot Wiring and Migration
@@ -265,5 +265,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 4. Remaining Agent Types and Scheduler | 0/4 | Planned | - |
 | 5. Health Tree | 2/2 | Complete   | 2026-03-27 |
 | 6. Resilience | 0/3 | Planned | - |
-| 7. Autonomy Features | 0/3 | Planned | - |
+| 7. Autonomy Features | 2/3 | In Progress|  |
 | 8. CompanyRoot Wiring and Migration | 0/0 | Not started | - |
