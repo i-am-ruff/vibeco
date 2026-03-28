@@ -83,7 +83,9 @@ Plans:
   2. When a GsdAgent transitions GSD stages (e.g., DISCUSS to PLAN), PM's event queue receives a gsd_transition event with stage details
   3. When a ContinuousAgent completes its REPORT phase, PM's event queue receives a briefing event with the report content
   4. When an agent enters BLOCKED state, PM's event queue receives an escalation event with the block reason
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 13-01-PLAN.md — PM event sink on Supervisor, callback hooks on GsdAgent/ContinuousAgent, event handlers in FulltimeAgent, wiring in VcoBot.on_ready()
 
 ### Phase 14: PM Review Gates
 **Goal**: PM leads development through conversational gates — agents stop after each GSD stage, PM reviews, and agents only advance on approval
@@ -138,7 +140,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 → 15 → 16 → 17
 |-------|-----------|----------------|--------|-----------|
 | 11. Container Architecture Fixes | v2.1 | 2/2 | Complete    | 2026-03-28 |
 | 12. Work Initiation | v2.1 | 1/1 | Complete    | 2026-03-28 |
-| 13. PM Event Routing | v2.1 | 0/0 | Not started | - |
+| 13. PM Event Routing | v2.1 | 0/1 | In progress | - |
 | 14. PM Review Gates | v2.1 | 0/0 | Not started | - |
 | 15. PM Actions & Auto Distribution | v2.1 | 0/0 | Not started | - |
 | 16. Agent Completeness & Strategist | v2.1 | 0/0 | Not started | - |
