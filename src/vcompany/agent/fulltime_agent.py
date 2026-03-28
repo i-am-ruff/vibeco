@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from statemachine.orderedset import OrderedSet
 
@@ -63,6 +63,9 @@ class FulltimeAgent(AgentContainer):
         # Backlog and project state (wired after construction, not in __init__ args)
         self.backlog: BacklogQueue | None = None
         self._project_state: ProjectStateManager | None = None
+        # GATE-02: Callback invoked when gsd_transition event received.
+        # Wired by VcoBot.on_ready to call PlanReviewCog.dispatch_pm_review().
+        self._on_gsd_review: Callable[[str, str], Awaitable[None]] | None = None
 
     # --- Properties (override parent for compound state handling) ---
 
@@ -141,6 +144,8 @@ class FulltimeAgent(AgentContainer):
                 "PM received gsd_transition: agent=%s %s->%s",
                 event.get("agent_id"), event.get("from_phase"), event.get("to_phase"),
             )
+            if self._on_gsd_review is not None:
+                await self._on_gsd_review(event.get("agent_id", ""), event.get("to_phase", ""))
         elif event_type == "briefing":
             logger.info(
                 "PM received briefing from %s (content_len=%d)",

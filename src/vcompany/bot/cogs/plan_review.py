@@ -71,22 +71,32 @@ class PlanReviewCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
-        """Watch agent channels for @PM mentions to trigger plan review.
+        """Watch agent channels for @PM mentions and PM review responses.
 
         When an agent posts "@PM plan ready" in #agent-{id}, this triggers
         the PM review flow. Discord is the bus — no file watching needed.
+
+        Also handles PM review responses (bot-posted [PM] ... messages) to
+        resolve GsdAgent gate Futures. Bot-authored [PM] messages are handled
+        before the bot-author guard so they are not skipped.
         """
         # Only respond to messages in agent-* channels
         if not message.channel.name.startswith("agent-"):
             return
-        # Only process messages containing @PM
-        if "@PM" not in message.content:
-            return
-        # Skip bot's own messages (PM responses)
-        if message.author.id == self.bot.user.id:
-            return
 
         agent_id = message.channel.name.removeprefix("agent-")
+
+        # Handle bot's own [PM] review responses (from automated PM review dispatch).
+        # Must check BEFORE the bot-author guard below -- otherwise these are skipped.
+        if message.author.id == self.bot.user.id:
+            if message.content.startswith("[PM]"):
+                await self._handle_review_response(agent_id, message.content)
+            return
+
+        # Only process messages containing @PM (from non-bot authors)
+        if "@PM" not in message.content:
+            return
+
         content_lower = message.content.lower()
 
         # Detect plan completion
@@ -587,6 +597,113 @@ class PlanReviewCog(commands.Cog):
         attachments = await self._build_review_attachments(agent_id, stage)
         content = f"[{agent_id}] @PM, finished {stage}, need your review"
         await self._post_throttled(agent_id, channel, content, attachments or None)
+
+    async def _handle_review_response(self, agent_id: str, content: str) -> None:
+        """Parse a [PM] review response and resolve the agent's gate Future.
+
+        Called from on_message when the bot posts a [PM]-prefixed message in
+        an agent channel. Parses the decision keyword and calls resolve_review()
+        on the matching GsdAgent.
+
+        Args:
+            agent_id: Agent ID extracted from the channel name.
+            content: Full message content starting with "[PM]".
+        """
+        content_lower = content.lower()
+        if "approved" in content_lower or "approve" in content_lower:
+            decision = "approve"
+        elif "needs changes" in content_lower or "modify" in content_lower:
+            decision = "modify"
+        elif "clarify" in content_lower:
+            decision = "clarify"
+        else:
+            decision = "clarify"  # safe fallback
+
+        if self.bot.company_root is None:
+            return
+        container = await self.bot.company_root._find_container(agent_id)
+        if container is None:
+            return
+        from vcompany.agent.gsd_agent import GsdAgent
+        if not isinstance(container, GsdAgent):
+            return
+        resolved = container.resolve_review(decision)
+        if resolved:
+            logger.info("Resolved review gate for %s: %s", agent_id, decision)
+            if decision == "modify":
+                # Extract feedback after the first colon (e.g., "[PM] NEEDS CHANGES: ...")
+                feedback = content.split(":", 1)[1].strip() if ":" in content else content
+                await self._send_tmux_command(agent_id, f"PM feedback: {feedback}")
+        else:
+            logger.warning("No pending review to resolve for %s", agent_id)
+
+    async def dispatch_pm_review(self, agent_id: str, stage: str) -> None:
+        """Have PM evaluate the agent's stage artifacts and post a review response.
+
+        Called when a gsd_transition event triggers PM evaluation (GATE-02).
+        Uses PlanReviewer for plan-stage artifacts; auto-approves other stages.
+        Posts a [PM] APPROVED or [PM] NEEDS CHANGES message to the agent channel,
+        which is then picked up by on_message -> _handle_review_response to
+        resolve the gate Future.
+
+        Args:
+            agent_id: Agent identifier -- reads from #agent-{agent_id}.
+            stage: GSD stage name (discuss, plan, execute, uat, ship).
+        """
+        guild = self.bot.get_guild(self.bot._guild_id)
+        if not guild:
+            return
+        channel = discord.utils.get(guild.text_channels, name=f"agent-{agent_id}")
+        if not channel:
+            logger.warning("Channel agent-%s not found for PM review dispatch", agent_id)
+            return
+
+        # Read stage artifacts for PM evaluation
+        if not self.bot.project_dir:
+            await self._post_throttled(agent_id, channel, f"[PM] APPROVED (no project context)")
+            return
+
+        clone_dir = self.bot.project_dir / "clones" / agent_id
+        phases_dir = clone_dir / ".planning" / "phases"
+        artifact_content = ""
+        if phases_dir.exists():
+            stage_globs: dict[str, str] = {
+                "discuss": "*/*-CONTEXT.md",
+                "plan": "*/*-PLAN.md",
+                "execute": "*/*-SUMMARY.md",
+                "uat": "*/*-SUMMARY.md",
+                "ship": "*/*-SUMMARY.md",
+            }
+            pattern = stage_globs.get(stage, "")
+            if pattern:
+                matches = sorted(phases_dir.glob(pattern))
+                if matches:
+                    artifact_content = await asyncio.to_thread(matches[-1].read_text)
+                    artifact_content = artifact_content[:3000]  # cap for LLM context
+
+        await asyncio.to_thread(self._read_pm_context)
+
+        # Use PlanReviewer for plan stage, auto-approve for others
+        if stage == "plan" and self._plan_reviewer:
+            try:
+                review = await asyncio.to_thread(
+                    self._plan_reviewer.review_plan, agent_id, artifact_content
+                )
+                if review.confidence.level == "HIGH":
+                    response = f"[PM] APPROVED: {review.note}"
+                else:
+                    response = f"[PM] NEEDS CHANGES: {review.note}"
+                self._append_pm_context(f"## {agent_id} {stage} review: {review.note[:200]}")
+                await self._post_throttled(agent_id, channel, response)
+                return
+            except Exception:
+                logger.exception("PlanReviewer failed for %s %s", agent_id, stage)
+
+        # Fallback / non-plan stages: auto-approve with logging
+        # (Full PMTier integration for non-plan stages is Phase 15 scope)
+        response = f"[PM] APPROVED: {stage} stage looks good for {agent_id}"
+        self._append_pm_context(f"## {agent_id} {stage} auto-approved")
+        await self._post_throttled(agent_id, channel, response)
 
     def make_sync_callback(self) -> dict:
         """Create sync callback for on_plan_detected routing.
