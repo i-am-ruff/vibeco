@@ -368,8 +368,33 @@ class VcoBot(commands.Bot):
                             child._on_briefing = _make_briefing_cb(pm_event_sink)
 
                     logger.info("PM event routing wired for %s", pm_container.context.agent_id)
+
                 else:
                     logger.info("No FulltimeAgent (PM) found in project children, skipping backlog wiring")
+
+                # GATE-01 + GATE-02: Wire Phase 14 review gate callbacks.
+                # GATE-01 wired regardless of PM -- only requires PlanReviewCog.
+                # GATE-02 wired only when pm_container found.
+                plan_review_cog = self.get_cog("PlanReviewCog")
+                if plan_review_cog is not None:
+                    # GATE-01: Wire _on_review_request on every GsdAgent -> post_review_request
+                    for child in project_sup.children.values():
+                        if isinstance(child, GsdAgent):
+                            def _make_review_cb(cog: Any) -> Callable:
+                                async def _cb(agent_id: str, stage: str) -> None:
+                                    await cog.post_review_request(agent_id, stage)
+                                return _cb
+                            child._on_review_request = _make_review_cb(plan_review_cog)
+
+                    # GATE-02: Wire _on_gsd_review on FulltimeAgent -> dispatch_pm_review
+                    if pm_container is not None:
+                        def _make_gsd_review_cb(cog: Any) -> Callable:
+                            async def _cb(agent_id: str, stage: str) -> None:
+                                await cog.dispatch_pm_review(agent_id, stage)
+                            return _cb
+                        pm_container._on_gsd_review = _make_gsd_review_cb(plan_review_cog)
+
+                    logger.info("Phase 14 review gate callbacks wired")
 
                 logger.info("Supervision tree started with %d agents", len(specs))
             except Exception:
