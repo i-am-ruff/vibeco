@@ -23,10 +23,10 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 
 ### PM Event Routing
 
-- [ ] **PMRT-01**: Agent health state changes (RUNNING→ERRORED, etc.) are routed to PM's event queue, not just Discord #alerts
-- [ ] **PMRT-02**: GSD state transitions (DISCUSS→PLAN, PLAN→EXECUTE, etc.) are routed to PM's event queue
-- [ ] **PMRT-03**: Briefings from ContinuousAgents are routed to PM's event queue
-- [ ] **PMRT-04**: Escalations (agent BLOCKED) are routed to PM's event queue
+- [x] **PMRT-01**: Agent health state changes (RUNNING→ERRORED, etc.) are routed to PM's event queue, not just Discord #alerts
+- [x] **PMRT-02**: GSD state transitions (DISCUSS→PLAN, PLAN→EXECUTE, etc.) are routed to PM's event queue
+- [x] **PMRT-03**: Briefings from ContinuousAgents are routed to PM's event queue
+- [x] **PMRT-04**: Escalations (agent BLOCKED) are routed to PM's event queue
 
 ### PM Actions
 
@@ -91,10 +91,10 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 | GATE-03 | Phase 14 | Pending |
 | GATE-04 | Phase 14 | Pending |
 | GATE-05 | Phase 14 | Pending |
-| PMRT-01 | Phase 13 | Pending |
-| PMRT-02 | Phase 13 | Pending |
-| PMRT-03 | Phase 13 | Pending |
-| PMRT-04 | Phase 13 | Pending |
+| PMRT-01 | Phase 13 | Complete |
+| PMRT-02 | Phase 13 | Complete |
+| PMRT-03 | Phase 13 | Complete |
+| PMRT-04 | Phase 13 | Complete |
 | PMAC-01 | Phase 15 | Pending |
 | PMAC-02 | Phase 15 | Pending |
 | PMAC-03 | Phase 15 | Pending |

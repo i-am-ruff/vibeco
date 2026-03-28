@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
 status: Ready to plan
-stopped_at: "Completed 12-01-PLAN.md: Work initiation -- gsd_command injection + readiness poll"
-last_updated: "2026-03-28T16:13:12.350Z"
+stopped_at: "Completed 13-01-PLAN.md: PM event routing hooks"
+last_updated: "2026-03-28T16:31:15.743Z"
 progress:
   total_phases: 7
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  completed_phases: 3
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -49,6 +49,7 @@ Plan: Not started
 | Phase 11 P01 | 1097 | 2 tasks | 11 files |
 | Phase 11 P02 | 596 | 2 tasks | 9 files |
 | Phase 12 P01 | 113 | 2 tasks | 5 files |
+| Phase 13-pm-event-routing P01 | 591 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ Recent decisions affecting current work:
 - [Phase 12]: Poll for '>' prompt as Claude Code ready indicator -- loose check, no over-engineering
 - [Phase 12]: gsd_command stored on ContainerContext, not ChildSpec -- it's agent config, not supervision policy
 - [Phase 12]: Fixed '/gsd:discuss-phase 1' for v2.1; dynamic phase assignment deferred to later phase
+- [Phase 13-pm-event-routing]: pm_event_sink uses set_pm_event_sink() post-construction because PM container identity not known at Supervisor creation time
+- [Phase 13-pm-event-routing]: FulltimeAgent PM event handlers are log-only in Phase 13; real action logic deferred to Phase 14-15
+- [Phase 13-pm-event-routing]: Factory closures (_make_gsd_cb, _make_briefing_cb) in VcoBot.on_ready prevent Python closure-over-loop-variable bug
 
 ### Pending Todos
 
@@ -83,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T16:11:29Z
-Stopped at: Completed 12-01-PLAN.md: Work initiation -- gsd_command injection + readiness poll
+Last session: 2026-03-28T16:31:15.740Z
+Stopped at: Completed 13-01-PLAN.md: PM event routing hooks
 Resume file: None
