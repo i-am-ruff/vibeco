@@ -39,7 +39,7 @@ See `.planning/milestones/v2.0-ROADMAP.md` for full details.
 
 **Milestone Goal:** Make v2.0 container infrastructure operational — agents do real work, PM leads development through conversational review gates, health tree shows the full supervision hierarchy.
 
-- [ ] **Phase 11: Container Architecture Fixes** - Fix supervision hierarchy, add BLOCKED/STOPPING states, wire CommunicationPort
+- [x] **Phase 11: Container Architecture Fixes** - Fix supervision hierarchy, add BLOCKED/STOPPING states, wire CommunicationPort (completed 2026-03-28)
 - [ ] **Phase 12: Work Initiation** - Agents receive GSD commands in tmux and start working autonomously
 - [ ] **Phase 13: PM Event Routing** - All agent events (health, GSD transitions, briefings, escalations) flow to PM
 - [ ] **Phase 14: PM Review Gates** - PM-led conversational approve/modify/clarify gates at every GSD stage transition
@@ -61,7 +61,7 @@ See `.planning/milestones/v2.0-ROADMAP.md` for full details.
 **Plans**: 2 plans
 Plans:
 - [x] 11-01-PLAN.md — FSM states (BLOCKED, STOPPING), health model, container lifecycle, supervisor state checks
-- [ ] 11-02-PLAN.md — Strategist hierarchy, NoopCommunicationPort wiring, display layer updates
+- [x] 11-02-PLAN.md — Strategist hierarchy, NoopCommunicationPort wiring, display layer updates
 
 ### Phase 12: Work Initiation
 **Goal**: After dispatch, agents autonomously begin GSD work — Claude Code receives a real GSD command in tmux
@@ -134,7 +134,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 → 15 → 16 → 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 11. Container Architecture Fixes | v2.1 | 1/2 | In Progress|  |
+| 11. Container Architecture Fixes | v2.1 | 2/2 | Complete   | 2026-03-28 |
 | 12. Work Initiation | v2.1 | 0/0 | Not started | - |
 | 13. PM Event Routing | v2.1 | 0/0 | Not started | - |
 | 14. PM Review Gates | v2.1 | 0/0 | Not started | - |

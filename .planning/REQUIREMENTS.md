@@ -39,9 +39,9 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 ### Container Architecture
 
 - [ ] **ARCH-01**: Strategist operates through CompanyAgent container event handler — StrategistCog becomes a thin Discord adapter
-- [ ] **ARCH-02**: Strategist is a direct child of CompanyRoot, peer to ProjectSupervisors — not under ProjectSupervisor
+- [x] **ARCH-02**: Strategist is a direct child of CompanyRoot, peer to ProjectSupervisors — not under ProjectSupervisor
 - [x] **ARCH-03**: BLOCKED is a real FSM state (not a bool) — visible in health tree with reason
-- [ ] **ARCH-04**: CommunicationPort is wired during container creation — agents use comm_port for structured messaging
+- [x] **ARCH-04**: CommunicationPort is wired during container creation — agents use comm_port for structured messaging
 
 ### Health & Monitoring
 
@@ -101,9 +101,9 @@ Requirements for v2.1 Behavioral Integration. Each maps to roadmap phases.
 | PMAC-04 | Phase 15 | Pending |
 | PMAC-05 | Phase 15 | Pending |
 | ARCH-01 | Phase 16 | Pending |
-| ARCH-02 | Phase 11 | Pending |
+| ARCH-02 | Phase 11 | Complete |
 | ARCH-03 | Phase 11 | Complete |
-| ARCH-04 | Phase 11 | Pending |
+| ARCH-04 | Phase 11 | Complete |
 | HLTH-05 | Phase 17 | Pending |
 | HLTH-06 | Phase 17 | Pending |
 | AGNT-01 | Phase 16 | Pending |

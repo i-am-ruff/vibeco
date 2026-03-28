@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
-status: Ready to execute
-stopped_at: "Completed 11-01-PLAN.md: BLOCKED and STOPPING FSM states"
-last_updated: "2026-03-28T15:49:08.037Z"
+status: Phase complete — ready for verification
+stopped_at: "Completed 11-02-PLAN.md: Wire Strategist, NoopCommunicationPort, and display layer"
+last_updated: "2026-03-28T16:01:27.708Z"
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -47,6 +47,7 @@ Plan: 2 of 2
 
 *Updated after each plan completion*
 | Phase 11 P01 | 1097 | 2 tasks | 11 files |
+| Phase 11 P02 | 596 | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,8 @@ Recent decisions affecting current work:
 - [Phase 11]: block()/unblock() sync on AgentContainer since FSM transitions are sync
 - [Phase 11]: GsdAgent mark_blocked/clear_blocked kept as thin wrappers for backward API compat (ARCH-03)
 - [Phase 11]: ContinuousLifecycle extended with begin_stop/finish_stop to maintain AgentContainer.stop() contract
+- [Phase 11]: NoopCommunicationPort is a plain class satisfying CommunicationPort Protocol structurally; no inheritance needed
+- [Phase 11]: Strategist CompanyAgent created in both on_ready and /new-project paths inside company_root is None guard
 
 ### Pending Todos
 
@@ -76,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T15:49:08.034Z
-Stopped at: Completed 11-01-PLAN.md: BLOCKED and STOPPING FSM states
+Last session: 2026-03-28T16:01:27.702Z
+Stopped at: Completed 11-02-PLAN.md: Wire Strategist, NoopCommunicationPort, and display layer
 Resume file: None
