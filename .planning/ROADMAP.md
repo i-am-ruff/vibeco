@@ -128,6 +128,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Resilience** - Rate-aware communication, upstream outage detection, and degraded mode for Claude server unavailability *(completed 2026-03-27)*
 - [x] **Phase 7: Autonomy Features** - Living milestone backlog, delegation protocol, and decoupled project/agent lifecycles *(completed 2026-03-28)*
 - [x] **Phase 8: CompanyRoot Wiring and Migration** - CompanyRoot replaces VcoBot.on_ready(), slash command conversion, v1 module removal, communication layer abstraction *(completed 2026-03-28)*
+- [ ] **Phase 8.1: Integration Wiring** - Wire cross-phase integration gaps (HealthCog, BacklogQueue, MessageQueue, DegradedMode)
 
 ## Phase Details
 
@@ -255,6 +256,18 @@ Plans:
 - [x] 08-01-PLAN.md -- DiscordCommunicationPort implementation + slash command prefix cleanup
 - [x] 08-02-PLAN.md -- CompanyRoot wiring into VcoBot.on_ready(), CommandsCog and WorkflowOrchestratorCog adaptation
 - [ ] 08-03-PLAN.md -- v1 module removal, CLI command updates, test cleanup
+
+### Phase 8.1: Integration Wiring (INSERTED)
+**Goal**: Wire all cross-phase integration gaps: HealthCog loading, BacklogQueue/ProjectStateManager assignment, GsdAgent consumption loop, DegradedModeManager activation, MessageQueue routing
+**Depends on**: Phase 8
+**Requirements**: HLTH-03, HLTH-04, RESL-01, RESL-03, AUTO-01, AUTO-02, AUTO-05
+**Success Criteria** (what must be TRUE):
+  1. HealthCog is loaded by VcoBot and /health command works at runtime
+  2. FulltimeAgent.backlog and _project_state are assigned after add_project()
+  3. GsdAgent consumption loop calls get_assignment() and routes completion events to PM
+  4. DegradedModeManager activates with a health_check callable
+  5. MessageQueue routes all outbound Discord notifications with priority and debounce
+**Plans**: TBD
 
 ## Progress
 
