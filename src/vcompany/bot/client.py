@@ -39,9 +39,10 @@ _COG_EXTENSIONS: list[str] = [
 class VcoBot(commands.Bot):
     """Discord bot for vCompany project orchestration.
 
-    Loads 4 Cogs via setup_hook. Creates vco-owner role on first on_ready.
-    Holds references to AgentManager, MonitorLoop, and CrashTracker for
-    use by Cogs (injected after construction, before bot.start()).
+    All commands are slash commands (no prefix commands). Loads Cogs via
+    setup_hook. Creates vco-owner role on first on_ready. Holds references
+    to AgentManager, MonitorLoop, and CrashTracker for use by Cogs
+    (injected after construction, before bot.start()).
     """
 
     def __init__(
@@ -52,7 +53,7 @@ class VcoBot(commands.Bot):
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True  # privileged intent required for Strategist on_message
-        super().__init__(command_prefix="!", intents=intents)
+        super().__init__(command_prefix=commands.when_mentioned, intents=intents)
 
         self.project_dir: Path | None = Path(project_dir) if project_dir else None
         self.project_config: ProjectConfig | None = config

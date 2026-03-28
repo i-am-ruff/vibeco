@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
+from discord.ext import commands
 
 from vcompany.bot.client import VcoBot, _COG_EXTENSIONS
 from vcompany.models.config import AgentConfig, ProjectConfig
@@ -41,9 +42,9 @@ class TestVcoBotInit:
     """VcoBot constructor sets expected defaults."""
 
     def test_command_prefix(self):
-        """Bot uses '!' command prefix."""
+        """Bot uses when_mentioned (no prefix commands, slash only)."""
         bot = _make_bot()
-        assert bot.command_prefix == "!"
+        assert bot.command_prefix is commands.when_mentioned
 
     def test_message_content_intent(self):
         """Bot enables message_content privileged intent."""
