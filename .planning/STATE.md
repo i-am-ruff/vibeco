@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Behavioral Integration
 status: Ready to plan
-stopped_at: "Completed 15-02-PLAN.md: Phase 15 PM action callbacks wired in VcoBot.on_ready"
-last_updated: "2026-03-28T17:21:30Z"
+stopped_at: "Completed 15-01-PLAN.md: PM action methods, callback slots, stuck detector, ProjectSupervisor lifecycle helpers"
+last_updated: "2026-03-28T17:22:59.323Z"
 progress:
   total_phases: 7
   completed_phases: 5
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Phase: 15
-Plan: 02 (complete)
+Phase: 16
+Plan: Not started
 
 ## Performance Metrics
 
