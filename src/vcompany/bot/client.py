@@ -22,6 +22,7 @@ from vcompany.container.context import ContainerContext
 from vcompany.models.config import ProjectConfig
 from vcompany.resilience.message_queue import MessageQueue, MessagePriority, QueuedMessage, RateLimited
 from vcompany.supervisor.company_root import CompanyRoot
+from vcompany.tmux.session import TmuxManager
 
 logger = logging.getLogger("vcompany.bot.client")
 
@@ -79,6 +80,9 @@ class VcoBot(commands.Bot):
 
         # PM container reference for GsdAgent event routing (AUTO-01, AUTO-02)
         self._pm_container: FulltimeAgent | None = None
+
+        # TmuxManager for real agent session management (Phase 8.2)
+        self._tmux_manager: TmuxManager | None = None
 
     async def setup_hook(self) -> None:
         """Load Cog extensions and sync slash commands to guild (D-12, DISC-01)."""
@@ -225,6 +229,10 @@ class VcoBot(commands.Bot):
                             "Claude API reachable. Normal operations resumed."
                         )
 
+                # Create TmuxManager for real agent session management
+                tmux_manager = TmuxManager()
+                self._tmux_manager = tmux_manager
+
                 self.company_root = CompanyRoot(
                     on_escalation=on_escalation,
                     max_restarts=3,
@@ -234,6 +242,8 @@ class VcoBot(commands.Bot):
                     health_check=claude_health_check,
                     on_degraded=on_degraded,
                     on_recovered=on_recovered,
+                    tmux_manager=tmux_manager,
+                    project_dir=self.project_dir,
                 )
                 await self.company_root.start()
 
@@ -415,6 +425,7 @@ class VcoBot(commands.Bot):
             await self.message_queue.stop()
         if self.company_root is not None:
             await self.company_root.stop()
+        self._tmux_manager = None
         await super().close()
 
     @property

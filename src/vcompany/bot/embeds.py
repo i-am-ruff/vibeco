@@ -32,6 +32,7 @@ STATE_INDICATORS: dict[str, str] = {
 _DEFAULT_INDICATOR = "\u2753"   # question mark for unknown states
 
 
+# DEPRECATED: /status removed in Phase 8.2. Kept for backward compatibility.
 def build_status_embed(status_text: str) -> discord.Embed:
     """Parse generate_project_status output into a rich Discord embed.
 

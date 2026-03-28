@@ -1,10 +1,13 @@
 """CommandsCog: all operator slash commands for vCompany Discord bot.
 
-Implements /new-project, /dispatch, /status, /standup, /kill, /relaunch, /integrate.
+Implements /new-project, /dispatch, /standup, /kill, /relaunch, /integrate.
 All commands gated by vco-owner role via app_commands checks (DISC-10).
 All blocking calls wrapped in asyncio.to_thread (DISC-11).
 
 Routes agent lifecycle operations through CompanyRoot supervision tree (MIGR-01).
+/dispatch shows tmux liveness and restarts stopped containers via supervisor.
+/kill and /relaunch kill tmux panes via container.stop().
+/status removed in Phase 8.2 -- replaced by /health.
 
 Implements DISC-03 through DISC-11, MIGR-01.
 """
@@ -25,7 +28,6 @@ from vcompany.bot.embeds import (
     build_conflict_embed,
     build_integration_embed,
     build_standup_embed,
-    build_status_embed,
 )
 from vcompany.bot.permissions import is_owner_app_check
 from vcompany.bot.views.confirm import ConfirmView
@@ -33,7 +35,6 @@ from vcompany.bot.views.standup_release import ReleaseView
 from vcompany.communication.checkin import gather_checkin_data
 from vcompany.communication.standup import StandupSession
 from vcompany.integration.pipeline import IntegrationPipeline
-from vcompany.monitor.status_generator import generate_project_status
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
@@ -178,12 +179,18 @@ class CommandsCog(commands.Cog):
                 health_cog = self.bot.get_cog("HealthCog")
                 on_health_change = health_cog._notify_state_change if health_cog else None
 
+                from vcompany.tmux.session import TmuxManager
+                tmux_manager = TmuxManager()
+                self.bot._tmux_manager = tmux_manager
+
                 self.bot.company_root = CompanyRoot(
                     on_escalation=on_escalation,
                     max_restarts=3,
                     window_seconds=600,
                     data_dir=project_dir / "state" / "supervision",
                     on_health_change=on_health_change,
+                    tmux_manager=tmux_manager,
+                    project_dir=project_dir,
                 )
                 await self.bot.company_root.start()
 
@@ -277,10 +284,20 @@ class CommandsCog(commands.Cog):
             await interaction.response.defer()
 
             if agent_id == "all":
-                await interaction.followup.send(
-                    "All agents are managed by the supervision tree. "
-                    "Containers start automatically when added to a project."
-                )
+                # Report all agents with tmux liveness
+                lines = []
+                for ps in self.bot.company_root.projects.values():
+                    for cid, child in ps.children.items():
+                        tmux_status = "tmux alive" if child.is_tmux_alive() else "tmux dead"
+                        lines.append(f"**{cid}**: {child.state} ({tmux_status})")
+                if lines:
+                    await interaction.followup.send(
+                        "Agent states:\n" + "\n".join(lines)
+                    )
+                else:
+                    await interaction.followup.send(
+                        "No agents in supervision tree."
+                    )
             else:
                 # Validate agent exists in config
                 valid_ids = [a.id for a in self.bot.project_config.agents]
@@ -293,10 +310,32 @@ class CommandsCog(commands.Cog):
                 container = await self.bot.company_root._find_container(agent_id)
                 if container is not None:
                     state = container.state
-                    await interaction.followup.send(
-                        f"Agent **{agent_id}** container state: {state}. "
-                        "Managed by supervision tree."
-                    )
+                    if state == "running":
+                        tmux_status = "tmux alive" if container.is_tmux_alive() else "tmux dead"
+                        await interaction.followup.send(
+                            f"Agent **{agent_id}** is {state} ({tmux_status})."
+                        )
+                    elif state in ("stopped", "errored"):
+                        # Find ProjectSupervisor and restart via supervision tree
+                        restarted = False
+                        for ps in self.bot.company_root.projects.values():
+                            if agent_id in ps.children:
+                                spec = ps._get_spec(agent_id)
+                                if spec:
+                                    await ps._start_child(spec)
+                                    await interaction.followup.send(
+                                        f"Agent **{agent_id}** restarted via supervision tree (new tmux session)."
+                                    )
+                                    restarted = True
+                                break
+                        if not restarted:
+                            await interaction.followup.send(
+                                f"Agent **{agent_id}** is {state} but not found in any project supervisor."
+                            )
+                    else:
+                        await interaction.followup.send(
+                            f"Agent **{agent_id}** container state: {state}."
+                        )
                 else:
                     await interaction.followup.send(
                         f"Agent **{agent_id}** not found in supervision tree."
@@ -304,33 +343,6 @@ class CommandsCog(commands.Cog):
         except Exception as exc:
             logger.exception("Error in /dispatch")
             embed = build_alert_embed("dispatch error", str(exc), "error")
-            if interaction.response.is_done():
-                await interaction.followup.send(embed=embed)
-            else:
-                await interaction.response.send_message(embed=embed)
-
-    # ── /status ───────────────────────────────────────────────────────
-
-    @app_commands.command(name="status", description="Show project status")
-    @is_owner_app_check()
-    async def status_cmd(self, interaction: discord.Interaction) -> None:
-        """Show project status as rich embed (DISC-05)."""
-        if self.bot.project_config is None:
-            await interaction.response.send_message(_no_project_msg(), ephemeral=True)
-            return
-
-        try:
-            await interaction.response.defer()
-            status_text = await asyncio.to_thread(
-                generate_project_status,
-                self.bot.project_dir,
-                self.bot.project_config,
-            )
-            embed = build_status_embed(status_text)
-            await interaction.followup.send(embed=embed)
-        except Exception as exc:
-            logger.exception("Error in /status")
-            embed = build_alert_embed("status error", str(exc), "error")
             if interaction.response.is_done():
                 await interaction.followup.send(embed=embed)
             else:
@@ -366,7 +378,7 @@ class CommandsCog(commands.Cog):
                 container = await self.bot.company_root._find_container(agent_id)
                 if container is not None:
                     await container.stop()
-                    await interaction.followup.send(f"Agent **{agent_id}** stopped.")
+                    await interaction.followup.send(f"Agent **{agent_id}** stopped (tmux pane killed).")
                 else:
                     await interaction.followup.send(
                         f"Agent **{agent_id}** not found in supervision tree."
@@ -414,10 +426,10 @@ class CommandsCog(commands.Cog):
             await interaction.response.defer()
             container = await self.bot.company_root._find_container(agent_id)
             if container is not None:
-                # Stop triggers supervisor restart policy
+                # Stop triggers supervisor restart policy (kills tmux pane)
                 await container.stop()
                 await interaction.followup.send(
-                    f"Agent **{agent_id}** stopped. Supervisor will restart per restart policy."
+                    f"Agent **{agent_id}** stopped (tmux pane killed). Supervisor restart policy active."
                 )
             else:
                 await interaction.followup.send(
