@@ -305,7 +305,11 @@ Plans:
   5. `isinstance(child, FulltimeAgent)` finds the PM container in on_ready's post-wiring loop
   6. Dead code removed: `HealthCog.setup_notifications()` no-op method deleted, `build_status_embed` deprecated function removed from embeds.py, any other dead/unreachable code paths from v1→v2 migration cleaned up
   7. No `hasattr(..., "type")` fallback guards remain — replaced with direct attribute access
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 09-01-PLAN.md -- AgentConfig type field + hasattr removal
+- [ ] 09-02-PLAN.md -- PM event dispatch, /new-project wiring, dead code cleanup
 
 ### Phase 10: MessageQueue Notification Routing (GAP CLOSURE)
 **Goal**: All outbound Discord notifications (health state changes, escalations, degraded mode alerts, recovery notices) route through MessageQueue for rate-limit backoff and priority ordering — old direct-send paths fully removed
@@ -338,5 +342,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 8. CompanyRoot Wiring and Migration | 2/3 | In Progress|  |
 | 8.1. Integration Wiring | 2/2 | Complete | 2026-03-28 |
 | 8.2. Deep Integration | 2/2 | Complete | 2026-03-28 |
-| 9. Agent Type Routing + PM Event Dispatch | 0/0 | Not Started | - |
+| 9. Agent Type Routing + PM Event Dispatch | 0/2 | Planned | - |
 | 10. MessageQueue Notification Routing | 0/0 | Not Started | - |
