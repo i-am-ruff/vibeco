@@ -279,12 +279,16 @@ Plans:
 **Depends on**: Phase 8.1
 **Requirements**: MIGR-01, HLTH-02, HLTH-03
 **Success Criteria** (what must be TRUE):
-  1. `/dispatch` creates an AgentContainer, starts it via the supervision tree, and launches the tmux session — container state tracks real tmux liveness
+  1. `/dispatch` creates an AgentContainer, starts it via the supervision tree, and launches the tmux session -- container state tracks real tmux liveness
   2. `/kill` and `/relaunch` operate through the container lifecycle (stop/destroy/restart), not raw tmux commands
-  3. `/health` shows the real supervision hierarchy (CompanyRoot → ProjectSupervisor → agents) with state that matches actual tmux session liveness — no phantom containers
-  4. `/status` command is removed — `/health` is the replacement
-  5. State-change notifications fire to #alerts when real agent state changes (tmux session dies → container ERRORED → notification)
-**Plans**: TBD
+  3. `/health` shows the real supervision hierarchy (CompanyRoot -> ProjectSupervisor -> agents) with state that matches actual tmux session liveness -- no phantom containers
+  4. `/status` command is removed -- `/health` is the replacement
+  5. State-change notifications fire to #alerts when real agent state changes (tmux session dies -> container ERRORED -> notification)
+**Plans**: 2 plans
+
+Plans:
+- [ ] 08.2-01-PLAN.md -- Container tmux bridge + supervisor liveness monitoring + tests
+- [ ] 08.2-02-PLAN.md -- Command updates (dispatch/kill/relaunch use tmux lifecycle, /status removed) + test updates
 
 ## Progress
 
@@ -302,4 +306,3 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 6. Resilience | 0/3 | Planned | - |
 | 7. Autonomy Features | 2/3 | In Progress|  |
 | 8. CompanyRoot Wiring and Migration | 2/3 | In Progress|  |
-
