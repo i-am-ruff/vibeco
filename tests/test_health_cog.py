@@ -15,6 +15,7 @@ from vcompany.container.health import (
     HealthTree,
 )
 from vcompany.bot.embeds import STATE_INDICATORS, build_health_tree_embed
+from vcompany.resilience.message_queue import MessagePriority
 
 
 def _make_report(
@@ -247,14 +248,15 @@ class TestHealthEmbedIndicators:
 
 
 class TestNotifyStateChange:
-    """Tests for HealthCog._notify_state_change behavior."""
+    """Tests for HealthCog._notify_state_change behavior (queue-routed)."""
 
     @pytest.mark.asyncio
     async def test_notify_sends_for_errored(self):
-        """_notify_state_change sends message for errored state."""
+        """_notify_state_change enqueues message for errored state."""
         from vcompany.bot.cogs.health import HealthCog
 
         bot = MagicMock()
+        bot.message_queue = AsyncMock()
         bot.guilds = []
         cog = HealthCog(bot)
 
@@ -263,24 +265,29 @@ class TestNotifyStateChange:
         mock_guild = MagicMock()
         mock_guild.text_channels = [mock_channel]
         mock_channel.name = "alerts"
+        mock_channel.id = 12345
         bot.guilds = [mock_guild]
 
         report = _make_report("a1", "errored")
         await cog._notify_state_change(report)
 
-        mock_channel.send.assert_called_once()
-        msg = mock_channel.send.call_args[0][0]
-        assert "a1" in msg
-        assert "errored" in msg
+        bot.message_queue.enqueue.assert_called_once()
+        queued = bot.message_queue.enqueue.call_args[0][0]
+        assert queued.priority == MessagePriority.STATUS
+        assert queued.channel_id == 12345
+        assert "a1" in queued.content
+        assert "errored" in queued.content
 
     @pytest.mark.asyncio
     async def test_notify_sends_for_running(self):
-        """_notify_state_change sends message for running state."""
+        """_notify_state_change enqueues message for running state."""
         from vcompany.bot.cogs.health import HealthCog
 
         bot = MagicMock()
+        bot.message_queue = AsyncMock()
         mock_channel = AsyncMock()
         mock_channel.name = "alerts"
+        mock_channel.id = 12345
         mock_guild = MagicMock()
         mock_guild.text_channels = [mock_channel]
         bot.guilds = [mock_guild]
@@ -289,16 +296,20 @@ class TestNotifyStateChange:
         report = _make_report("a1", "running")
         await cog._notify_state_change(report)
 
-        mock_channel.send.assert_called_once()
+        bot.message_queue.enqueue.assert_called_once()
+        queued = bot.message_queue.enqueue.call_args[0][0]
+        assert queued.priority == MessagePriority.STATUS
 
     @pytest.mark.asyncio
     async def test_notify_sends_for_stopped(self):
-        """_notify_state_change sends message for stopped state."""
+        """_notify_state_change enqueues message for stopped state."""
         from vcompany.bot.cogs.health import HealthCog
 
         bot = MagicMock()
+        bot.message_queue = AsyncMock()
         mock_channel = AsyncMock()
         mock_channel.name = "alerts"
+        mock_channel.id = 12345
         mock_guild = MagicMock()
         mock_guild.text_channels = [mock_channel]
         bot.guilds = [mock_guild]
@@ -307,16 +318,20 @@ class TestNotifyStateChange:
         report = _make_report("a1", "stopped")
         await cog._notify_state_change(report)
 
-        mock_channel.send.assert_called_once()
+        bot.message_queue.enqueue.assert_called_once()
+        queued = bot.message_queue.enqueue.call_args[0][0]
+        assert queued.priority == MessagePriority.STATUS
 
     @pytest.mark.asyncio
     async def test_notify_skips_non_significant(self):
-        """_notify_state_change does NOT send for creating state."""
+        """_notify_state_change does NOT enqueue for creating state."""
         from vcompany.bot.cogs.health import HealthCog
 
         bot = MagicMock()
+        bot.message_queue = AsyncMock()
         mock_channel = AsyncMock()
         mock_channel.name = "alerts"
+        mock_channel.id = 12345
         mock_guild = MagicMock()
         mock_guild.text_channels = [mock_channel]
         bot.guilds = [mock_guild]
@@ -325,7 +340,7 @@ class TestNotifyStateChange:
         report = _make_report("a1", "creating")
         await cog._notify_state_change(report)
 
-        mock_channel.send.assert_not_called()
+        bot.message_queue.enqueue.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_notify_does_not_raise_on_failure(self):
@@ -333,9 +348,11 @@ class TestNotifyStateChange:
         from vcompany.bot.cogs.health import HealthCog
 
         bot = MagicMock()
+        bot.message_queue = AsyncMock()
+        bot.message_queue.enqueue.side_effect = RuntimeError("Queue error")
         mock_channel = AsyncMock()
         mock_channel.name = "alerts"
-        mock_channel.send.side_effect = RuntimeError("Discord API error")
+        mock_channel.id = 12345
         mock_guild = MagicMock()
         mock_guild.text_channels = [mock_channel]
         bot.guilds = [mock_guild]
@@ -371,8 +388,10 @@ class TestNotifyStateChange:
         from vcompany.bot.cogs.health import HealthCog
 
         bot = MagicMock()
+        bot.message_queue = AsyncMock()
         mock_channel = AsyncMock()
         mock_channel.name = "alerts"
+        mock_channel.id = 12345
         mock_guild = MagicMock()
         mock_guild.text_channels = [mock_channel]
         bot.guilds = [mock_guild]
@@ -381,5 +400,24 @@ class TestNotifyStateChange:
         report = _make_report("a1", "running", inner_state="PLAN")
         await cog._notify_state_change(report)
 
-        msg = mock_channel.send.call_args[0][0]
-        assert "PLAN" in msg
+        queued = bot.message_queue.enqueue.call_args[0][0]
+        assert "PLAN" in queued.content
+
+    @pytest.mark.asyncio
+    async def test_notify_skips_when_queue_none(self):
+        """_notify_state_change does nothing when message_queue is None."""
+        from vcompany.bot.cogs.health import HealthCog
+
+        bot = MagicMock()
+        bot.message_queue = None
+        mock_channel = AsyncMock()
+        mock_channel.name = "alerts"
+        mock_channel.id = 12345
+        mock_guild = MagicMock()
+        mock_guild.text_channels = [mock_channel]
+        bot.guilds = [mock_guild]
+
+        cog = HealthCog(bot)
+        report = _make_report("a1", "errored")
+        # Should not raise
+        await cog._notify_state_change(report)

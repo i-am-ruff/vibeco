@@ -9,7 +9,7 @@ from discord.ext import commands
 
 from vcompany.bot.client import VcoBot, _COG_EXTENSIONS
 from vcompany.models.config import AgentConfig, ProjectConfig
-from vcompany.resilience.message_queue import MessageQueue
+from vcompany.resilience.message_queue import MessagePriority, MessageQueue
 
 
 def _make_config() -> ProjectConfig:
@@ -452,6 +452,138 @@ class TestPMBacklogWiring:
         """Bot starts with _pm_container=None."""
         bot = _make_bot()
         assert bot._pm_container is None
+
+
+class TestNotificationCallbackRouting:
+    """Tests that on_escalation/on_degraded/on_recovered route through MessageQueue (RESL-01)."""
+
+    @pytest.mark.asyncio
+    async def test_on_escalation_enqueues_with_escalation_priority(self):
+        """on_escalation callback routes through message_queue.enqueue."""
+        bot = _make_bot()
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.name = "TestGuild"
+        mock_guild.roles = []
+        mock_guild.create_role = AsyncMock()
+        bot.get_guild = MagicMock(return_value=mock_guild)
+
+        with patch("vcompany.bot.client.CompanyRoot") as MockRoot:
+            mock_instance = AsyncMock()
+            mock_instance.start = AsyncMock()
+            mock_instance.add_project = AsyncMock()
+            MockRoot.return_value = mock_instance
+
+            await bot.on_ready()
+
+            # Extract on_escalation from CompanyRoot constructor call
+            on_escalation = MockRoot.call_args.kwargs["on_escalation"]
+
+            # Set up mock queue and alerts channel
+            bot.message_queue = AsyncMock()
+            mock_alerts = MagicMock()
+            mock_alerts.id = 99999
+            bot._system_channels["alerts"] = mock_alerts
+
+            await on_escalation("restart budget exceeded")
+
+            bot.message_queue.enqueue.assert_called_once()
+            queued = bot.message_queue.enqueue.call_args[0][0]
+            assert queued.priority == MessagePriority.ESCALATION
+            assert "ESCALATION" in queued.content
+            assert "restart budget exceeded" in queued.content
+            assert queued.channel_id == 99999
+
+    @pytest.mark.asyncio
+    async def test_on_degraded_enqueues_with_supervisor_priority(self):
+        """on_degraded callback routes through message_queue.enqueue."""
+        bot = _make_bot()
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.name = "TestGuild"
+        mock_guild.roles = []
+        mock_guild.create_role = AsyncMock()
+        bot.get_guild = MagicMock(return_value=mock_guild)
+
+        with patch("vcompany.bot.client.CompanyRoot") as MockRoot:
+            mock_instance = AsyncMock()
+            mock_instance.start = AsyncMock()
+            mock_instance.add_project = AsyncMock()
+            MockRoot.return_value = mock_instance
+
+            await bot.on_ready()
+
+            on_degraded = MockRoot.call_args.kwargs["on_degraded"]
+
+            bot.message_queue = AsyncMock()
+            mock_alerts = MagicMock()
+            mock_alerts.id = 88888
+            bot._system_channels["alerts"] = mock_alerts
+
+            await on_degraded()
+
+            bot.message_queue.enqueue.assert_called_once()
+            queued = bot.message_queue.enqueue.call_args[0][0]
+            assert queued.priority == MessagePriority.SUPERVISOR
+            assert "degraded mode" in queued.content.lower()
+
+    @pytest.mark.asyncio
+    async def test_on_recovered_enqueues_with_supervisor_priority(self):
+        """on_recovered callback routes through message_queue.enqueue."""
+        bot = _make_bot()
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.name = "TestGuild"
+        mock_guild.roles = []
+        mock_guild.create_role = AsyncMock()
+        bot.get_guild = MagicMock(return_value=mock_guild)
+
+        with patch("vcompany.bot.client.CompanyRoot") as MockRoot:
+            mock_instance = AsyncMock()
+            mock_instance.start = AsyncMock()
+            mock_instance.add_project = AsyncMock()
+            MockRoot.return_value = mock_instance
+
+            await bot.on_ready()
+
+            on_recovered = MockRoot.call_args.kwargs["on_recovered"]
+
+            bot.message_queue = AsyncMock()
+            mock_alerts = MagicMock()
+            mock_alerts.id = 77777
+            bot._system_channels["alerts"] = mock_alerts
+
+            await on_recovered()
+
+            bot.message_queue.enqueue.assert_called_once()
+            queued = bot.message_queue.enqueue.call_args[0][0]
+            assert queued.priority == MessagePriority.SUPERVISOR
+            assert "recovered" in queued.content.lower()
+
+    @pytest.mark.asyncio
+    async def test_callbacks_noop_when_queue_none(self):
+        """Callbacks do nothing when message_queue is None (before startup)."""
+        bot = _make_bot()
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.name = "TestGuild"
+        mock_guild.roles = []
+        mock_guild.create_role = AsyncMock()
+        bot.get_guild = MagicMock(return_value=mock_guild)
+
+        with patch("vcompany.bot.client.CompanyRoot") as MockRoot:
+            mock_instance = AsyncMock()
+            mock_instance.start = AsyncMock()
+            mock_instance.add_project = AsyncMock()
+            MockRoot.return_value = mock_instance
+
+            await bot.on_ready()
+
+            on_escalation = MockRoot.call_args.kwargs["on_escalation"]
+
+            # message_queue is None (not yet created)
+            bot.message_queue = None
+            mock_alerts = MagicMock()
+            bot._system_channels["alerts"] = mock_alerts
+
+            # Should not raise
+            await on_escalation("test message")
 
 
 class TestGsdAgentEventContract:
