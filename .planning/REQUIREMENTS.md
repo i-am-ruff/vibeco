@@ -48,7 +48,7 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 - [x] **EXTRACT-01**: CompanyRoot and supervision tree run inside daemon process, not bot
 - [x] **EXTRACT-02**: RuntimeAPI gateway class provides typed methods for all CompanyRoot operations
 - [x] **EXTRACT-03**: All callback closures from on_ready() replaced with RuntimeAPI calls or event subscriptions
-- [ ] **EXTRACT-04**: Bot accesses CompanyRoot exclusively through RuntimeAPI (no direct imports)
+- [x] **EXTRACT-04**: Bot accesses CompanyRoot exclusively through RuntimeAPI (no direct imports)
 
 ### Bot Refactor
 
@@ -113,7 +113,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXTRACT-01 | Phase 20 | Complete |
 | EXTRACT-02 | Phase 20 | Complete |
 | EXTRACT-03 | Phase 20 | Complete |
-| EXTRACT-04 | Phase 20 | Pending |
+| EXTRACT-04 | Phase 20 | Complete |
 | CLI-01 | Phase 21 | Pending |
 | CLI-02 | Phase 21 | Pending |
 | CLI-03 | Phase 21 | Pending |

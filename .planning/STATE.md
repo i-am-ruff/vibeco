@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: CLI-First Architecture Rewrite
 status: Ready to execute
-stopped_at: Completed 20-02-PLAN.md
-last_updated: "2026-03-29T03:19:05.294Z"
+stopped_at: Completed 20-03-PLAN.md
+last_updated: "2026-03-29T03:26:43.657Z"
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 ## Current Position
 
 Phase: 20 (CompanyRoot Extraction) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Plan: 3 of 4
 | Phase 19 P02 | 137 | 2 tasks | 3 files |
 | Phase 20 P01 | 150 | 2 tasks | 4 files |
 | Phase 20 P02 | 177 | 2 tasks | 2 files |
+| Phase 20 P03 | 329 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,9 @@ Recent decisions affecting current work:
 - [Phase 20]: RuntimeAPI.hire() creates channel via CommunicationPort before CompanyRoot.hire() -- no guild param needed
 - [Phase 20]: Callback methods use CommunicationPort send_message for all notifications -- consistent platform-agnostic messaging
 - [Phase 20]: Inbound relay methods decouple bot cogs from container internals -- bot calls RuntimeAPI not containers
+- [Phase 20]: Bot is now a pure Discord I/O adapter -- all CompanyRoot/container/agent imports removed from client.py
+- [Phase 20]: Daemon waits for _bot_ready_event before initializing CompanyRoot with crash-before-ready detection
+- [Phase 20]: PlanReviewer/PMTier NOT injected into cogs -- deferred to Phase 22 via RuntimeAPI
 
 ### Pending Todos
 
@@ -99,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T03:19:05.292Z
-Stopped at: Completed 20-02-PLAN.md
+Last session: 2026-03-29T03:26:43.654Z
+Stopped at: Completed 20-03-PLAN.md
 Resume file: None
