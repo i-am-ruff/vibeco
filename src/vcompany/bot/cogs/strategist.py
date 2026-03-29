@@ -180,7 +180,21 @@ class StrategistCog(commands.Cog):
                 future.set_result(message.content)
             return
 
-        # Check if conversation is initialized (via CompanyAgent or direct fallback)
+        # Route through RuntimeAPI for COMM-04 receive path (EXTRACT-04)
+        daemon = getattr(self.bot, "_daemon", None)
+        runtime_api = getattr(daemon, "runtime_api", None) if daemon is not None else None
+
+        if runtime_api is not None:
+            # Build message content with attachments
+            content = await self._build_message_with_attachments(message)
+            await runtime_api.relay_strategist_message(
+                user_message=content,
+                channel_id=str(message.channel.id),
+                user_name=message.author.display_name,
+            )
+            return
+
+        # Fallback: use CompanyAgent or direct conversation (backward compat)
         if self._company_agent is None and self._conversation is None:
             await message.reply("Strategist not initialized yet.")
             return
@@ -274,6 +288,9 @@ class StrategistCog(commands.Cog):
                 await placeholder.edit(content="Strategist not initialized.")
                 return ""
             response = await self._conversation.send(content)
+
+        # Execute any [CMD:...] action tags in the response
+        await self._execute_actions(response, channel)
 
         # Post response (split if > 2000 chars)
         if len(response) > _DISCORD_MAX_CHARS:
@@ -437,6 +454,68 @@ class StrategistCog(commands.Cog):
     def decision_logger(self) -> DecisionLogger | None:
         """Expose DecisionLogger for other cogs."""
         return self._decision_logger
+
+    # --- Action Tag Execution ---
+
+    import re
+    _CMD_PATTERN = re.compile(
+        r"\[CMD:(hire|give-task|dismiss)\s+(.*?)\]", re.IGNORECASE
+    )
+
+    async def _execute_actions(
+        self, response: str, channel: discord.TextChannel
+    ) -> None:
+        """Parse and execute [CMD:...] action tags from Strategist responses.
+
+        Supported actions:
+          [CMD:hire <template> <agent-id>]
+          [CMD:give-task <agent-id> <task description>]
+          [CMD:dismiss <agent-id>]
+        """
+        if self._company_agent is None:
+            return
+
+        for match in self._CMD_PATTERN.finditer(response):
+            action = match.group(1).lower()
+            args = match.group(2).strip()
+
+            try:
+                if action == "hire":
+                    parts = args.split(None, 1)
+                    if len(parts) == 2:
+                        template, agent_id = parts
+                    else:
+                        template, agent_id = "generic", parts[0]
+                    await self._company_agent.post_event({
+                        "type": "hire",
+                        "agent_id": agent_id,
+                        "template": template,
+                    })
+                    await channel.send(f"Hired agent **{agent_id}** (template: {template})")
+
+                elif action == "give-task":
+                    parts = args.split(None, 1)
+                    if len(parts) < 2:
+                        await channel.send(f"give-task needs: agent-id task-description")
+                        continue
+                    agent_id, task = parts
+                    await self._company_agent.post_event({
+                        "type": "give_task",
+                        "agent_id": agent_id,
+                        "task": task,
+                    })
+                    await channel.send(f"Tasked **{agent_id}**: {task[:100]}")
+
+                elif action == "dismiss":
+                    await self._company_agent.post_event({
+                        "type": "dismiss",
+                        "agent_id": args,
+                    })
+                    await channel.send(f"Dismissed agent **{args}**")
+
+            except Exception as e:
+                logger.exception("Failed to execute action [CMD:%s %s]", action, args)
+                await channel.send(f"Action failed: {e}")
 
 
 async def setup(bot: commands.Bot) -> None:

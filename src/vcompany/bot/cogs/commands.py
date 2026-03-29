@@ -4,12 +4,12 @@ Implements /new-project, /dispatch, /standup, /kill, /relaunch, /integrate.
 All commands gated by vco-owner role via app_commands checks (DISC-10).
 All blocking calls wrapped in asyncio.to_thread (DISC-11).
 
-Routes agent lifecycle operations through CompanyRoot supervision tree (MIGR-01).
+Routes agent lifecycle operations through RuntimeAPI (EXTRACT-04).
 /dispatch shows tmux liveness and restarts stopped containers via supervisor.
 /kill and /relaunch kill tmux panes via container.stop().
 /status removed in Phase 8.2 -- replaced by /health.
 
-Implements DISC-03 through DISC-11, MIGR-01.
+Implements DISC-03 through DISC-11, MIGR-01, EXTRACT-04.
 """
 
 from __future__ import annotations
@@ -47,11 +47,27 @@ def _no_project_msg() -> str:
     return "No project loaded. Ask the Strategist in #strategist to help you set one up."
 
 
+def _get_runtime_api(bot: VcoBot):
+    """Get RuntimeAPI from daemon, or None if not available."""
+    daemon = getattr(bot, "_daemon", None)
+    if daemon is not None:
+        return getattr(daemon, "runtime_api", None)
+    return None
+
+
+def _get_company_root(bot: VcoBot):
+    """Get CompanyRoot via RuntimeAPI transitional bridge (Phase 22 will remove)."""
+    api = _get_runtime_api(bot)
+    if api is not None:
+        return getattr(api, "_root", None)
+    return None
+
+
 class CommandsCog(commands.Cog):
     """Operator slash commands for vCompany project orchestration.
 
     Every command requires vco-owner role. Agent lifecycle operations route
-    through CompanyRoot supervision tree (MIGR-01).
+    through RuntimeAPI (EXTRACT-04).
     """
 
     def __init__(self, bot: VcoBot) -> None:
@@ -73,10 +89,11 @@ class CommandsCog(commands.Cog):
     @app_commands.describe(name="Project name")
     @is_owner_app_check()
     async def new_project(self, interaction: discord.Interaction, name: str) -> None:
-        """Full project setup: channels + init + clone + supervision tree (DISC-03, MIGR-01).
+        """Full project setup: channels + init + clone + supervision tree (DISC-03, EXTRACT-04).
 
         Expects the Strategist to have already generated project files at
         ~/vco-projects/<name>/ (agents.yaml, planning/ artifacts).
+        Uses RuntimeAPI.new_project() instead of duplicating CompanyRoot creation.
         """
         try:
             guild = interaction.guild
@@ -162,115 +179,26 @@ class CommandsCog(commands.Cog):
                 await setup_project_channels(guild, name, owner_role, config.agents)
                 await interaction.channel.send(f"Discord channels created for **{name}**.")
 
-            # Step 4: Wire bot to project and create CompanyRoot supervision tree
+            # Step 4: Wire project through RuntimeAPI (EXTRACT-04)
+            # Instead of duplicating CompanyRoot creation, delegate to daemon RuntimeAPI
             self.bot.project_dir = project_dir
             self.bot.project_config = config
 
-            from vcompany.container.child_spec import ChildSpec
-            from vcompany.container.context import ContainerContext
-            from vcompany.supervisor.company_root import CompanyRoot
-
-            if not hasattr(self.bot, "company_root") or self.bot.company_root is None:
-                import time
-                from vcompany.resilience.message_queue import MessagePriority, QueuedMessage
-
-                async def on_escalation(msg: str) -> None:
-                    alerts_ch = self.bot._system_channels.get("alerts")
-                    if alerts_ch and self.bot.message_queue:
-                        await self.bot.message_queue.enqueue(QueuedMessage(
-                            priority=MessagePriority.ESCALATION,
-                            timestamp=time.monotonic(),
-                            channel_id=alerts_ch.id,
-                            content=f"ESCALATION: {msg}",
-                        ))
-
-                health_cog = self.bot.get_cog("HealthCog")
-                on_health_change = health_cog._notify_state_change if health_cog else None
-
-                from vcompany.tmux.session import TmuxManager
-                tmux_manager = TmuxManager()
-                self.bot._tmux_manager = tmux_manager
-
-                self.bot.company_root = CompanyRoot(
-                    on_escalation=on_escalation,
-                    max_restarts=3,
-                    window_seconds=600,
-                    data_dir=project_dir / "state" / "supervision",
-                    on_health_change=on_health_change,
-                    tmux_manager=tmux_manager,
-                    project_dir=project_dir,
+            runtime_api = _get_runtime_api(self.bot)
+            if runtime_api is not None:
+                await runtime_api.new_project(config, project_dir, persona_path=None)
+                await interaction.channel.send(
+                    f"Supervision tree started with {len(config.agents)} agents via RuntimeAPI. "
+                    "Agent containers are managed by the supervision tree."
                 )
-                await self.bot.company_root.start()
+            else:
+                await interaction.followup.send("Daemon not ready. Cannot create project.")
+                return
 
-                # Add Strategist as a direct company-level agent (ARCH-02)
-                strategist_ctx = ContainerContext(
-                    agent_id="strategist",
-                    agent_type="company",
-                    parent_id="company-root",
-                    project_id=None,
-                )
-                strategist_spec = ChildSpec(
-                    child_id="strategist",
-                    agent_type="company",
-                    context=strategist_ctx,
-                )
-                await self.bot.company_root.add_company_agent(strategist_spec)
-                logger.info("Strategist CompanyAgent added to CompanyRoot in /new-project")
-
-            specs = []
-            for agent in config.agents:
-                ctx = ContainerContext(
-                    agent_id=agent.id,
-                    agent_type=agent.type,
-                    parent_id="project-supervisor",
-                    project_id=config.project,
-                    owned_dirs=agent.owns,
-                    gsd_command="/gsd:discuss-phase 1" if agent.type == "gsd" else None,
-                )
-                specs.append(ChildSpec(child_id=agent.id, agent_type=ctx.agent_type, context=ctx))
-
-            project_sup = await self.bot.company_root.add_project(
-                project_id=config.project,
-                child_specs=specs,
-            )
-
-            # Wire PM backlog and project state (same as on_ready path)
-            from vcompany.agent.fulltime_agent import FulltimeAgent
-            from vcompany.autonomy.backlog import BacklogQueue
-            from vcompany.autonomy.project_state import ProjectStateManager
-
-            pm_container: FulltimeAgent | None = None
-            for child in project_sup.children.values():
-                if isinstance(child, FulltimeAgent):
-                    pm_container = child
-                    break
-
-            if pm_container is not None:
-                backlog = BacklogQueue(pm_container.memory)
-                await backlog.load()
-                state_mgr = ProjectStateManager(backlog, pm_container.memory)
-                pm_container.backlog = backlog
-                pm_container._project_state = state_mgr
-                self.bot._pm_container = pm_container
-                logger.info(
-                    "PM backlog and project state wired for %s in /new-project",
-                    pm_container.context.agent_id,
-                )
-
-            await interaction.channel.send(
-                f"Supervision tree started with {len(specs)} agents. "
-                "Agent containers are managed by the supervision tree."
-            )
-
-            # Step 5: Wire WorkflowOrchestratorCog with PM
+            # Step 5: Wire WorkflowOrchestratorCog with PM (Discord-specific concern)
             try:
-                from vcompany.strategist.pm import PMTier
-
-                pm = PMTier(project_dir=project_dir)
                 wo_cog = self.bot.get_cog("WorkflowOrchestratorCog")
                 if wo_cog:
-                    wo_cog.set_company_root(pm, project_dir)
-
                     # Wire PlanReviewCog notifications
                     plan_review_cog_ref = self.bot.get_cog("PlanReviewCog")
                     if plan_review_cog_ref:
@@ -312,7 +240,7 @@ class CommandsCog(commands.Cog):
     @app_commands.describe(agent_id="Agent ID to dispatch, or 'all' for all agents")
     @is_owner_app_check()
     async def dispatch_cmd(self, interaction: discord.Interaction, agent_id: str) -> None:
-        """Dispatch an agent via supervision tree (DISC-04, MIGR-01).
+        """Dispatch an agent via supervision tree (DISC-04, EXTRACT-04).
 
         Agents are managed by the CompanyRoot supervision tree. Dispatch checks
         container state and triggers start if needed.
@@ -322,7 +250,8 @@ class CommandsCog(commands.Cog):
             return
 
         try:
-            if self.bot.company_root is None:
+            company_root = _get_company_root(self.bot)
+            if company_root is None:
                 await interaction.response.send_message(
                     "Supervision tree is not initialized.", ephemeral=True
                 )
@@ -333,7 +262,7 @@ class CommandsCog(commands.Cog):
             if agent_id == "all":
                 # Report all agents with tmux liveness
                 lines = []
-                for ps in self.bot.company_root.projects.values():
+                for ps in company_root.projects.values():
                     for cid, child in ps.children.items():
                         tmux_status = "tmux alive" if child.is_tmux_alive() else "tmux dead"
                         lines.append(f"**{cid}**: {child.state} ({tmux_status})")
@@ -354,7 +283,7 @@ class CommandsCog(commands.Cog):
                     )
                     return
 
-                container = await self.bot.company_root._find_container(agent_id)
+                container = await company_root._find_container(agent_id)
                 if container is not None:
                     state = container.state
                     if state == "running":
@@ -365,7 +294,7 @@ class CommandsCog(commands.Cog):
                     elif state in ("stopped", "errored"):
                         # Find ProjectSupervisor and restart via supervision tree
                         restarted = False
-                        for ps in self.bot.company_root.projects.values():
+                        for ps in company_root.projects.values():
                             if agent_id in ps.children:
                                 spec = ps._get_spec(agent_id)
                                 if spec:
@@ -401,13 +330,14 @@ class CommandsCog(commands.Cog):
     @app_commands.describe(agent_id="Agent ID to kill")
     @is_owner_app_check()
     async def kill_cmd(self, interaction: discord.Interaction, agent_id: str) -> None:
-        """Kill an agent via supervision tree with confirmation (DISC-07, MIGR-01)."""
+        """Kill an agent via supervision tree with confirmation (DISC-07, EXTRACT-04)."""
         if self.bot.project_config is None:
             await interaction.response.send_message(_no_project_msg(), ephemeral=True)
             return
 
         try:
-            if self.bot.company_root is None:
+            company_root = _get_company_root(self.bot)
+            if company_root is None:
                 await interaction.response.send_message(
                     "Supervision tree is not initialized.", ephemeral=True
                 )
@@ -422,7 +352,7 @@ class CommandsCog(commands.Cog):
             await view.wait()
 
             if view.value is True:
-                container = await self.bot.company_root._find_container(agent_id)
+                container = await company_root._find_container(agent_id)
                 if container is not None:
                     await container.stop()
                     await interaction.followup.send(f"Agent **{agent_id}** stopped (tmux pane killed).")
@@ -446,7 +376,7 @@ class CommandsCog(commands.Cog):
     @app_commands.describe(agent_id="Agent ID to relaunch")
     @is_owner_app_check()
     async def relaunch_cmd(self, interaction: discord.Interaction, agent_id: str) -> None:
-        """Relaunch an agent via supervision tree (DISC-08, MIGR-01).
+        """Relaunch an agent via supervision tree (DISC-08, EXTRACT-04).
 
         Stops the container; the supervisor restart policy will restart it.
         """
@@ -455,7 +385,8 @@ class CommandsCog(commands.Cog):
             return
 
         try:
-            if self.bot.company_root is None:
+            company_root = _get_company_root(self.bot)
+            if company_root is None:
                 await interaction.response.send_message(
                     "Supervision tree is not initialized.", ephemeral=True
                 )
@@ -471,7 +402,7 @@ class CommandsCog(commands.Cog):
                 return
 
             await interaction.response.defer()
-            container = await self.bot.company_root._find_container(agent_id)
+            container = await company_root._find_container(agent_id)
             if container is not None:
                 # Stop triggers supervisor restart policy (kills tmux pane)
                 await container.stop()
@@ -709,7 +640,7 @@ class CommandsCog(commands.Cog):
     @app_commands.command(name="remove-project", description="Remove a project: stop supervision tree, delete Discord channels/category, and clean files")
     @is_owner_app_check()
     async def remove_project(self, interaction: discord.Interaction, name: str) -> None:
-        """Remove a project entirely: supervision tree, Discord channels, and local files (MIGR-01)."""
+        """Remove a project entirely: supervision tree, Discord channels, and local files (EXTRACT-04)."""
         try:
             guild = interaction.guild
             if guild is None:
@@ -719,10 +650,11 @@ class CommandsCog(commands.Cog):
             await interaction.response.defer()
             removed = []
 
-            # Step 1: Remove project from supervision tree
-            if self.bot.company_root is not None:
+            # Step 1: Remove project from supervision tree via RuntimeAPI
+            company_root = _get_company_root(self.bot)
+            if company_root is not None:
                 try:
-                    await self.bot.company_root.remove_project(name)
+                    await company_root.remove_project(name)
                     removed.append("project removed from supervision tree")
                 except KeyError:
                     removed.append("project not found in supervision tree")

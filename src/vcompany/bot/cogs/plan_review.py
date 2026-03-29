@@ -351,14 +351,20 @@ class PlanReviewCog(commands.Cog):
             await self._handle_rejection(agent_id, str(plan_path), view.feedback)
 
     async def _handle_approval(self, agent_id: str, plan_path: str) -> None:
-        """Process plan approval per D-11/D-12.
+        """Process plan approval -- route through RuntimeAPI (COMM-05 receive path).
 
-        Updates state, checks if all plans for the phase are approved,
-        and triggers execution if so. Notifies WorkflowOrchestratorCog.
+        Updates state, routes through RuntimeAPI for daemon-side processing,
+        and notifies WorkflowOrchestratorCog (Discord UI concern).
         """
         self._update_gate_state(agent_id, plan_path, status="approved")
 
-        # Notify WorkflowOrchestratorCog of plan approval
+        # Route through RuntimeAPI (COMM-05 receive path, EXTRACT-04)
+        daemon = getattr(self.bot, "_daemon", None)
+        runtime_api = getattr(daemon, "runtime_api", None) if daemon is not None else None
+        if runtime_api is not None:
+            await runtime_api.handle_plan_approval(agent_id, plan_path)
+
+        # Notify WorkflowOrchestratorCog (stays local -- Discord UI concern)
         if self._workflow_cog is not None:
             await self._workflow_cog.notify_plan_approved(agent_id)
 
@@ -374,22 +380,30 @@ class PlanReviewCog(commands.Cog):
             )
 
     async def _handle_rejection(self, agent_id: str, plan_path: str, feedback: str) -> None:
-        """Process plan rejection per D-09/GATE-04.
+        """Process plan rejection -- route through RuntimeAPI (COMM-05 receive path).
 
-        Sends feedback to agent tmux pane for replanning. Notifies WorkflowOrchestratorCog.
+        Routes through RuntimeAPI for daemon-side processing, notifies
+        WorkflowOrchestratorCog (Discord UI concern).
         """
         self._update_gate_state(agent_id, plan_path, status="rejected")
 
-        # Notify WorkflowOrchestratorCog of plan rejection
+        # Route through RuntimeAPI (COMM-05 receive path, EXTRACT-04)
+        daemon = getattr(self.bot, "_daemon", None)
+        runtime_api = getattr(daemon, "runtime_api", None) if daemon is not None else None
+        if runtime_api is not None:
+            await runtime_api.handle_plan_rejection(agent_id, plan_path, feedback)
+
+        # Notify WorkflowOrchestratorCog (stays local -- Discord UI concern)
         if self._workflow_cog is not None:
             await self._workflow_cog.notify_plan_rejected(agent_id)
 
-        # Send rejection feedback to agent tmux pane (D-09)
-        feedback_cmd = (
-            f"Your plan {Path(plan_path).name} was rejected. "
-            f"Feedback: {feedback}. Please revise the plan."
-        )
-        await self._send_tmux_command(agent_id, feedback_cmd)
+        # Send rejection feedback to agent tmux pane (D-09) -- fallback if RuntimeAPI not available
+        if runtime_api is None:
+            feedback_cmd = (
+                f"Your plan {Path(plan_path).name} was rejected. "
+                f"Feedback: {feedback}. Please revise the plan."
+            )
+            await self._send_tmux_command(agent_id, feedback_cmd)
 
         if self._plan_review_channel:
             await self._plan_review_channel.send(
