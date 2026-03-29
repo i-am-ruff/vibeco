@@ -1,0 +1,48 @@
+# Agent type definitions — single source of truth (D-05).
+# Each key is an agent type name used in agents.yaml and ChildSpec.agent_type.
+
+agent_types:
+  gsd:
+    transport: local
+    container_class: GsdAgent
+    capabilities:
+      - gsd_driven
+      - uses_tmux
+    gsd_command: "/gsd:discuss-phase 1"
+
+  continuous:
+    transport: local
+    container_class: ContinuousAgent
+    capabilities:
+      - uses_tmux
+
+  fulltime:
+    transport: local
+    container_class: FulltimeAgent
+    capabilities:
+      - event_driven
+      - reviews_plans
+
+  company:
+    transport: local
+    container_class: CompanyAgent
+    capabilities:
+      - event_driven
+
+  task:
+    transport: local
+    container_class: TaskAgent
+    capabilities:
+      - uses_tmux
+
+  docker-gsd:
+    transport: docker
+    docker_image: "vco-agent:latest"
+    container_class: GsdAgent
+    capabilities:
+      - gsd_driven
+      - uses_tmux
+    gsd_command: "/gsd:discuss-phase 1"
+    tweakcc_profile: default
+    env:
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
