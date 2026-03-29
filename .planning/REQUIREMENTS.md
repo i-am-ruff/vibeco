@@ -36,11 +36,11 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 
 ### CLI Commands
 
-- [ ] **CLI-01**: `vco hire <type> <name>` creates agent container via socket API
-- [ ] **CLI-02**: `vco give-task <agent> <task>` queues task for agent via socket API
-- [ ] **CLI-03**: `vco dismiss <agent>` stops and cleans up agent via socket API
-- [ ] **CLI-04**: `vco status` shows supervision tree and agent states via socket API
-- [ ] **CLI-05**: `vco health` shows health tree with per-agent status via socket API
+- [x] **CLI-01**: `vco hire <type> <name>` creates agent container via socket API
+- [x] **CLI-02**: `vco give-task <agent> <task>` queues task for agent via socket API
+- [x] **CLI-03**: `vco dismiss <agent>` stops and cleans up agent via socket API
+- [x] **CLI-04**: `vco status` shows supervision tree and agent states via socket API
+- [x] **CLI-05**: `vco health` shows health tree with per-agent status via socket API
 - [ ] **CLI-06**: `vco new-project` is composite command: init + clone + add_project via socket API (hires all agents from agents.yaml)
 
 ### CompanyRoot Extraction
@@ -114,11 +114,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXTRACT-02 | Phase 20 | Complete |
 | EXTRACT-03 | Phase 20 | Complete |
 | EXTRACT-04 | Phase 20 | Complete |
-| CLI-01 | Phase 21 | Pending |
-| CLI-02 | Phase 21 | Pending |
-| CLI-03 | Phase 21 | Pending |
-| CLI-04 | Phase 21 | Pending |
-| CLI-05 | Phase 21 | Pending |
+| CLI-01 | Phase 21 | Complete |
+| CLI-02 | Phase 21 | Complete |
+| CLI-03 | Phase 21 | Complete |
+| CLI-04 | Phase 21 | Complete |
+| CLI-05 | Phase 21 | Complete |
 | CLI-06 | Phase 21 | Pending |
 | BOT-01 | Phase 22 | Pending |
 | BOT-02 | Phase 22 | Pending |

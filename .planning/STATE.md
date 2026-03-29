@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: CLI-First Architecture Rewrite
-status: Ready to plan
-stopped_at: Completed 20-04-PLAN.md
-last_updated: "2026-03-29T11:46:35.464Z"
+status: Ready to execute
+stopped_at: Completed 21-01-PLAN.md
+last_updated: "2026-03-29T12:03:23.428Z"
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 11
+  completed_plans: 10
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 20 — CompanyRoot Extraction
+**Current focus:** Phase 21 — CLI Commands
 
 ## Current Position
 
-Phase: 21
-Plan: Not started
+Phase: 21 (CLI Commands) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Plan: Not started
 | Phase 20 P02 | 177 | 2 tasks | 2 files |
 | Phase 20 P03 | 329 | 2 tasks | 2 files |
 | Phase 20 P04 | 288 | 2 tasks | 5 files |
+| Phase 21 P01 | 236 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,7 @@ Recent decisions affecting current work:
 - [Phase 20]: PlanReviewer/PMTier NOT injected into cogs -- deferred to Phase 22 via RuntimeAPI
 - [Phase 20]: CommandsCog uses getattr-based RuntimeAPI access helpers for clean daemon integration
 - [Phase 20]: Import boundary test checks module-level imports only -- function-scoped lazy imports are acceptable
+- [Phase 21]: daemon_client() catches ConnectionRefusedError/FileNotFoundError/ConnectionError uniformly as Daemon not running
 
 ### Pending Todos
 
@@ -106,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T03:33:58.258Z
-Stopped at: Completed 20-04-PLAN.md
+Last session: 2026-03-29T12:03:23.426Z
+Stopped at: Completed 21-01-PLAN.md
 Resume file: None
