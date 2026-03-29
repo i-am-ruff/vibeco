@@ -1,230 +1,198 @@
-# Feature Research
+# Feature Research: CLI-First Architecture with Runtime Daemon
 
-**Domain:** Agent container architecture, supervision trees, and lifecycle management for autonomous multi-agent orchestration
-**Researched:** 2026-03-27
-**Confidence:** HIGH (core patterns well-established via Erlang/OTP, Kubernetes, systemd; applied to AI agent context with MEDIUM confidence)
+**Domain:** CLI-first daemon architecture for multi-agent orchestration system
+**Researched:** 2026-03-29
+**Confidence:** HIGH
 
 ## Feature Landscape
 
-This research targets the v2.0 milestone: replacing vCompany's flat agent model and external watchdog with a self-supervising container hierarchy. Features are evaluated against what exists (v1 flat dispatch + external monitor loop) and what the container architecture needs.
+This research targets the v3.0 milestone: extracting all core logic from the Discord bot into a runtime daemon with Unix socket API, making the CLI the primary interface and the bot a thin Discord skin. All features are evaluated against the existing v2.0/v2.1 codebase (CompanyRoot, supervision tree, containers, health tree) and the proven CLI-daemon patterns used by Docker, Tailscale, and Mullvad VPN.
 
 ### Table Stakes (Users Expect These)
 
-Features that the container architecture MUST have or the refactor delivers no value over v1.
+Features that any CLI-first daemon architecture must have. Missing these means the system feels broken or untrustworthy.
 
-#### AgentContainer Base Abstraction
-
-| Feature | Why Expected | Complexity | Depends On (v1) |
-|---------|--------------|------------|------------------|
-| Lifecycle state machine (CREATING->RUNNING->SLEEPING->ERRORED->STOPPED->DESTROYED) | Without explicit states, the system guesses agent status from tmux pane liveness -- fragile and ambiguous. v1's `AgentEntry.status` has 5 ad-hoc strings; a proper FSM with validated transitions eliminates impossible states. | MEDIUM | `models/agent_state.py` AgentEntry (replace), `tmux/session.py` TmuxManager (wrap) |
-| State transition validation | Preventing invalid transitions (e.g., STOPPED->RUNNING without going through CREATING) catches bugs that silently corrupt agent state. Erlang supervisors enforce this; without it, the tree can't trust child state. | LOW | New code, no v1 dependency |
-| Context management per container | Each container must carry its own config (agent_id, owned dirs, GSD mode, system prompt path). v1 scatters this across agents.yaml parsing, dispatch_cmd, and clone_cmd. Centralizing it in the container means one place to query "what does this agent need?" | MEDIUM | `models/config.py` ProjectConfig/AgentConfig (reuse), `cli/dispatch_cmd.py` (absorb logic) |
-| Communication interface (send/receive messages) | Containers need a way to emit events (state changed, health report, task complete) and receive commands (stop, wake, new assignment). v1 uses callbacks on MonitorLoop -- works but couples everything to the monitor. Event-based decoupling is the whole point. | HIGH | `monitor/loop.py` callback pattern (replace with event bus) |
-
-#### Supervision Tree
-
-| Feature | Why Expected | Complexity | Depends On (v1) |
-|---------|--------------|------------|------------------|
-| Two-level hierarchy: CompanyRoot -> ProjectSupervisor -> agents | Flat supervision can't express "restart all agents in project X when the project supervisor dies" vs "restart just the crashed agent." Hierarchy encodes dependency scope. Without it, restart policies have no structure to operate on. | HIGH | `orchestrator/agent_manager.py` (replace), `monitor/loop.py` (absorb supervision duties) |
-| `one_for_one` restart strategy | The default: when one agent crashes, restart only that agent. This is what v1 does today via crash_tracker. Table stakes because most agents are independent (BACKEND doesn't need restart when FRONTEND crashes). | MEDIUM | `orchestrator/crash_tracker.py` (reuse backoff/circuit breaker logic, wrap in strategy) |
-| `all_for_one` restart strategy | When agents have tight coupling (e.g., shared state that becomes inconsistent if one agent restarts with stale context), restart all children. Required for the ProjectSupervisor level -- if the PM's context becomes stale, all agents under it may need fresh context injection. | MEDIUM | New code, but restart mechanics reuse crash_tracker |
-| `rest_for_one` restart strategy | When agents have ordered dependencies (B depends on A's output), restarting A should also restart B and everything after it. Encodes dependency ordering that v1 handles manually via "check PROJECT-STATUS.md." | MEDIUM | New code; dependency info comes from agents.yaml `consumes` field |
-| Max restart intensity (count/period) | Circuit breaker at the supervisor level: if a child crashes N times in M seconds, escalate to parent supervisor instead of looping. v1's crash_tracker has this (3 crashes/hour) but only at the agent level. The tree needs it at every level. | LOW | `orchestrator/crash_tracker.py` MAX_CRASHES_PER_HOUR (generalize) |
-| Child specification registry | The supervisor must know HOW to start each child (what type, what config, what restart policy). This replaces v1's implicit knowledge scattered across dispatch_cmd and agents.yaml parsing. | MEDIUM | `models/config.py` AgentConfig (extend with container type + restart policy) |
-
-#### Agent Type Specializations
-
-| Feature | Why Expected | Complexity | Depends On (v1) |
-|---------|--------------|------------|------------------|
-| GsdAgent: phase-driven lifecycle (IDLE->DISCUSS->PLAN->EXECUTE->UAT->SHIP) | The primary agent type. v1's WorkflowOrchestrator already tracks this state machine externally. Moving it INTO the agent container makes state authoritative (self-reported, not inferred from pane output). | HIGH | `orchestrator/workflow_orchestrator.py` WorkflowStage (absorb into GsdAgent internal FSM) |
-| GsdAgent: checkpoint at state transitions | If a GsdAgent crashes mid-execute, it should resume from the last checkpoint, not restart the entire phase. v1 has no checkpointing -- crash = restart from IDLE. | MEDIUM | New code; checkpoint data stored in agent's memory_store |
-| ContinuousAgent: scheduled wake/sleep cycles (WAKE->GATHER->ANALYZE->ACT->REPORT->SLEEP) | PM and monitor-like agents don't follow GSD phases. They wake on schedule, do a sweep, report, sleep. Without a distinct type, they'd be shoehorned into GsdAgent with hacks. | MEDIUM | `monitor/loop.py` cycle pattern (reuse as ContinuousAgent behavior) |
-| FulltimeAgent (PM): event-driven, alive for project duration | The PM reacts to plan submissions, escalations, health changes. It doesn't follow phases or cycles. It needs to stay alive and process an event queue. Without this type, PM logic stays bolted onto the Discord bot rather than being a first-class container. | HIGH | `strategist/pm.py` (wrap in container), `bot/cogs/plan_review.py` (becomes event source) |
-| CompanyAgent (Strategist): cross-project, event-driven | The Strategist spans projects and holds long-lived conversation context. It must survive project restarts. Without CompanyAgent, the Strategist's lifecycle is tangled with individual projects. | MEDIUM | `strategist/conversation.py` (wrap in container) |
-
-#### Health Reporting
-
-| Feature | Why Expected | Complexity | Depends On (v1) |
-|---------|--------------|------------|------------------|
-| Self-reported HealthReport per container | v1 infers health externally (is the pane alive? is the process stuck?). Self-reporting means the agent says "I'm healthy/degraded/failing" with structured data. Kubernetes proved this pattern: liveness + readiness probes from within the process are more reliable than external guessing. | MEDIUM | `monitor/checks.py` check_liveness/check_stuck (replace with self-report + fallback external check) |
-| Health tree aggregation | A ProjectSupervisor's health is the aggregate of its children's health. CompanyRoot's health is the aggregate of all ProjectSupervisors. This gives "docker ps for the whole system" -- the single-glance view that v1 lacks. | MEDIUM | New code; tree traversal aggregation |
-| Discord health status push | The owner needs to see health in Discord, not just terminal. v1 has AlertsCog for crashes; health tree extends this to show the full system state on demand (e.g., `!health` command). | LOW | `bot/cogs/alerts.py` (extend), `bot/embeds.py` (new embed format) |
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `vco up` / `vco down` daemon lifecycle | Every daemon-based tool has explicit start/stop. Docker has `dockerd`, Tailscale has `tailscaled`. Users need to control when the daemon runs. | MEDIUM | Needs PID file at `~/.vco/vco.pid`, stale PID detection, and `vco up` that refuses to double-start. SIGTERM/SIGINT handling for clean shutdown. Depends on: nothing (foundation). |
+| PID file and single-instance guard | Standard daemon pattern -- prevents two instances from conflicting on the same socket and tmux sessions. Docker, Tailscale, systemd all enforce this. | LOW | Write PID to file on start, check on subsequent `vco up`. Remove on clean exit. Detect stale PIDs (process dead but file exists) via `os.kill(pid, 0)`. Depends on: nothing. |
+| Unix socket API with JSON protocol | The communication channel between CLI and daemon. Tailscale uses HTTP-over-Unix-socket (LocalAPI). Docker uses HTTP-over-Unix-socket. Python has `asyncio.start_unix_server()` in stdlib. | MEDIUM | Socket at `~/.vco/vco.sock`. Newline-delimited JSON (simpler than HTTP, lighter than gRPC). Each request is `{"method": "hire", "params": {...}}`, each response is `{"ok": true, "result": {...}}` or `{"ok": false, "error": "..."}`. Depends on: daemon process. |
+| CLI commands as thin API clients | Mullvad CLI is "solely responsible for command parsing, daemon communication, and output formatting." Docker CLI translates commands into API calls. Each `vco` subcommand opens socket, sends JSON, reads JSON, formats output. | MEDIUM | Each Click command: connect to socket, send request, read response, format with Rich. No state in CLI process. Error path: "daemon not running, run `vco up` first." Depends on: Unix socket API. |
+| Graceful shutdown with state persistence | When daemon stops, running agent state must survive. Docker persists container state. Kubernetes drains connections. vCompany must snapshot container states, pane IDs, task queues to disk before exit. | HIGH | SIGTERM handler triggers ordered shutdown: (1) stop accepting new socket connections, (2) snapshot all container state to `~/.vco/state/`, (3) stop health monitoring, (4) close socket, (5) remove PID file. Timeout of 30s before force-exit. Depends on: state persistence. |
+| State recovery on restart | Daemon restart must recover all agent containers from persisted state. Docker containers survive `dockerd` restart. This is the core value proposition -- bot crash no longer kills agents. | HIGH | On startup: read state from `~/.vco/state/`, reconnect to existing tmux sessions by pane ID (tmux sessions outlive the daemon), restore task queues, mark containers whose tmux panes are gone as CRASHED (trigger restart policy). Depends on: state persistence, daemon process. |
+| Health check endpoint | Every daemon exposes health. Docker has `docker info`, Tailscale has `tailscale status`. `vco health` must work when daemon is up and return a clear error when down. | LOW | Socket request `{"method": "health"}` returns the existing `CompanyHealthTree`. `vco health` formats with Rich tables (reuse existing health embed logic). Depends on: Unix socket API. |
+| Daemon status detection | CLI must know if daemon is up before sending commands. `vco status` when daemon is down should say "daemon not running" not hang or crash. | LOW | Check PID file existence + socket connectivity. Some commands work without daemon (e.g., `vco version`). Connection timeout of 2s on socket. Depends on: PID file. |
+| Bot as thin relay | Discord bot becomes a presentation layer only. Slash commands translate to the same API calls the CLI uses. No container references in bot code. No CompanyRoot import in bot. | MEDIUM | Bot connects to Unix socket on startup. `/health` calls same endpoint as `vco health`, formats as Discord embed. `/new-project` calls same endpoint as `vco new-project`. Bot only adds Discord-specific formatting (embeds, buttons, threads). Depends on: Unix socket API, CLI commands. |
+| `vco new-project` composite command | Currently `/new-project` in bot does init + clone + hire. The CLI version must do the same: create project, clone repos, hire each agent from agents.yaml. Single command, multiple API calls. | MEDIUM | Reads agents.yaml, calls `hire` for each agent sequentially. Reports progress to stdout (or Discord if called via bot). Replaces duplicated init logic in `bot/cogs/commands.py`. Depends on: `vco hire`, state persistence. |
 
 ### Differentiators (Competitive Advantage)
 
-Features that go beyond basic supervision and make vCompany's container architecture genuinely better than flat process management.
+Features that make vCompany's CLI-first architecture stand out. Not required for initial launch, but high value.
 
-| Feature | Value Proposition | Complexity | Depends On |
-|---------|-------------------|------------|------------|
-| Living milestone backlog (PM-managed mutable queue) | v1 uses static ROADMAP.md -- agents consume phases in order, no runtime reordering. A mutable queue lets the PM insert urgent tasks, reorder priorities, and cancel stale work WITHOUT stopping agents. This is the difference between a build system and an autonomous development team. | HIGH | FulltimeAgent (PM) must be operational; needs AgentContainer communication interface |
-| Delegation protocol (continuous agents request task spawns) | A ContinuousAgent (e.g., QA monitor) discovers a regression and requests a fix-dispatch through its supervisor. v1 requires the human to dispatch fixes. Delegation makes the system self-healing for code issues, not just process issues. | HIGH | Supervision tree, ContinuousAgent type, child specification registry |
-| Decoupled project/agent lifecycles | In v1, killing an agent can leave project state inconsistent (half-written status, stale plan gate). Decoupling means: project state is owned by PM, agents read assignments and write completions via message passing. Agent crash never corrupts project state. | HIGH | FulltimeAgent (PM) as state owner, event-based communication |
-| Scheduler (timer-based WAKE for sleeping containers) | ContinuousAgents need to wake on schedule (e.g., every 30 min for monitoring sweeps). Without a scheduler, wake triggers are external cron jobs or manual -- defeating the self-contained tree model. | MEDIUM | CompanyRoot owns the scheduler; ContinuousAgent type must support SLEEPING state |
-| Agent memory_store (persistent per-agent key-value) | Agents lose all context on crash/restart. A persistent store lets them resume with memory of past decisions, checkpoints, learned patterns. Differentiator because most agent frameworks treat agents as stateless. | MEDIUM | AgentContainer base provides the interface; implementation is JSON file or SQLite per agent |
-| Graceful degradation with partial tree | If one ProjectSupervisor fails, other projects keep running. If one agent fails and circuit breaker opens, remaining agents continue. v1's monitor loop is a single point of failure -- if it crashes, all monitoring stops. The tree distributes supervision so no single failure is total. | MEDIUM | Two-level supervision hierarchy with independent supervisor loops |
-| Hot agent replacement | Swap an agent's configuration (new system prompt, different owned dirs) without destroying and recreating the entire container. Enables live reconfiguration during milestones. | MEDIUM | AgentContainer state machine must support CREATING->RUNNING transition with config reload |
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Strategist Bash autonomy via same CLI | The Strategist agent (Claude in tmux) calls `vco hire`, `vco give-task`, `vco dismiss` via Bash tool. No special wiring, no action tag parsing, no Discord round-trip. Same interface for human, bot, and AI agents. This is the entire motivation for v3.0. | LOW | Once CLI commands work as API clients, this is free. The Strategist's `--allowedTools "Bash"` gives it `vco` access. Zero additional code beyond the CLI commands themselves. Depends on: CLI commands working. |
+| Bot-independent operation | System fully functional without Discord bot running. Owner manages everything from terminal. Bot crash has zero impact on running agents. True graceful degradation. | LOW | Falls out naturally from the architecture. Daemon owns all state, CLI owns all logic, bot is optional. Only cost: ensure daemon never requires bot connection. Depends on: architecture itself. |
+| Daemon auto-start on first command | Instead of requiring explicit `vco up`, any command auto-starts the daemon. Tailscale does this -- `tailscale up` starts `tailscaled` if needed. Reduces friction. | MEDIUM | CLI checks if daemon is running. If not, fork daemon to background, poll socket with backoff (max 5s), then send command. Must handle race (two commands auto-starting simultaneously -- use PID file as lock). Depends on: daemon lifecycle, PID file. |
+| Streaming responses over socket | Long-running operations (like `vco new-project` cloning + hiring N agents) stream progress. Docker does this for `docker pull`. | MEDIUM | Socket protocol supports streaming: daemon sends multiple JSON lines per request, CLI prints each. Final line has `"done": true`. Enriches UX for composite commands. Depends on: Unix socket API. |
+| Socket event subscription (push) | CLI or bot subscribes to events (state changes, health updates, task completions) via persistent socket connection. Bot uses this instead of polling. | HIGH | Pub/sub layer in daemon. Clients send `{"method": "subscribe", "events": ["health", "state"]}`. Daemon pushes events as they occur. Avoids polling but adds bidirectional protocol complexity. Defer unless bot performance demands it. |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that seem valuable but would add complexity without proportional benefit for vCompany's single-machine, Claude-Code-based context.
-
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Dynamic agent auto-scaling | "Spawn more agents when work piles up" | Claude Code sessions are expensive ($), context-heavy, and compete for machine resources. Auto-scaling on a single machine hits CPU/memory limits fast. The PM should manage agent count explicitly, not an autoscaler. | PM decides agent count at milestone boundaries via living backlog; manual `!dispatch` for ad-hoc agents |
-| Agent-to-agent direct messaging | "Let BACKEND tell FRONTEND its API is ready" | Creates hidden coupling. Agent A's behavior now depends on messages from Agent B, making debugging and replay impossible. Erlang explicitly avoids this in supervision trees -- children communicate through the supervisor or shared state. | PROJECT-STATUS.md (existing), supervisor-mediated events, INTERFACES.md contract updates |
-| Distributed supervision across machines | "Run agents on multiple machines for more parallelism" | Adds network partitioning, clock sync, distributed consensus -- enormous complexity. vCompany v2 is explicitly single-machine. The supervision tree pattern works locally without any of this overhead. | Keep single-machine constraint; optimize agent count and scheduling instead |
-| Generic plugin/extension system for agent types | "Let users define custom agent types" | Four agent types (Gsd, Continuous, Fulltime, Company) cover all known use cases. A plugin system adds API surface to maintain, documentation burden, and backwards compatibility constraints before there's demand. | Hard-code the four types; add new types as needed in future milestones |
-| Real-time agent output streaming to Discord | "See what each agent is doing live" | Claude Code sessions produce enormous output. Streaming it to Discord would hit rate limits within seconds and flood channels with unreadable text. v1 learned this -- checkins and standups are the right granularity. | Periodic checkins (existing), `!status` command for on-demand snapshots, health tree for system view |
-| Centralized agent state database (SQLite/Postgres) | "Query agent history, build dashboards" | Adds a database dependency, migration tooling, and another failure mode. v1's filesystem state (agents.json, crash_log.json) works. The container model already gives structured state per container. | JSON files per container in a well-known directory; tree aggregation for queries; consider SQLite in v3 if query patterns demand it |
-| Preemptive task migration | "Move a task from a stuck agent to a healthy one" | Claude Code sessions carry accumulated context. You can't "move" a session -- you'd have to start fresh, losing all work. The correct response to a stuck agent is restart (with checkpoint) or escalate, not migrate. | Checkpoint-based restart within the same agent container; escalation to PM for reassignment |
+| HTTP/REST API instead of Unix socket | "More standard", "tools can curl it" | Adds network exposure, needs auth, CORS. vCompany is single-machine -- network sockets add attack surface with zero benefit. Docker's biggest security footgun is the TCP socket. | Unix domain socket with filesystem permissions (`chmod 600`). Same request/response semantics, zero network exposure. |
+| gRPC for daemon communication | "Type-safe", "schema-driven" | Adds protobuf compilation step, heavy dependency (grpcio ~50MB), overkill for ~15 API methods on localhost. Mullvad uses gRPC but they ship cross-platform GUI clients. | Newline-delimited JSON over Unix socket. Define request/response schemas with Pydantic models. Type safety via Python, not protobuf. |
+| Web dashboard for monitoring | "Visual overview", "graphs" | Adds web server, frontend build, WebSocket layer. Discord already is the visual interface. Terminal has Rich tables. | `vco status` with Rich formatting. Discord embeds for remote. Both consume same health API endpoint. |
+| Database for state persistence | "SQLite is more robust", "queryable" | Adds migration complexity, another failure mode. Container state is a small tree (<100 nodes). JSON files are human-readable, diff-able, trivially debuggable. | JSON files in `~/.vco/state/`. One file per project. Atomic writes via `tempfile + os.rename()`. Already using filesystem state throughout codebase. |
+| Plugin system for custom commands | "Extensibility" | Premature abstraction. vCompany has a fixed ~15 operations. Plugin systems add API surface to maintain with no current consumers. | Hard-code commands. Click's `group.add_command()` makes adding new ones trivial later. |
+| Systemd integration (socket activation, service file) | "Proper daemon management" | Couples to systemd, doesn't work on macOS, adds packaging complexity. vCompany runs on one developer machine, not a fleet. | `vco up` with PID file. If systemd is wanted later, a unit file is 10 lines -- no architectural changes needed. |
+| Multi-user access control on socket | "Security", "role-based access" | Single-machine, single-user system. Unix socket permissions handle access. Adding user auth to a local socket is complexity for a non-existent threat. | Socket file permissions: `chmod 600 ~/.vco/vco.sock`. Only owner can connect. |
+| Bot calling CLI via subprocess | "Simpler than socket" | Subprocess overhead per command (fork, exec, Python startup ~200ms). Race conditions between concurrent subprocess calls. No connection reuse. | Bot connects to Unix socket directly (same as CLI does internally). Shared socket client code. One persistent connection, not N subprocesses. |
 
 ## Feature Dependencies
 
 ```
-AgentContainer base (state machine, context, communication)
-    |
-    +---> Supervision tree (needs containers to supervise)
-    |         |
-    |         +---> Restart strategies (operate on supervised containers)
-    |         |
-    |         +---> Max restart intensity (supervisor-level circuit breaker)
-    |         |
-    |         +---> Child specification registry (how to create containers)
-    |
-    +---> Agent type specializations (extend AgentContainer)
-    |         |
-    |         +---> GsdAgent (needs base state machine + checkpoint)
-    |         |         |
-    |         |         +---> GsdAgent checkpoint (needs memory_store)
-    |         |
-    |         +---> ContinuousAgent (needs base + scheduler)
-    |         |         |
-    |         |         +---> Delegation protocol (ContinuousAgent requests spawns)
-    |         |
-    |         +---> FulltimeAgent/PM (needs base + event queue)
-    |         |         |
-    |         |         +---> Living milestone backlog (PM manages the queue)
-    |         |         |
-    |         |         +---> Decoupled lifecycles (PM owns project state)
-    |         |
-    |         +---> CompanyAgent/Strategist (needs base + cross-project scope)
-    |
-    +---> Health reporting (containers self-report)
-              |
-              +---> Health tree aggregation (supervisors aggregate children)
-              |
-              +---> Discord health push (display aggregated tree)
+[PID File / Single Instance Guard]
+    └──required by──> [Daemon Process (vco up/down)]
+                          └──required by──> [Unix Socket API]
+                                                └──required by──> [CLI Commands as API Clients]
+                                                |                     └──required by──> [Bot as Thin Relay]
+                                                |                     └──required by──> [Strategist Bash Autonomy]
+                                                |                     └──required by──> [vco new-project composite]
+                                                └──required by──> [Health Check Endpoint]
 
-Scheduler (timer in CompanyRoot)
-    +---> ContinuousAgent WAKE triggers
+[State Persistence (write path)]
+    └──required by──> [State Recovery (read path)]
+    └──required by──> [Graceful Shutdown]
 
-Agent memory_store
-    +---> GsdAgent checkpoint
-    +---> ContinuousAgent persistent memory
+[Daemon Process]
+    └──required by──> [State Persistence]
+
+[CompanyRoot extraction from bot] ──required by──> [Daemon Process]
+
+[Daemon Auto-Start] ──enhances──> [CLI Commands]
+[Streaming Responses] ──enhances──> [Unix Socket API]
+[Socket Event Subscription] ──enhances──> [Bot as Thin Relay]
 ```
 
 ### Dependency Notes
 
-- **AgentContainer base is the foundation.** Nothing else works without it. Build first.
-- **Supervision tree requires AgentContainer** because supervisors manage container instances. Can't test restart policies without real containers to restart.
-- **Agent types require AgentContainer** because they extend the base class. GsdAgent is highest priority since it replaces the existing workflow.
-- **Health reporting requires AgentContainer** because containers self-report. External health checks (v1 pattern) can serve as fallback during migration.
-- **Living milestone backlog requires FulltimeAgent (PM)** because the PM manages the queue. Without PM-as-container, the backlog has no owner.
-- **Delegation protocol requires ContinuousAgent + supervision tree** because delegation flows through the supervisor. Needs both to be operational.
-- **memory_store is a cross-cutting concern** used by GsdAgent (checkpoints) and ContinuousAgent (persistent state). Build early as a simple abstraction; implementations can evolve.
-- **Scheduler is independent** but useless without ContinuousAgent to wake. Can be built alongside ContinuousAgent.
+- **PID file is the absolute foundation.** Without single-instance guarantee, nothing else is safe. Build first, takes 30 minutes.
+- **CompanyRoot extraction is the hardest prerequisite.** Currently created in `VcoBot.on_ready()` with extensive callback wiring to Discord. Must be extractable into a standalone daemon startup with no Discord dependency.
+- **CLI Commands require Unix Socket API.** Every CLI command is a stateless client. Without the socket server, nothing works.
+- **Bot as Thin Relay requires CLI Commands.** Bot slash commands either call the socket API directly or delegate to CLI. Either way, the API must exist first.
+- **State Recovery requires State Persistence.** Cannot recover what wasn't saved. Tightly coupled -- implement the write path and read path together.
+- **Strategist Bash Autonomy requires CLI Commands.** This is the killer feature motivating the entire rewrite, but it's the last link in the dependency chain. CLI commands must work first.
+- **Daemon Auto-Start conflicts with explicit `vco up`.** Choose one as primary. Recommendation: require explicit `vco up` for v3.0 (simpler, debuggable), add auto-start as convenience later.
+- **Bot should NOT call CLI via subprocess.** Both bot and CLI should share the same socket client library. Bot imports the client module directly rather than shelling out to `vco`.
 
 ## MVP Definition
 
-### Phase 1: Foundation (Build First)
+### Launch With (v3.0 Core)
 
-- [ ] AgentContainer base with lifecycle state machine -- without this, nothing else exists
-- [ ] State transition validation -- prevents impossible states from day one
-- [ ] Context management per container -- centralizes scattered config
-- [ ] Agent memory_store (simple JSON key-value) -- needed by checkpoints in Phase 2
-- [ ] Child specification registry -- supervisors need to know how to create children
+Minimum viable CLI-first architecture. Everything needed before the system is usable.
 
-### Phase 2: Core Tree (Build Second)
+- [ ] **PID file + single-instance guard** -- `~/.vco/vco.pid`, stale detection, prevents double-start
+- [ ] **Daemon process (`vco up` / `vco down`)** -- asyncio event loop, SIGTERM/SIGINT handlers, background process
+- [ ] **CompanyRoot extraction from bot** -- supervision tree starts in daemon, not in `VcoBot.on_ready()`
+- [ ] **Unix socket server** -- `asyncio.start_unix_server()` at `~/.vco/vco.sock`, JSON request/response
+- [ ] **Socket client library** -- shared by CLI commands and bot, handles connection, serialization, errors
+- [ ] **Core CLI commands** -- `vco hire`, `vco give-task`, `vco dismiss`, `vco status`, `vco health` as thin API clients
+- [ ] **`vco new-project` composite** -- init + clone + hire all agents from agents.yaml via API
+- [ ] **State persistence** -- container state, pane IDs, task queues to `~/.vco/state/` on every state change
+- [ ] **State recovery** -- daemon startup reads persisted state, reconnects tmux sessions, restores containers
+- [ ] **Graceful shutdown** -- SIGTERM snapshots state before exit
+- [ ] **Bot refactored to thin relay** -- slash commands call socket API, no CompanyRoot/container imports in bot
 
-- [ ] Two-level supervision hierarchy (CompanyRoot -> ProjectSupervisor -> agents) -- the structural backbone
-- [ ] `one_for_one` restart strategy -- the default, covers 80% of cases
-- [ ] Max restart intensity at supervisor level -- prevents crash loops at tree level
-- [ ] GsdAgent type with internal state machine -- replaces WorkflowOrchestrator's external tracking
-- [ ] GsdAgent checkpointing -- crash recovery that doesn't lose work
-- [ ] Self-reported HealthReport per container -- containers declare their own health
+### Add After Validation (v3.x)
 
-### Phase 3: Specialized Types (Build Third)
+Features to add once core daemon + CLI architecture is proven stable.
 
-- [ ] ContinuousAgent with wake/sleep cycles -- enables monitor-as-agent
-- [ ] FulltimeAgent (PM) with event queue -- PM becomes a first-class container
-- [ ] Scheduler in CompanyRoot -- drives ContinuousAgent WAKE triggers
-- [ ] Health tree aggregation + Discord push -- "docker ps" for the system
-- [ ] `all_for_one` and `rest_for_one` restart strategies -- handle coupled agents
+- [ ] **Strategist Bash autonomy** -- Strategist calls `vco hire/give-task/dismiss` via Bash (once CLI commands are battle-tested with manual use)
+- [ ] **Daemon auto-start** -- `vco hire` auto-starts daemon if not running (once explicit `vco up` feels tedious)
+- [ ] **Streaming responses** -- long-running commands stream progress (once `vco new-project` feels too silent during multi-agent setup)
+- [ ] **Socket event subscription** -- bot subscribes to push events instead of polling (once bot latency is noticeable)
 
-### Phase 4: Autonomy (Build Last)
+### Future Consideration (v4+)
 
-- [ ] Living milestone backlog (PM-managed mutable queue) -- dynamic work management
-- [ ] Delegation protocol -- continuous agents request task spawns
-- [ ] Decoupled project/agent lifecycles -- crash isolation guarantee
-- [ ] CompanyAgent (Strategist) as container -- cross-project lifecycle
-- [ ] Communication interface (event bus replacing MonitorLoop callbacks) -- clean decoupling
-
-### Defer to v3+
-
-- [ ] Hot agent replacement -- useful but not critical for initial container architecture
-- [ ] Graceful degradation with partial tree -- implicit in the design but explicit testing/hardening can wait
-- [ ] Agent performance metrics and historical tracking -- needs query patterns to emerge first
+- [ ] **TCP socket option** -- for multi-machine setups where CLI runs on different host
+- [ ] **Authentication on socket** -- if multi-user access is needed
+- [ ] **Systemd unit file** -- for production deployment patterns
+- [ ] **Alternative UI backends** -- Slack, web (all consume same socket API)
 
 ## Feature Prioritization Matrix
 
-| Feature | User Value | Implementation Cost | Priority | Phase |
-|---------|------------|---------------------|----------|-------|
-| AgentContainer base + state machine | HIGH | MEDIUM | P1 | 1 |
-| State transition validation | HIGH | LOW | P1 | 1 |
-| Context management per container | HIGH | MEDIUM | P1 | 1 |
-| memory_store (JSON key-value) | MEDIUM | LOW | P1 | 1 |
-| Child specification registry | HIGH | MEDIUM | P1 | 1 |
-| Two-level supervision hierarchy | HIGH | HIGH | P1 | 2 |
-| `one_for_one` restart strategy | HIGH | MEDIUM | P1 | 2 |
-| Max restart intensity (tree-level) | HIGH | LOW | P1 | 2 |
-| GsdAgent with internal FSM | HIGH | HIGH | P1 | 2 |
-| GsdAgent checkpointing | MEDIUM | MEDIUM | P1 | 2 |
-| Self-reported HealthReport | HIGH | MEDIUM | P1 | 2 |
-| ContinuousAgent | MEDIUM | MEDIUM | P2 | 3 |
-| FulltimeAgent (PM) | HIGH | HIGH | P2 | 3 |
-| Scheduler | MEDIUM | LOW | P2 | 3 |
-| Health tree aggregation + Discord | MEDIUM | MEDIUM | P2 | 3 |
-| `all_for_one` / `rest_for_one` | LOW | MEDIUM | P2 | 3 |
-| Living milestone backlog | HIGH | HIGH | P2 | 4 |
-| Delegation protocol | MEDIUM | HIGH | P2 | 4 |
-| Decoupled lifecycles | HIGH | HIGH | P2 | 4 |
-| CompanyAgent (Strategist) | MEDIUM | MEDIUM | P2 | 4 |
-| Event bus (replace callbacks) | MEDIUM | HIGH | P2 | 4 |
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| PID file / single instance | HIGH | LOW | P1 |
+| Daemon process (vco up/down) | HIGH | MEDIUM | P1 |
+| CompanyRoot extraction from bot | HIGH | HIGH | P1 |
+| Unix socket server | HIGH | MEDIUM | P1 |
+| Socket client library | HIGH | LOW | P1 |
+| Core CLI commands (hire/task/dismiss/status/health) | HIGH | MEDIUM | P1 |
+| State persistence | HIGH | HIGH | P1 |
+| State recovery on restart | HIGH | HIGH | P1 |
+| Graceful shutdown | HIGH | MEDIUM | P1 |
+| vco new-project composite | HIGH | MEDIUM | P1 |
+| Bot as thin relay | HIGH | MEDIUM | P1 |
+| Daemon status detection | MEDIUM | LOW | P1 |
+| Strategist Bash autonomy | HIGH | LOW | P2 |
+| Daemon auto-start | MEDIUM | MEDIUM | P2 |
+| Streaming responses | MEDIUM | MEDIUM | P3 |
+| Socket event subscription | LOW | HIGH | P3 |
 
-## Competitor Feature Analysis
+**Priority key:**
+- P1: Must have -- core v3.0 architecture, blocks all downstream features
+- P2: Should have -- high value, low incremental cost, add once P1 is stable
+- P3: Nice to have -- defer until specific pain point is felt
 
-| Feature | Erlang/OTP | Kubernetes | systemd | vCompany v2 Approach |
-|---------|------------|------------|---------|---------------------|
-| Supervision hierarchy | Native -- supervisors supervise supervisors, unlimited depth | Controllers -> Pods, two-level | Unit dependencies, flat | Two-level: CompanyRoot -> ProjectSupervisor -> agents. Sufficient for single-machine multi-project. |
-| Restart strategies | one_for_one, all_for_one, rest_for_one, simple_one_for_one | Always restart (configurable backoff) | Restart=always/on-failure/no | All three OTP strategies. simple_one_for_one not needed (agents are heterogeneous). |
-| Health checking | Process links + monitors (crash propagation) | Liveness + readiness probes (HTTP/TCP/exec) | Watchdog timer | Self-reported HealthReport (like K8s probes) + fallback external tmux check (like systemd watchdog) |
-| State persistence | ETS/DETS/Mnesia | etcd, ConfigMaps, PersistentVolumes | Journal, state directory | Per-agent JSON memory_store. Simple, file-based, no external dependency. |
-| Dynamic children | DynamicSupervisor (simple_one_for_one) | ReplicaSet, HPA | Template units | Child spec registry + `!dispatch` command. PM requests, supervisor creates. |
-| Lifecycle states | Started/running/terminated | Pending/Running/Succeeded/Failed/Unknown | inactive/activating/active/deactivating/failed | CREATING/RUNNING/SLEEPING/ERRORED/STOPPED/DESTROYED -- richer than K8s, simpler than systemd |
-| Task delegation | gen_server:call/cast between processes | Job/CronJob resources, operator pattern | Socket activation, D-Bus | Delegation protocol: ContinuousAgent -> Supervisor -> spawn GsdAgent. Mediated, not direct. |
-| Scheduled execution | timer module, cron-like libraries | CronJob resource | Timer units | Scheduler in CompanyRoot triggers WAKE on sleeping ContinuousAgents |
+## Reference Architecture Analysis
+
+These are not competitors but reference implementations of the identical CLI-daemon pattern vCompany v3.0 follows.
+
+| Feature | Docker | Tailscale | Mullvad VPN | vCompany v3.0 Approach |
+|---------|--------|-----------|-------------|----------------------|
+| Daemon start | `dockerd` / systemd | `tailscaled` / systemd | `mullvad-daemon` / systemd | `vco up` -- explicit start, PID file, no systemd dependency |
+| IPC mechanism | HTTP over Unix socket | HTTP over Unix socket (LocalAPI) | gRPC over Unix socket | Newline-delimited JSON over Unix socket (simpler than HTTP, lighter than gRPC) |
+| CLI role | Stateless API client | Stateless LocalAPI client | Stateless gRPC client | Stateless socket client -- same proven pattern |
+| State persistence | Container state in `/var/lib/docker` | Node state in `/var/lib/tailscale` | VPN config in `/etc/mullvad-vpn` | Container + queue state in `~/.vco/state/` |
+| Restart recovery | Containers survive dockerd restart | Connections survive tailscaled restart | VPN reconnects after daemon restart | Agents survive daemon restart via tmux session reconnection |
+| UI relay | Docker Desktop (Electron thin client) | Tailscale app (thin client) | Mullvad app (thin client) | Discord bot (thin relay to socket API) |
+| Graceful shutdown | SIGTERM + container stop timeout | SIGTERM + connection drain | SIGTERM + tunnel teardown | SIGTERM + state snapshot + socket close |
+| Auto-start | systemd handles it | `tailscale up` starts tailscaled | systemd handles it | Explicit `vco up` for now; auto-start in v3.x |
+
+## Existing Feature Migration Map
+
+These v2.0/v2.1 features must be migrated or reconnected in the new architecture.
+
+| Existing Feature | Current Location | v3.0 Location | Migration Notes |
+|------------------|-----------------|---------------|-----------------|
+| CompanyRoot + supervision tree | `VcoBot.on_ready()` in `bot/client.py` | Daemon main loop | Biggest extraction task. Must remove all Discord callback wiring from CompanyRoot constructor. |
+| AgentContainer lifecycle FSM | `container/container.py` | Daemon (unchanged) | State machine stays identical. Must become serializable for persistence (add `to_dict()`/`from_dict()`). |
+| Container tmux bridge | `container/container.py` | Daemon (unchanged) | Pane IDs must be persisted. On recovery, call `libtmux` to find existing pane by ID. |
+| Health tree | `container/health.py` | Daemon, exposed via socket API | Already returns structured data. Add JSON serialization. |
+| Task queue on containers | `container/container.py` | Daemon, persisted to disk | Queue must be serializable (list of task dicts). Write on every enqueue/dequeue. |
+| Priority message queue | `resilience/message_queue.py` | Bot process (stays) | This is Discord-specific rate limiting. Stays in bot, not in daemon. |
+| PM review gates | `bot/cogs/plan_review.py` | Split: UI in bot, state in daemon | Bot shows approve/reject buttons. Decision sent to daemon via socket API. Daemon updates container state. |
+| Strategist conversation | `strategist/conversation.py` | Daemon (CompanyAgent) | Already in CompanyAgent container. Just needs to start in daemon, not bot. |
+| Channel auto-setup | `bot/channel_setup.py` | Bot (stays) | Discord-specific. Bot creates channels, daemon doesn't know about Discord. |
+| `/new-project` slash command | `bot/cogs/commands.py` | Bot calls `vco new-project` API | Bot becomes thin: parse slash command args, call socket API, format response as embed. |
+| `/health` slash command | `bot/cogs/health.py` | Bot calls `vco health` API | Same pattern: socket call, format HealthTree as Discord embed. |
 
 ## Sources
 
-- [Erlang OTP Design Principles](https://www.erlang.org/doc/system/design_principles.html) -- supervision tree fundamentals (HIGH confidence)
-- [Adopting Erlang -- Supervision Trees](https://adoptingerlang.org/docs/development/supervision_trees/) -- practical restart strategy guidance (HIGH confidence)
-- [Elixir Supervisor documentation](https://hexdocs.pm/elixir/1.12/Supervisor.html) -- strategy definitions and max_restarts (HIGH confidence)
-- [Kubernetes Health Probe patterns](https://www.oreilly.com/library/view/kubernetes-patterns-2nd/9781098131678/ch04.html) -- liveness/readiness self-reporting (HIGH confidence)
-- [Deloitte: AI Agent Orchestration](https://www.deloitte.com/us/en/insights/industry/technology/technology-media-and-telecom-predictions/2026/ai-agent-orchestration.html) -- supervision and autonomy spectrum (MEDIUM confidence)
-- [AI Agent Delegation Patterns](https://fast.io/resources/ai-agent-delegation-patterns/) -- supervisor-worker delegation architectures (MEDIUM confidence)
-- [Scheduling Agent Supervisor Pattern](https://www.geeksforgeeks.org/system-design/scheduling-agent-supervisor-pattern-system-design/) -- scheduler + agent + supervisor coordination (MEDIUM confidence)
-- [Learn You Some Erlang: Supervisors](https://learnyousomeerlang.com/supervisors) -- restart intensity and escalation (HIGH confidence)
+- [Docker Client-Server Architecture](https://oneuptime.com/blog/post/2026-02-08-how-to-understand-the-docker-client-server-architecture/view) -- HTTP-over-Unix-socket pattern (MEDIUM confidence)
+- [Tailscale CLI Architecture](https://deepwiki.com/tailscale/tailscale/6.1-tailscale-cli) -- LocalAPI over Unix socket, stateless CLI client pattern (MEDIUM confidence)
+- [Mullvad VPN CLI](https://deepwiki.com/mullvad/mullvadvpn-app/5.1-command-line-interface) -- Stateless gRPC CLI client pattern (MEDIUM confidence)
+- [Podman vs Docker Architecture](https://medium.com/@m.hassan.def/podman-and-docker-a-story-of-two-architectures-2bb0e1bfd79a) -- Daemon vs daemonless tradeoffs (MEDIUM confidence)
+- [Python asyncio Unix socket server](https://superfastpython.com/asyncio-echo-unix-socket-server/) -- `asyncio.start_unix_server()` usage (HIGH confidence)
+- [Python socket module docs](https://docs.python.org/3/library/socket.html) -- stdlib Unix domain socket support (HIGH confidence)
+- [Python socketserver docs](https://docs.python.org/3/library/socketserver.html) -- ForkingUnixStreamServer added in 3.12 (HIGH confidence)
+- [Graceful Shutdown Patterns](https://www.geeksforgeeks.org/system-design/graceful-shutdown-in-distributed-systems-and-microservices/) -- Ordered shutdown, connection draining (MEDIUM confidence)
+- [start-stop-daemon man page](https://man7.org/linux/man-pages/man8/start-stop-daemon.8.html) -- PID file and daemon lifecycle management (HIGH confidence)
+- [PM2 Graceful Shutdown](https://pm2.io/docs/runtime/best-practices/graceful-shutdown/) -- Signal handling, timeout patterns (MEDIUM confidence)
 
 ---
-*Feature research for: Agent container architecture (vCompany v2.0)*
-*Researched: 2026-03-27*
+*Feature research for: CLI-first daemon architecture (vCompany v3.0)*
+*Researched: 2026-03-29*
