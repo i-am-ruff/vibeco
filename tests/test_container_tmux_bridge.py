@@ -1,10 +1,10 @@
-"""Tests for AgentContainer tmux bridge lifecycle and liveness monitoring."""
+"""Tests for AgentContainer transport bridge lifecycle and liveness monitoring."""
 
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -13,31 +13,57 @@ from vcompany.container.container import AgentContainer
 from vcompany.container.context import ContainerContext
 from vcompany.supervisor.strategies import RestartStrategy
 from vcompany.supervisor.supervisor import Supervisor
+from vcompany.transport.protocol import NoopTransport
 
 
 def _ctx(
     agent_id: str = "test-agent",
     agent_type: str = "gsd",
     project_id: str = "myproject",
+    uses_tmux: bool = True,
 ) -> ContainerContext:
-    return ContainerContext(agent_id=agent_id, agent_type=agent_type, project_id=project_id)
+    return ContainerContext(
+        agent_id=agent_id, agent_type=agent_type, project_id=project_id, uses_tmux=uses_tmux,
+    )
 
 
-def _mock_tmux():
-    """Create a mock TmuxManager with standard return values."""
-    mock_tmux = MagicMock()
-    mock_session = MagicMock()
-    mock_pane = MagicMock()
-    mock_pane.pane_id = "%99"
-    mock_pane.send_keys = MagicMock()
-    mock_tmux.get_or_create_session.return_value = mock_session
-    mock_tmux.create_pane.return_value = mock_pane
-    mock_tmux.send_command.return_value = True
-    mock_tmux.get_pane_by_id.return_value = mock_pane
-    mock_tmux.is_alive.return_value = True
-    # Return ready prompt immediately so _wait_for_claude_ready completes fast
-    mock_tmux.get_output.return_value = [">"]
-    return mock_tmux
+class MockTransport:
+    """Mock transport implementing AgentTransport for testing."""
+
+    def __init__(self) -> None:
+        self.setup_calls: list[tuple] = []
+        self.exec_calls: list[tuple] = []
+        self.teardown_calls: list[str] = []
+        self.send_keys_calls: list[tuple] = []
+        self._alive: dict[str, bool] = {}
+
+    async def setup(self, agent_id: str, working_dir: Path, **kwargs) -> None:
+        self.setup_calls.append((agent_id, working_dir, kwargs))
+        self._alive[agent_id] = True
+
+    async def teardown(self, agent_id: str) -> None:
+        self.teardown_calls.append(agent_id)
+        self._alive.pop(agent_id, None)
+
+    async def exec(self, agent_id: str, command, *, stdin=None, timeout=None) -> str:
+        self.exec_calls.append((agent_id, command, stdin, timeout))
+        return ""
+
+    async def exec_streaming(self, agent_id, command, *, stdin=None):
+        return
+        yield  # async generator
+
+    def is_alive(self, agent_id: str) -> bool:
+        return self._alive.get(agent_id, False)
+
+    async def send_keys(self, agent_id: str, keys: str, *, enter: bool = False) -> None:
+        self.send_keys_calls.append((agent_id, keys, enter))
+
+    async def read_file(self, agent_id: str, path: Path) -> str:
+        return ""
+
+    async def write_file(self, agent_id: str, path: Path, content: str) -> None:
+        pass
 
 
 def _make_spec(
@@ -48,125 +74,96 @@ def _make_spec(
     return ChildSpec(
         child_id=child_id,
         agent_type=agent_type,
-        context=ContainerContext(agent_id=child_id, agent_type=agent_type, project_id="myproject"),
+        context=ContainerContext(
+            agent_id=child_id, agent_type=agent_type, project_id="myproject",
+            uses_tmux=agent_type in ("gsd", "continuous", "task"),
+        ),
         restart_policy=restart_policy,
     )
 
 
 @pytest.mark.asyncio
-async def test_start_creates_tmux_pane_for_gsd_agent(tmp_path: Path) -> None:
-    """start() creates a tmux pane and launches Claude Code for gsd agent.
-
-    When gsd_command is configured, send_command is called twice:
-    once for the claude launch command, once for the GSD command.
-    """
-    mock = _mock_tmux()
+async def test_start_sets_up_transport_for_gsd_agent(tmp_path: Path) -> None:
+    """start() calls transport.setup() and transport.exec() for gsd agents."""
+    transport = MockTransport()
     container = AgentContainer(
         context=ContainerContext(
             agent_id="test-agent",
             agent_type="gsd",
             project_id="myproject",
             gsd_command="/gsd:discuss-phase 1",
+            uses_tmux=True,
         ),
         data_dir=tmp_path,
-        tmux_manager=mock,
+        transport=transport,
         project_dir=tmp_path,
         project_session_name="vco-myproject",
     )
     with patch("vcompany.container.container.asyncio.sleep", return_value=None):
         await container.start()
 
-    mock.get_or_create_session.assert_called_once_with("vco-myproject")
-    mock.create_pane.assert_called_once()
-    # Check window_name kwarg
-    call_kwargs = mock.create_pane.call_args
-    assert call_kwargs[1].get("window_name") == "test-agent" or call_kwargs[0][1] == "test-agent"
-    # send_command called twice: once for claude launch, once for GSD command
-    assert mock.send_command.call_count == 2
-    first_call_arg = mock.send_command.call_args_list[0][0][1]
-    assert "claude --dangerously-skip-permissions" in first_call_arg
-    second_call_arg = mock.send_command.call_args_list[1][0][1]
-    assert second_call_arg == "/gsd:discuss-phase 1"
-    assert container._pane_id == "%99"
+    assert len(transport.setup_calls) == 1
+    agent_id, working_dir, kwargs = transport.setup_calls[0]
+    assert agent_id == "test-agent"
+    assert kwargs.get("interactive") is True
+    assert kwargs.get("session_name") == "vco-myproject"
+
+    # exec called with launch command
+    assert len(transport.exec_calls) == 1
+    cmd = transport.exec_calls[0][1]
+    assert "claude --dangerously-skip-permissions" in cmd
+    assert "/gsd:discuss-phase 1" in cmd
+
+    # send_keys called for workspace trust
+    assert len(transport.send_keys_calls) == 1
+    assert transport.send_keys_calls[0][2] is True  # enter=True
 
     await container.stop()
 
 
 @pytest.mark.asyncio
 async def test_gsd_command_not_sent_when_none(tmp_path: Path) -> None:
-    """start() does not send a second send_command when gsd_command is None."""
-    mock = _mock_tmux()
+    """start() launches claude without prompt arg when gsd_command is None."""
+    transport = MockTransport()
     container = AgentContainer(
-        context=_ctx(agent_type="gsd"),  # gsd_command defaults to None
+        context=_ctx(agent_type="gsd"),
         data_dir=tmp_path,
-        tmux_manager=mock,
+        transport=transport,
         project_dir=tmp_path,
         project_session_name="vco-myproject",
     )
     with patch("vcompany.container.container.asyncio.sleep", return_value=None):
         await container.start()
 
-    # Only the claude launch command should be sent -- no GSD command
-    assert mock.send_command.call_count == 1
-    cmd_arg = mock.send_command.call_args[0][1]
-    assert "claude --dangerously-skip-permissions" in cmd_arg
+    cmd = transport.exec_calls[0][1]
+    assert "claude --dangerously-skip-permissions" in cmd
+    assert "/gsd:" not in cmd
 
     await container.stop()
 
 
 @pytest.mark.asyncio
-async def test_gsd_command_not_sent_on_timeout(tmp_path: Path) -> None:
-    """start() does not send gsd_command if _wait_for_claude_ready times out."""
-    mock = _mock_tmux()
-    # get_output always returns a non-ready line so the poll never detects ready
-    mock.get_output.return_value = ["loading..."]
+async def test_start_skips_transport_for_fulltime_agent(tmp_path: Path) -> None:
+    """start() does NOT set up transport for fulltime (event-driven) agents."""
+    transport = MockTransport()
     container = AgentContainer(
-        context=ContainerContext(
-            agent_id="test-agent",
-            agent_type="gsd",
-            project_id="myproject",
-            gsd_command="/gsd:discuss-phase 1",
-        ),
+        context=_ctx(agent_type="fulltime", uses_tmux=False),
         data_dir=tmp_path,
-        tmux_manager=mock,
-        project_dir=tmp_path,
-        project_session_name="vco-myproject",
-    )
-    with patch("vcompany.container.container.asyncio.sleep", return_value=None):
-        # Patch _wait_for_claude_ready to return False (timeout simulation)
-        with patch.object(container, "_wait_for_claude_ready", return_value=False):
-            await container.start()
-
-    # Only the claude launch command should be sent -- GSD command not sent on timeout
-    assert mock.send_command.call_count == 1
-    cmd_arg = mock.send_command.call_args[0][1]
-    assert "claude --dangerously-skip-permissions" in cmd_arg
-
-    await container.stop()
-
-
-@pytest.mark.asyncio
-async def test_start_skips_tmux_for_fulltime_agent(tmp_path: Path) -> None:
-    """start() does NOT create tmux for fulltime (event-driven) agents."""
-    mock = _mock_tmux()
-    container = AgentContainer(
-        context=_ctx(agent_type="fulltime"),
-        data_dir=tmp_path,
-        tmux_manager=mock,
+        transport=transport,
         project_dir=tmp_path,
         project_session_name="vco-myproject",
     )
     await container.start()
 
-    mock.get_or_create_session.assert_not_called()
+    assert len(transport.setup_calls) == 0
     assert container.state == "running"
 
     await container.stop()
 
 
 @pytest.mark.asyncio
-async def test_start_skips_tmux_when_no_tmux_manager(tmp_path: Path) -> None:
-    """start() works fine without tmux_manager (backward compatibility)."""
+async def test_start_skips_transport_when_no_transport(tmp_path: Path) -> None:
+    """start() works fine without transport (backward compatibility)."""
     container = AgentContainer(
         context=_ctx(agent_type="gsd"),
         data_dir=tmp_path,
@@ -174,74 +171,64 @@ async def test_start_skips_tmux_when_no_tmux_manager(tmp_path: Path) -> None:
     await container.start()
 
     assert container.state == "running"
-    assert container._pane_id is None
 
     await container.stop()
 
 
 @pytest.mark.asyncio
-async def test_stop_kills_tmux_pane(tmp_path: Path) -> None:
-    """stop() kills the tmux pane and clears _pane_id."""
-    mock = _mock_tmux()
-    mock_pane = MagicMock()
-    mock.get_pane_by_id.return_value = mock_pane
-
+async def test_stop_teardowns_transport(tmp_path: Path) -> None:
+    """stop() calls transport.teardown()."""
+    transport = MockTransport()
     container = AgentContainer(
         context=_ctx(agent_type="gsd"),
         data_dir=tmp_path,
-        tmux_manager=mock,
+        transport=transport,
         project_dir=tmp_path,
         project_session_name="vco-myproject",
     )
-    # Simulate that start already happened
     with patch("vcompany.container.container.asyncio.sleep", return_value=None):
         await container.start()
 
-    container._pane_id = "%99"
     await container.stop()
 
-    mock.kill_pane.assert_called_once_with(mock_pane)
-    assert container._pane_id is None
+    assert "test-agent" in transport.teardown_calls
 
 
-def test_is_tmux_alive_true_when_pane_alive(tmp_path: Path) -> None:
-    """is_tmux_alive() returns True when tmux pane process is alive."""
-    mock = _mock_tmux()
-    mock.is_alive.return_value = True
-    mock_pane = MagicMock()
-    mock.get_pane_by_id.return_value = mock_pane
-
+def test_is_alive_true_when_transport_alive(tmp_path: Path) -> None:
+    """is_alive() returns True when transport reports alive."""
+    transport = MockTransport()
+    transport._alive["test-agent"] = True
     container = AgentContainer(
         context=_ctx(),
         data_dir=tmp_path,
-        tmux_manager=mock,
+        transport=transport,
     )
-    container._pane_id = "%99"
-
-    assert container.is_tmux_alive() is True
-    mock.get_pane_by_id.assert_called_with("%99")
-    mock.is_alive.assert_called_with(mock_pane)
+    assert container.is_alive() is True
 
 
-def test_is_tmux_alive_false_when_pane_dead(tmp_path: Path) -> None:
-    """is_tmux_alive() returns False when tmux pane process is dead."""
-    mock = _mock_tmux()
-    mock.is_alive.return_value = False
-    mock_pane = MagicMock()
-    mock.get_pane_by_id.return_value = mock_pane
-
+def test_is_alive_false_when_transport_dead(tmp_path: Path) -> None:
+    """is_alive() returns False when transport reports dead."""
+    transport = MockTransport()
+    transport._alive["test-agent"] = False
     container = AgentContainer(
         context=_ctx(),
         data_dir=tmp_path,
-        tmux_manager=mock,
+        transport=transport,
     )
-    container._pane_id = "%99"
-
-    assert container.is_tmux_alive() is False
+    assert container.is_alive() is False
 
 
-def test_is_tmux_alive_true_when_no_tmux_injected(tmp_path: Path) -> None:
-    """is_tmux_alive() returns True when no TmuxManager is injected (test containers)."""
+def test_is_alive_true_when_no_transport(tmp_path: Path) -> None:
+    """is_alive() returns True when no transport is injected (test containers)."""
+    container = AgentContainer(
+        context=_ctx(),
+        data_dir=tmp_path,
+    )
+    assert container.is_alive() is True
+
+
+def test_is_tmux_alive_backward_compat(tmp_path: Path) -> None:
+    """is_tmux_alive() still works as backward-compat alias."""
     container = AgentContainer(
         context=_ctx(),
         data_dir=tmp_path,
@@ -250,13 +237,13 @@ def test_is_tmux_alive_true_when_no_tmux_injected(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_health_report_shows_errored_when_tmux_dead(tmp_path: Path) -> None:
-    """health_report() returns state='errored' when FSM says running but tmux is dead."""
-    mock = _mock_tmux()
+async def test_health_report_shows_errored_when_transport_dead(tmp_path: Path) -> None:
+    """health_report() returns state='errored' when FSM says running but transport is dead."""
+    transport = MockTransport()
     container = AgentContainer(
         context=_ctx(agent_type="gsd"),
         data_dir=tmp_path,
-        tmux_manager=mock,
+        transport=transport,
         project_dir=tmp_path,
         project_session_name="vco-myproject",
     )
@@ -265,9 +252,8 @@ async def test_health_report_shows_errored_when_tmux_dead(tmp_path: Path) -> Non
 
     assert container.state == "running"
 
-    # Now simulate dead tmux
-    mock.get_pane_by_id.return_value = MagicMock()
-    mock.is_alive.return_value = False
+    # Simulate dead transport
+    transport._alive["test-agent"] = False
 
     report = container.health_report()
     assert report.state == "errored"
@@ -276,20 +262,18 @@ async def test_health_report_shows_errored_when_tmux_dead(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_health_report_shows_running_when_tmux_alive(tmp_path: Path) -> None:
-    """health_report() returns state='running' when tmux pane is alive."""
-    mock = _mock_tmux()
+async def test_health_report_shows_running_when_transport_alive(tmp_path: Path) -> None:
+    """health_report() returns state='running' when transport is alive."""
+    transport = MockTransport()
     container = AgentContainer(
         context=_ctx(agent_type="gsd"),
         data_dir=tmp_path,
-        tmux_manager=mock,
+        transport=transport,
         project_dir=tmp_path,
         project_session_name="vco-myproject",
     )
     with patch("vcompany.container.container.asyncio.sleep", return_value=None):
         await container.start()
-
-    mock.is_alive.return_value = True
 
     report = container.health_report()
     assert report.state == "running"
@@ -297,10 +281,43 @@ async def test_health_report_shows_running_when_tmux_alive(tmp_path: Path) -> No
     await container.stop()
 
 
-def test_build_launch_command_matches_dispatch_pattern(tmp_path: Path) -> None:
-    """_build_launch_command() produces command matching dispatch_cmd.py pattern."""
+@pytest.mark.asyncio
+async def test_health_report_includes_idle_state(tmp_path: Path) -> None:
+    """health_report() includes is_idle field for transport agents."""
+    transport = MockTransport()
     container = AgentContainer(
-        context=_ctx(agent_id="agent-a", agent_type="gsd", project_id="myproj"),
+        context=_ctx(agent_type="gsd"),
+        data_dir=tmp_path,
+        transport=transport,
+        project_dir=tmp_path,
+        project_session_name="vco-myproject",
+    )
+    with patch("vcompany.container.container.asyncio.sleep", return_value=None):
+        await container.start()
+
+    # Push-based signal: set idle via _handle_signal
+    await container._handle_signal("idle")
+    report = container.health_report()
+    assert report.is_idle is True
+
+    # Push-based signal: set ready (not idle)
+    await container._handle_signal("ready")
+    report = container.health_report()
+    assert report.is_idle is False
+
+    await container.stop()
+
+
+def test_build_launch_command_includes_gsd_prompt(tmp_path: Path) -> None:
+    """_build_launch_command() embeds gsd_command as positional prompt arg."""
+    container = AgentContainer(
+        context=ContainerContext(
+            agent_id="agent-a",
+            agent_type="gsd",
+            project_id="myproj",
+            gsd_command="/gsd:discuss-phase 1",
+            uses_tmux=True,
+        ),
         data_dir=tmp_path,
         project_dir=tmp_path,
     )
@@ -314,19 +331,74 @@ def test_build_launch_command_matches_dispatch_pattern(tmp_path: Path) -> None:
     assert "VCO_AGENT_ID='agent-a'" in cmd
     assert "claude --dangerously-skip-permissions" in cmd
     assert "--append-system-prompt-file" in cmd
-    assert f"{tmp_path / 'context' / 'agents' / 'agent-a.md'}" in cmd
+    assert "'/gsd:discuss-phase 1'" in cmd
+
+
+def test_build_launch_command_no_prompt_without_gsd_command(tmp_path: Path) -> None:
+    """_build_launch_command() omits prompt arg when gsd_command is None."""
+    container = AgentContainer(
+        context=_ctx(agent_id="agent-a", agent_type="gsd", project_id="myproj"),
+        data_dir=tmp_path,
+        project_dir=tmp_path,
+    )
+    cmd = container._build_launch_command()
+
+    assert "claude --dangerously-skip-permissions" in cmd
+    assert cmd.rstrip().endswith(f"{tmp_path / 'context' / 'agents' / 'agent-a.md'}")
 
 
 @pytest.mark.asyncio
-async def test_supervisor_liveness_detects_dead_tmux(tmp_path: Path) -> None:
-    """Supervisor monitor loop detects dead tmux pane and transitions container to errored."""
-    spec = _make_spec("agent-x", agent_type="gsd")
+async def test_handle_signal_sets_idle(tmp_path: Path) -> None:
+    """_handle_signal('idle') sets _is_idle to True."""
+    container = AgentContainer(
+        context=_ctx(agent_type="gsd"),
+        data_dir=tmp_path,
+    )
+    await container._handle_signal("idle")
+    assert container._is_idle is True
+    assert container.is_idle is True
+
+
+@pytest.mark.asyncio
+async def test_handle_signal_ready_clears_idle(tmp_path: Path) -> None:
+    """_handle_signal('ready') sets _is_idle to False."""
+    container = AgentContainer(
+        context=_ctx(agent_type="gsd"),
+        data_dir=tmp_path,
+    )
+    container._is_idle = True
+    await container._handle_signal("ready")
+    assert container._is_idle is False
+
+
+@pytest.mark.asyncio
+async def test_handle_signal_drains_queue(tmp_path: Path) -> None:
+    """_handle_signal('idle') drains the task queue."""
+    transport = MockTransport()
+    container = AgentContainer(
+        context=_ctx(agent_type="gsd"),
+        data_dir=tmp_path,
+        transport=transport,
+    )
+    await container._task_queue.put("do something")
+    await container._handle_signal("idle")
+
+    assert len(transport.exec_calls) == 1
+    assert transport.exec_calls[0][1] == "do something"
+    assert container._is_idle is False  # was cleared by drain
+
+
+@pytest.mark.asyncio
+async def test_supervisor_liveness_detects_dead_transport(tmp_path: Path) -> None:
+    """Supervisor monitor loop detects dead transport and transitions container to errored."""
+    # Use a non-tmux agent type so start() doesn't try to launch
+    spec = _make_spec("agent-x", agent_type="test")
     sup = Supervisor(
         supervisor_id="test-sup",
         strategy=RestartStrategy.ONE_FOR_ONE,
         child_specs=[spec],
         data_dir=tmp_path,
-        max_restarts=0,  # no restarts -- just detect error
+        max_restarts=0,
         window_seconds=600,
     )
     await sup.start()
@@ -334,19 +406,10 @@ async def test_supervisor_liveness_detects_dead_tmux(tmp_path: Path) -> None:
     container = sup.children["agent-x"]
     assert container.state == "running"
 
-    # Inject a mock tmux that reports dead pane
-    mock = _mock_tmux()
-    mock.is_alive.return_value = False
-    mock_pane = MagicMock()
-    mock.get_pane_by_id.return_value = mock_pane
-    container._tmux = mock
-    container._pane_id = "%99"
-
-    # Wait for the 30s monitor timeout to fire (we use a shorter approach:
-    # directly trigger the event to let the monitor loop run its liveness check)
-    # The monitor uses asyncio.wait_for with 30s timeout, so we wait for timeout.
-    # To speed up test, we patch the timeout in _monitor_child.
-    # Instead, let's just wait briefly and check -- the monitor will timeout and check.
+    # Inject a mock transport that reports dead
+    transport = MockTransport()
+    transport._alive["agent-x"] = False
+    container._transport = transport
 
     # Cancel existing monitor task and create a new one with shorter timeout
     old_task = sup._tasks.pop("agent-x")
@@ -356,7 +419,6 @@ async def test_supervisor_liveness_detects_dead_tmux(tmp_path: Path) -> None:
     except asyncio.CancelledError:
         pass
 
-    # Create a patched monitor that checks quickly
     async def _fast_monitor(child_id: str) -> None:
         event = sup._child_events[child_id]
         try:
@@ -365,7 +427,7 @@ async def test_supervisor_liveness_detects_dead_tmux(tmp_path: Path) -> None:
         except asyncio.TimeoutError:
             c = sup._children.get(child_id)
             if c is not None and c.state == "running":
-                if hasattr(c, "is_tmux_alive") and not c.is_tmux_alive():
+                if hasattr(c, "is_alive") and not c.is_alive():
                     await c.error()
 
     task = asyncio.create_task(_fast_monitor("agent-x"))
@@ -383,9 +445,8 @@ async def test_supervisor_liveness_detects_dead_tmux(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_tmux_manager_injected_through_supervisor_chain(tmp_path: Path) -> None:
-    """Supervisor passes tmux_manager to created containers."""
-    mock = _mock_tmux()
+async def test_transport_deps_injected_through_supervisor_chain(tmp_path: Path) -> None:
+    """Supervisor passes transport_deps to created containers via factory."""
     spec = _make_spec("agent-y", agent_type="test")
 
     sup = Supervisor(
@@ -393,14 +454,15 @@ async def test_tmux_manager_injected_through_supervisor_chain(tmp_path: Path) ->
         strategy=RestartStrategy.ONE_FOR_ONE,
         child_specs=[spec],
         data_dir=tmp_path,
-        tmux_manager=mock,
+        transport_deps={},
         project_dir=tmp_path,
         session_name="vco-test",
     )
     await sup.start()
 
     container = sup.children["agent-y"]
-    assert container._tmux is mock
+    # Container should have a transport (created by factory from transport_deps)
+    assert container._transport is not None
     assert container._project_dir == tmp_path
     assert container._project_session_name == "vco-test"
 
