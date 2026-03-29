@@ -18,6 +18,7 @@ from typing import Awaitable, Callable
 from vcompany.container.child_spec import ChildSpec
 from vcompany.container.communication import NoopCommunicationPort
 from vcompany.container.container import AgentContainer
+from vcompany.container.context import ContainerContext
 from vcompany.container.factory import create_container, register_defaults
 from vcompany.container.health import CompanyHealthTree, HealthNode, HealthReport, HealthTree
 from vcompany.container.memory_store import MemoryStore
@@ -124,6 +125,131 @@ class CompanyRoot(Supervisor):
             company_agents=company_nodes,
             projects=project_trees,
         )
+
+    # Available agent templates. Maps template name to Jinja2 template file.
+    AGENT_TEMPLATES: dict[str, dict] = {
+        "generic": {"claude_md": "task_claude_md.md.j2", "extras": []},
+        "researcher": {"claude_md": "research_claude_md.md.j2", "extras": ["scripts", "reference"]},
+    }
+
+    async def hire(
+        self,
+        agent_id: str,
+        template: str = "generic",
+    ) -> AgentContainer:
+        """Hire a company-level agent. Creates scratch dir, deploys artifacts,
+        starts container in tmux. Agent starts idle -- use ``give_task()`` to
+        assign work.
+
+        Channel creation is handled by RuntimeAPI via CommunicationPort, not here.
+
+        Args:
+            agent_id: Unique identifier for the agent.
+            template: Agent template key (see AGENT_TEMPLATES).
+
+        Returns:
+            The started TaskAgent container (idle, ready for tasks).
+        """
+        from vcompany.agent.task_agent import TASKS_DIR
+        from vcompany.container.child_spec import RestartPolicy
+        from vcompany.shared.file_ops import write_atomic
+        from vcompany.shared.templates import render_template
+        import shutil
+
+        tmpl = self.AGENT_TEMPLATES.get(template, self.AGENT_TEMPLATES["generic"])
+        repo_root = Path(__file__).parent.parent.parent.parent
+
+        # 1. Create scratch working directory
+        working_dir = TASKS_DIR / agent_id
+        working_dir.mkdir(parents=True, exist_ok=True)
+
+        # 2. Deploy artifacts
+        claude_dir = working_dir / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+
+        # settings.json (hooks: ask_discord, idle signals)
+        write_atomic(claude_dir / "settings.json", render_template("settings.json.j2"))
+
+        # CLAUDE.md (identity + workflow — template-specific)
+        claude_md = render_template(
+            tmpl["claude_md"],
+            task_id=agent_id,
+            task_prompt="Awaiting task assignment from the Strategist.",
+        )
+        write_atomic(working_dir / "CLAUDE.md", claude_md)
+
+        # Slash commands (/vco:send, /vco:finish)
+        commands_dir = claude_dir / "commands" / "vco"
+        commands_dir.mkdir(parents=True, exist_ok=True)
+        commands_source = repo_root / "commands" / "vco"
+        for cmd_file in ("send.md", "finish.md"):
+            src = commands_source / cmd_file
+            if src.exists():
+                shutil.copy2(src, commands_dir / cmd_file)
+
+        # Template-specific extras (scripts, reference docs)
+        for extra in tmpl.get("extras", []):
+            source_dir = repo_root / "tools" / f"research_{extra}"
+            if source_dir.is_dir():
+                dest_dir = working_dir / extra
+                dest_dir.mkdir(exist_ok=True)
+                for f in source_dir.iterdir():
+                    if f.is_file():
+                        shutil.copy2(f, dest_dir / f.name)
+                logger.info("Deployed %s to %s", extra, dest_dir)
+
+        # 3. Create and start container (no initial command -- starts idle)
+        ctx = ContainerContext(
+            agent_id=agent_id,
+            agent_type="task",
+            uses_tmux=True,
+        )
+        spec = ChildSpec(
+            child_id=agent_id,
+            agent_type="task",
+            context=ctx,
+            restart_policy=RestartPolicy.TEMPORARY,
+        )
+        container = create_container(
+            spec,
+            data_dir=self._data_dir or TASKS_DIR / ".data",
+            tmux_manager=self._tmux_manager,
+            project_dir=working_dir,
+            project_session_name="vco-tasks",
+            on_state_change=self._make_state_change_callback(agent_id),
+        )
+        await container.start()
+        self._company_agents[agent_id] = container
+        logger.info("Hired agent %s (template=%s)", agent_id, template)
+        return container
+
+    async def dismiss(self, agent_id: str) -> None:
+        """Dismiss (stop) a company-level agent.
+
+        Args:
+            agent_id: The agent to dismiss.
+
+        Raises:
+            KeyError: If agent_id not found in company agents.
+        """
+        container = self._company_agents.pop(agent_id)
+        if container.state not in ("stopped", "destroyed", "stopping"):
+            await container.stop()
+        logger.info("Dismissed agent %s", agent_id)
+
+    async def dispatch_task_agent(
+        self,
+        task_id: str,
+        task_prompt: str,
+        template: str = "generic",
+    ) -> AgentContainer:
+        """Convenience: hire an agent and immediately give it a task.
+
+        Equivalent to ``hire()`` followed by ``give_task()``.
+        """
+        container = await self.hire(task_id, template=template)
+        await container.give_task(task_prompt)
+        return container
 
     async def add_company_agent(self, spec: ChildSpec) -> AgentContainer:
         """Create and start a company-level agent (e.g., Strategist).
