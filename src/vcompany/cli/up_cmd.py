@@ -124,4 +124,10 @@ def up(project_dir: str | None, log_level: str) -> None:
         logger.info("Starting VcoBot without project (Strategist-only mode)")
         bot_instance = VcoBot(guild_id=bot_config.discord_guild_id)
 
-    bot_instance.run(bot_config.discord_bot_token, log_handler=None)
+    from vcompany.daemon.daemon import Daemon
+
+    daemon = Daemon(
+        bot=bot_instance,
+        bot_token=bot_config.discord_bot_token,
+    )
+    daemon.run()  # Blocks until shutdown
