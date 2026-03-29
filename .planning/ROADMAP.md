@@ -62,7 +62,7 @@ See `.planning/milestones/v2.1-ROADMAP.md` for full details.
 - [x] **Phase 18: Daemon Foundation** - Runtime daemon with PID file, signal handling, Unix socket server, and NDJSON protocol (completed 2026-03-29)
 - [x] **Phase 19: Communication Abstraction** - CommunicationPort protocol and DiscordCommunicationPort adapter as the boundary between daemon and bot (completed 2026-03-29)
 - [x] **Phase 20: CompanyRoot Extraction** - Move CompanyRoot, supervision tree, Strategist conversation, and PM review into daemon behind RuntimeAPI (completed 2026-03-29)
-- [ ] **Phase 21: CLI Commands** - All vco commands as thin socket API clients
+- [x] **Phase 21: CLI Commands** - All vco commands as thin socket API clients (completed 2026-03-29)
 - [ ] **Phase 22: Bot Thin Relay** - Refactor bot to pure I/O adapter with zero container imports
 - [ ] **Phase 23: Strategist Autonomy** - Strategist calls vco CLI commands via Bash tool, action tags removed
 
@@ -124,10 +124,10 @@ Plans:
   3. `vco dismiss agent-name` stops the agent and cleans up its resources
   4. `vco status` and `vco health` display the supervision tree and health states from the running daemon
   5. `vco new-project` initializes a project and hires all agents defined in agents.yaml in one command
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 21-01-PLAN.md -- Connection helper, hire/give-task/dismiss/status/health CLI commands
-- [ ] 21-02-PLAN.md -- new_project daemon handler and composite vco new-project command
+- [x] 21-02-PLAN.md -- new_project daemon handler and composite vco new-project command
 
 ### Phase 22: Bot Thin Relay
 **Goal**: All Discord slash commands delegate to RuntimeAPI with zero container module imports, and the bot acts as a pure I/O adapter between Discord and the daemon
@@ -160,6 +160,6 @@ Phases execute in numeric order: 18 -> 18.1 -> 18.2 -> 19 -> ... -> 23
 | 18. Daemon Foundation | 3/3 | Complete    | 2026-03-29 |
 | 19. Communication Abstraction | 2/2 | Complete    | 2026-03-29 |
 | 20. CompanyRoot Extraction | 4/4 | Complete    | 2026-03-29 |
-| 21. CLI Commands | 1/2 | In Progress|  |
+| 21. CLI Commands | 2/2 | Complete   | 2026-03-29 |
 | 22. Bot Thin Relay | 0/? | Not started | - |
 | 23. Strategist Autonomy | 0/? | Not started | - |
