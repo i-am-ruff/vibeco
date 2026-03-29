@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
-status: Ready to plan
-stopped_at: Phase 25 context gathered
-last_updated: "2026-03-29T17:49:09.479Z"
+status: Ready to execute
+stopped_at: Completed 25-01-PLAN.md
+last_updated: "2026-03-29T18:39:15.047Z"
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 8
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 24 — discord-visibility
+**Current focus:** Phase 25 — transport-abstraction
 
 ## Current Position
 
-Phase: 25
-Plan: Not started
+Phase: 25 (transport-abstraction) — EXECUTING
+Plan: 2 of 3
 
 ## Accumulated Context
 
@@ -45,6 +45,8 @@ Recent decisions affecting current work:
 - [Phase 24]: escalate_to_strategist changed from request-response to fire-and-forget Discord message
 - [Phase 24]: Strategist container accessed via company_root instead of stored ref; PM handle as PM{project}; BacklogQueue on_mutation via CommunicationPort
 - [Phase 24]: Kept RuntimeAPI SendMessagePayload notifications alongside [Review] messages -- different purposes
+- [Phase 25]: AgentTransport uses @runtime_checkable Protocol (structural subtyping, same as CommunicationPort)
+- [Phase 25]: LocalTransport accepts optional TmuxManager via constructor injection for testability
 
 ### Blockers/Concerns
 
@@ -65,6 +67,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T17:49:09.475Z
-Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-transport-abstraction/25-CONTEXT.md
+Last session: 2026-03-29T18:39:15.044Z
+Stopped at: Completed 25-01-PLAN.md
+Resume file: None
