@@ -27,12 +27,12 @@ Requirements for Container Runtime Abstraction. Each maps to roadmap phases.
 
 ### Docker Runtime
 
-- [ ] **DOCK-01**: DockerTransport implements AgentTransport using docker exec for both interactive (tmux inside container) and piped (claude -p) modes
+- [x] **DOCK-01**: DockerTransport implements AgentTransport using docker exec for both interactive (tmux inside container) and piped (claude -p) modes
 - [x] **DOCK-02**: Dockerfile exists for building a Claude Code image with tweakcc patches applied
-- [ ] **DOCK-03**: Docker container receives daemon Unix socket via volume mount so vco CLI commands work from inside
-- [ ] **DOCK-04**: Docker container mounts agent work directory as a volume for code access
+- [x] **DOCK-03**: Docker container receives daemon Unix socket via volume mount so vco CLI commands work from inside
+- [x] **DOCK-04**: Docker container mounts agent work directory as a volume for code access
 - [x] **DOCK-05**: AgentConfig.docker_image field specifies which image to use when transport is "docker"
-- [ ] **DOCK-06**: Persistent Docker containers (docker create + start/stop) preserve ~/.claude session state across agent restarts
+- [x] **DOCK-06**: Persistent Docker containers (docker create + start/stop) preserve ~/.claude session state across agent restarts
 
 ## v3.2+ Requirements
 
@@ -71,12 +71,12 @@ Deferred to future release.
 | TXPT-04 | Phase 25 | Complete |
 | TXPT-05 | Phase 25 | Complete |
 | TXPT-06 | Phase 25 | Complete |
-| DOCK-01 | Phase 26 | Pending |
+| DOCK-01 | Phase 26 | Complete |
 | DOCK-02 | Phase 26 | Complete |
-| DOCK-03 | Phase 26 | Pending |
-| DOCK-04 | Phase 26 | Pending |
+| DOCK-03 | Phase 26 | Complete |
+| DOCK-04 | Phase 26 | Complete |
 | DOCK-05 | Phase 26 | Complete |
-| DOCK-06 | Phase 26 | Pending |
+| DOCK-06 | Phase 26 | Complete |
 
 **Coverage:**
 - v3.1 requirements: 18 total
