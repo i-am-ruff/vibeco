@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
 status: Ready to execute
-stopped_at: Completed 27-02-PLAN.md
-last_updated: "2026-03-29T23:14:04.272Z"
+stopped_at: Completed 27-01-PLAN.md
+last_updated: "2026-03-29T23:15:25.328Z"
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 ## Current Position
 
 Phase: 27 (docker-integration-wiring) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 
 ## Accumulated Context
 
@@ -54,6 +54,8 @@ Recent decisions affecting current work:
 - [Phase 26]: Container naming uses vco-{project}-{agent_id} for deterministic reuse
 - [Phase 26]: Volume-based file I/O for DockerTransport read_file/write_file (not docker cp)
 - [Phase 27]: Separate async/sync Docker build interfaces: ensure_docker_image for hire-flow, build_image_sync for CLI
+- [Phase 27]: Factory resolves per-transport deps from agent type config instead of passing global dict (D-01)
+- [Phase 27]: Module-level set/get pattern for agent types config avoids threading through constructors
 
 ### Roadmap Evolution
 
@@ -78,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T23:14:04.270Z
-Stopped at: Completed 27-02-PLAN.md
+Last session: 2026-03-29T23:15:25.325Z
+Stopped at: Completed 27-01-PLAN.md
 Resume file: None
