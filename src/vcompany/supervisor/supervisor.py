@@ -60,10 +60,11 @@ class Supervisor:
         data_dir: Path | None = None,
         on_health_change: Callable[[HealthReport], Awaitable[None]] | None = None,
         delegation_policy: DelegationPolicy | None = None,
-        tmux_manager: object | None = None,
+        transport_deps: dict | None = None,
         project_dir: Path | None = None,
         session_name: str | None = None,
         comm_port: object | None = None,
+        signal_router: object | None = None,
     ) -> None:
         self.supervisor_id = supervisor_id
         self.strategy = strategy
@@ -72,12 +73,14 @@ class Supervisor:
         self._on_escalation = on_escalation
         self._on_health_change = on_health_change
         self._data_dir = data_dir or Path("/tmp/vcompany-supervisor")
-        # Tmux bridge params -- injected into child containers
-        self._tmux_manager = tmux_manager
+        # Transport deps -- injected into child containers via factory
+        self._transport_deps = transport_deps
         self._project_dir = project_dir
         self._session_name = session_name
         # Communication port passed to all child containers
         self._comm_port = comm_port
+        # Signal router for push-based signal delivery
+        self._signal_router = signal_router
 
         self._children: dict[str, AgentContainer] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
@@ -215,6 +218,9 @@ class Supervisor:
 
         # Stop children in reverse spec order
         for spec in reversed(self._child_specs):
+            # Unregister signal handler before stopping
+            if self._signal_router:
+                self._signal_router.unregister(spec.child_id)
             child = self._children.get(spec.child_id)
             if child is not None and child.state not in ("stopped", "destroyed", "stopping"):
                 try:
@@ -286,12 +292,16 @@ class Supervisor:
             data_dir=self._data_dir,
             comm_port=self._comm_port,
             on_state_change=self._make_state_change_callback(spec.child_id),
-            tmux_manager=self._tmux_manager,
+            transport_deps=self._transport_deps,
             project_dir=self._project_dir,
             project_session_name=self._session_name,
         )
         await container.start()
         self._children[spec.child_id] = container
+
+        # Register signal handler for push-based signal delivery
+        if self._signal_router and hasattr(container, '_handle_signal'):
+            self._signal_router.register(spec.child_id, container._handle_signal)
 
         # Create monitor task
         self._tasks[spec.child_id] = asyncio.create_task(
@@ -314,7 +324,7 @@ class Supervisor:
                 # Periodic liveness check
                 container = self._children.get(child_id)
                 if container is not None and container.state == "running":
-                    if hasattr(container, "is_tmux_alive") and not container.is_tmux_alive():
+                    if hasattr(container, "is_alive") and not container.is_alive():
                         logger.warning("Tmux pane dead for %s, transitioning to errored", child_id)
                         await container.error()
                 continue

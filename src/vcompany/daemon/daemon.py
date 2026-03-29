@@ -205,6 +205,8 @@ class Daemon:
         async def _noop_async() -> None:
             pass
 
+        transport_deps = {"tmux_manager": tmux_manager}
+
         company_root = CompanyRoot(
             on_escalation=lambda msg: api_ref[0]._on_escalation(msg) if api_ref[0] else _noop_async(),
             max_restarts=3,
@@ -214,8 +216,9 @@ class Daemon:
             health_check=claude_health_check,
             on_degraded=lambda: api_ref[0]._on_degraded() if api_ref[0] else _noop_async(),
             on_recovered=lambda: api_ref[0]._on_recovered() if api_ref[0] else _noop_async(),
-            tmux_manager=tmux_manager,
+            transport_deps=transport_deps,
             project_dir=project_dir,
+            signal_router=self._signal_router,
         )
         await company_root.start()
         self._company_root = company_root

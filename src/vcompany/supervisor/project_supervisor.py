@@ -41,10 +41,11 @@ class ProjectSupervisor(Supervisor):
         parent: Any | None = None,
         on_escalation: Callable[[str], Awaitable[None]] | None = None,
         data_dir: Path | None = None,
-        tmux_manager: object | None = None,
+        transport_deps: dict | None = None,
         project_dir: Path | None = None,
         comm_port: object | None = None,
         delegation_policy: DelegationPolicy | None = DelegationPolicy(),
+        signal_router: object | None = None,
     ) -> None:
         self._project_id = project_id
         super().__init__(
@@ -56,11 +57,11 @@ class ProjectSupervisor(Supervisor):
             parent=parent,
             on_escalation=on_escalation,
             data_dir=data_dir,
-            tmux_manager=tmux_manager,
+            transport_deps=transport_deps,
             project_dir=project_dir,
             session_name=f"vco-{project_id}",
             comm_port=comm_port,
-            delegation_policy=delegation_policy,
+            signal_router=signal_router,
         )
 
     @property

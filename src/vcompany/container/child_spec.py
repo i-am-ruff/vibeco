@@ -40,6 +40,7 @@ class ChildSpec(BaseModel):
     restart_policy: RestartPolicy = RestartPolicy.PERMANENT
     max_restarts: int = 3
     restart_window_seconds: int = 600
+    transport: str = "local"
 
 
 class ChildSpecRegistry:

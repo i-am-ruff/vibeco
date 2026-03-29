@@ -57,8 +57,9 @@ class CompanyRoot(Supervisor):
         health_check: Callable[[], Awaitable[bool]] | None = None,
         on_degraded: Callable[[], Awaitable[None]] | None = None,
         on_recovered: Callable[[], Awaitable[None]] | None = None,
-        tmux_manager: object | None = None,
+        transport_deps: dict | None = None,
         project_dir: Path | None = None,
+        signal_router: object | None = None,
     ) -> None:
         # CompanyRoot has no parent and no child_specs at init --
         # projects are added dynamically via add_project().
@@ -72,12 +73,13 @@ class CompanyRoot(Supervisor):
             on_escalation=on_escalation,
             data_dir=data_dir,
             on_health_change=on_health_change,
+            signal_router=signal_router,
         )
         self._projects: dict[str, ProjectSupervisor] = {}
         self._company_agents: dict[str, AgentContainer] = {}
         # Shared NoopCommunicationPort for all containers -- real impl in later phases
         self._comm_port = NoopCommunicationPort()
-        self._tmux_manager = tmux_manager
+        self._transport_deps = transport_deps
         self._project_dir = project_dir
         # Degraded mode manager (RESL-03)
         self._degraded_mode: DegradedModeManager | None = None
@@ -213,7 +215,7 @@ class CompanyRoot(Supervisor):
         container = create_container(
             spec,
             data_dir=self._data_dir or TASKS_DIR / ".data",
-            tmux_manager=self._tmux_manager,
+            transport_deps=self._transport_deps,
             project_dir=working_dir,
             project_session_name="vco-tasks",
             on_state_change=self._make_state_change_callback(agent_id),
@@ -310,9 +312,10 @@ class CompanyRoot(Supervisor):
             window_seconds=window_seconds,
             parent=self,
             data_dir=self._data_dir,
-            tmux_manager=self._tmux_manager,
+            transport_deps=self._transport_deps,
             project_dir=self._project_dir,
             comm_port=self._comm_port,
+            signal_router=self._signal_router,
         )
         await ps.start()
         self._projects[project_id] = ps
@@ -417,9 +420,10 @@ class CompanyRoot(Supervisor):
                 window_seconds=old_ps._restart_tracker.window_seconds,
                 parent=self,
                 data_dir=self._data_dir,
-                tmux_manager=self._tmux_manager,
+                transport_deps=self._transport_deps,
                 project_dir=self._project_dir,
                 comm_port=self._comm_port,
+                signal_router=self._signal_router,
             )
             await new_ps.start()
             self._projects[project_id] = new_ps
