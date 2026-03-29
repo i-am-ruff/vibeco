@@ -306,12 +306,13 @@ class PlanReviewCog(commands.Cog):
                         await self._plan_review_channel.send(embed=embed)
                     except Exception:
                         logger.exception("Failed to post auto-approval notice for %s", agent_id)
-                    # Log decision via RuntimeAPI
-                    runtime_api = _get_runtime_api(self.bot)
-                    if runtime_api is not None:
-                        await runtime_api.log_plan_decision(
-                            agent_id, str(plan_path), "Plan approved by PM", "HIGH"
+                    # Post review decision as Discord message (D-13, VIS-03)
+                    try:
+                        await self._plan_review_channel.send(
+                            f"[Review] Plan for {agent_id}: APPROVED (confidence: HIGH). {review_decision.note or 'Auto-approved by PM'}"
                         )
+                    except Exception:
+                        logger.exception("Failed to post review decision for %s", agent_id)
                     return
                 else:
                     # LOW confidence or check failures -- add PM notes to embed, let human review
