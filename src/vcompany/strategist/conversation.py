@@ -14,6 +14,10 @@ import json
 import logging
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from vcompany.transport.protocol import AgentTransport
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +182,8 @@ class StrategistConversation:
         session_id: str = _SESSION_UUID,
         allowed_tools: str = "Bash Read Write",
         model: str = "opus",
+        transport: AgentTransport | None = None,
+        agent_id: str = "strategist",
     ) -> None:
         self._system_prompt = self._load_persona(persona_path)
         self._session_id = session_id
@@ -187,6 +193,9 @@ class StrategistConversation:
         self._lock = asyncio.Lock()
         self._message_count = 0
         self._reinject_every = 10  # re-inject style reminder every N messages
+        self._transport: AgentTransport | None = transport
+        self._agent_id = agent_id
+        self._transport_setup_done = False
 
     @staticmethod
     def _load_persona(persona_path: Path | None) -> str:
@@ -205,6 +214,16 @@ class StrategistConversation:
             )
             return DEFAULT_PERSONA
         return content
+
+    async def _ensure_transport_setup(self) -> None:
+        """Set up transport for piped (non-interactive) execution if not already done."""
+        if self._transport is not None and not self._transport_setup_done:
+            await self._transport.setup(
+                self._agent_id,
+                working_dir=Path.cwd(),
+                interactive=False,
+            )
+            self._transport_setup_done = True
 
     async def send(self, content: str) -> str:
         """Send a message and get the Strategist's response.
@@ -263,6 +282,8 @@ class StrategistConversation:
     ) -> str | None:
         """Execute a claude CLI command and return the response.
 
+        Uses transport.exec() when available, falling back to direct subprocess.
+
         Args:
             cmd: CLI command args.
             content: Message to send via stdin.
@@ -271,38 +292,64 @@ class StrategistConversation:
         Returns:
             Response text, or None if allow_failure and command failed.
         """
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+        if self._transport is not None:
+            await self._ensure_transport_setup()
+            try:
+                result = await self._transport.exec(
+                    self._agent_id,
+                    cmd,
+                    stdin=content,
+                    timeout=600,
+                )
+                return result if result else "I don't have a response for that."
+            except asyncio.TimeoutError:
+                logger.error("Strategist timed out after 600s")
+                if allow_failure:
+                    return None
+                return "I need more time to think about that. Could you rephrase or simplify the question?"
+            except RuntimeError as e:
+                logger.warning("Claude CLI failed: %s", e)
+                if allow_failure:
+                    return None
+                return "I hit a snag. Try asking again?"
+            except Exception:
+                logger.exception("Failed to run Claude CLI")
+                if allow_failure:
+                    return None
+                return "Something went wrong on my end. Try again?"
+        else:
+            # Original subprocess path (fallback when no transport injected)
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(input=content.encode()),
+                    timeout=600,
+                )
+            except asyncio.TimeoutError:
+                logger.error("Strategist timed out after 600s")
+                if allow_failure:
+                    return None
+                return "I need more time to think about that. Could you rephrase or simplify the question?"
+            except Exception:
+                logger.exception("Failed to run Claude CLI")
+                if allow_failure:
+                    return None
+                return "Something went wrong on my end. Try again?"
 
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(input=content.encode()),
-                timeout=600,
-            )
-        except asyncio.TimeoutError:
-            logger.error("Strategist timed out after 600s")
-            if allow_failure:
-                return None
-            return "I need more time to think about that. Could you rephrase or simplify the question?"
-        except Exception:
-            logger.exception("Failed to run Claude CLI")
-            if allow_failure:
-                return None
-            return "Something went wrong on my end. Try again?"
+            if proc.returncode != 0:
+                stderr_text = stderr.decode()[:500]
+                logger.warning("Claude CLI exited with code %d: %s", proc.returncode, stderr_text)
+                if allow_failure:
+                    return None
+                return "I hit a snag. Try asking again?"
 
-        if proc.returncode != 0:
-            stderr_text = stderr.decode()[:500]
-            logger.warning("Claude CLI exited with code %d: %s", proc.returncode, stderr_text)
-            if allow_failure:
-                return None
-            return "I hit a snag. Try asking again?"
-
-        response = stdout.decode().strip()
-        return response if response else "I don't have a response for that."
+            response = stdout.decode().strip()
+            return response if response else "I don't have a response for that."
 
     async def send_streaming(
         self, content: str, on_tool_use: callable | None = None
@@ -344,50 +391,85 @@ class StrategistConversation:
 
             # Stream the actual response
             cmd = self._resume_command_stream()
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                proc.stdin.write(content.encode())
-                await proc.stdin.drain()
-                proc.stdin.close()
 
+            if self._transport is not None:
+                await self._ensure_transport_setup()
                 final_text = ""
-                async for line in proc.stdout:
-                    line = line.decode().strip()
-                    if not line:
-                        continue
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
+                try:
+                    async for line_str in self._transport.exec_streaming(
+                        self._agent_id, cmd, stdin=content
+                    ):
+                        line_str = line_str.strip()
+                        if not line_str:
+                            continue
+                        try:
+                            event = json.loads(line_str)
+                        except json.JSONDecodeError:
+                            continue
 
-                    etype = event.get("type")
+                        etype = event.get("type")
+                        if etype == "assistant" and on_tool_use:
+                            msg = event.get("message", {})
+                            for block in msg.get("content", []):
+                                if block.get("type") == "tool_use":
+                                    desc = _describe_tool_use(block)
+                                    if desc:
+                                        await on_tool_use(desc)
+                        if etype == "result":
+                            final_text = event.get("result", "")
 
-                    # Tool use events
-                    if etype == "assistant" and on_tool_use:
-                        msg = event.get("message", {})
-                        for block in msg.get("content", []):
-                            if block.get("type") == "tool_use":
-                                desc = _describe_tool_use(block)
-                                if desc:
-                                    await on_tool_use(desc)
+                    return final_text if final_text else "Done (no text response)."
+                except asyncio.TimeoutError:
+                    return "Timed out on that task."
+                except Exception:
+                    logger.exception("Streaming send failed")
+                    return "Something went wrong."
+            else:
+                # Original subprocess streaming path (fallback)
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdin=asyncio.subprocess.PIPE,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    proc.stdin.write(content.encode())
+                    await proc.stdin.drain()
+                    proc.stdin.close()
 
-                    # Final result
-                    if etype == "result":
-                        final_text = event.get("result", "")
+                    final_text = ""
+                    async for line in proc.stdout:
+                        line = line.decode().strip()
+                        if not line:
+                            continue
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
 
-                await proc.wait()
-                return final_text if final_text else "Done (no text response)."
+                        etype = event.get("type")
 
-            except asyncio.TimeoutError:
-                return "Timed out on that task."
-            except Exception:
-                logger.exception("Streaming send failed")
-                return "Something went wrong."
+                        # Tool use events
+                        if etype == "assistant" and on_tool_use:
+                            msg = event.get("message", {})
+                            for block in msg.get("content", []):
+                                if block.get("type") == "tool_use":
+                                    desc = _describe_tool_use(block)
+                                    if desc:
+                                        await on_tool_use(desc)
+
+                        # Final result
+                        if etype == "result":
+                            final_text = event.get("result", "")
+
+                    await proc.wait()
+                    return final_text if final_text else "Done (no text response)."
+
+                except asyncio.TimeoutError:
+                    return "Timed out on that task."
+                except Exception:
+                    logger.exception("Streaming send failed")
+                    return "Something went wrong."
 
     def _resume_command_text(self) -> list[str]:
         """Resume command with text output (for init/simple sends)."""

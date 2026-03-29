@@ -80,10 +80,15 @@ class CompanyAgent(AgentContainer):
     def initialize_conversation(self, persona_path: Path | None = None) -> None:
         """Create the StrategistConversation owned by this container.
 
+        Passes the container's transport for subprocess abstraction.
+
         Args:
             persona_path: Path to STRATEGIST-PERSONA.md, or None for default.
         """
-        self._conversation = StrategistConversation(persona_path=persona_path)
+        self._conversation = StrategistConversation(
+            persona_path=persona_path,
+            transport=self._transport,
+        )
         logger.info("StrategistConversation initialized (persona=%s)", persona_path)
 
     # --- Discord Message Handling ---
