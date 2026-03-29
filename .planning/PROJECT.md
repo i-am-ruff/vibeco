@@ -88,7 +88,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ### Active
 
-- [ ] Runtime daemon with Unix socket API
+- [x] Runtime daemon with Unix socket API — Phase 18
 - [ ] CLI commands as API clients (hire, give-task, dismiss, status, health, new-project)
 - [ ] `vco new-project` composite command using hire internally
 - [ ] Bot refactored to thin relay (slash commands → CLI/API)
@@ -111,6 +111,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - Depends on: Claude Code, GSD (globally installed), Node.js 22 LTS, tmux, Git, GitHub CLI
 - Discord server configured with bot, webhooks, channel structure
 - v2.0 container architecture fully operational with 740 passing tests
+- v3.0 Phase 18 complete — daemon with Unix socket, NDJSON protocol, PID lifecycle, signal handling, vco up/down
 
 ## Constraints
 
@@ -152,4 +153,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after v3.0 milestone start*
+*Last updated: 2026-03-29 after Phase 18 completion*
