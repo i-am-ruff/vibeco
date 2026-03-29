@@ -95,12 +95,13 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - ✓ Bot refactored to thin relay (slash commands → RuntimeAPI) — v3.0
 - ✓ Strategist Bash-based autonomy (vco hire/give-task/dismiss) — v3.0
 
+- ✓ All inter-agent communication surfaced through Discord (no hidden event routing) — v3.1
+- ✓ AgentTransport protocol abstracting execution environment — v3.1
+- ✓ Socket-based agent signaling (replaces sentinel temp files) — v3.1
+- ✓ DockerTransport for isolated agent runtimes — v3.1
+
 ### Active
 
-- [ ] All inter-agent communication surfaced through Discord (no hidden event routing)
-- [ ] AgentTransport protocol abstracting execution environment
-- [ ] DockerTransport for isolated agent runtimes
-- [ ] Socket-based agent signaling (replaces sentinel temp files)
 - [ ] State persistence for container state, pane IDs, task queues (deferred to v3.2+)
 
 ### Out of Scope
@@ -118,6 +119,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - Python 3.12 for all tooling (vco CLI, Discord bot, hooks)
 - Depends on: Claude Code, GSD (globally installed), Node.js 22 LTS, tmux, Git, GitHub CLI
 - Discord server configured with bot, webhooks, channel structure
+- v3.1 shipped: Phase 26 complete — DockerTransport, Dockerfile, transport abstraction, socket-based signaling, Discord visibility
 - v3.0 shipped: daemon architecture, RuntimeAPI (600+ lines), 6 CLI commands, bot as thin relay, 17k LOC Python
 - Known tech debt: test suite needs cleanup (asyncio patterns, Click 8.3 compat, missing Phase 23 verification)
 
