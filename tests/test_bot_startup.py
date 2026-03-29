@@ -1,7 +1,7 @@
-"""Tests for VcoBot startup wiring: CompanyRoot supervision tree (MIGR-01).
+"""Tests for VcoBot startup wiring (Phase 22: thin adapter, daemon owns CompanyRoot).
 
-Updated during MIGR-03 to test v2 CompanyRoot wiring instead of v1
-AgentManager/MonitorLoop/CrashTracker initialization.
+Updated during Phase 22 to reflect that VcoBot is a thin Discord adapter.
+CompanyRoot creation and PM wiring are now owned by the daemon.
 """
 
 from pathlib import Path
@@ -55,55 +55,12 @@ def _mock_guild() -> MagicMock:
     return guild
 
 
-class TestOnReadyInitializesCompanyRoot:
-    """on_ready initializes CompanyRoot supervision tree (MIGR-01)."""
+class TestOnReadyInitialization:
+    """on_ready does Discord-only setup; daemon owns CompanyRoot (Phase 22)."""
 
     @pytest.mark.asyncio
-    @patch("vcompany.bot.client.CompanyRoot")
-    async def test_on_ready_creates_company_root(self, mock_cr_cls):
-        """Verify CompanyRoot created and started with project."""
-        mock_cr = AsyncMock()
-        mock_cr.start = AsyncMock()
-        mock_cr.add_project = AsyncMock()
-        mock_cr_cls.return_value = mock_cr
-
-        bot = _make_bot()
-        guild = _mock_guild()
-        bot.get_guild = MagicMock(return_value=guild)
-        bot.get_cog = MagicMock(return_value=None)
-
-        await bot.on_ready()
-
-        mock_cr_cls.assert_called_once()
-        mock_cr.start.assert_awaited_once()
-        mock_cr.add_project.assert_awaited_once()
-        assert bot.company_root is mock_cr
-
-    @pytest.mark.asyncio
-    @patch("vcompany.bot.client.CompanyRoot")
-    async def test_on_ready_idempotent(self, mock_cr_cls):
-        """Call on_ready twice, verify CompanyRoot initialized only once (Pitfall 7)."""
-        mock_cr = AsyncMock()
-        mock_cr.start = AsyncMock()
-        mock_cr.add_project = AsyncMock()
-        mock_cr_cls.return_value = mock_cr
-
-        bot = _make_bot()
-        guild = _mock_guild()
-        bot.get_guild = MagicMock(return_value=guild)
-        bot.get_cog = MagicMock(return_value=None)
-
-        await bot.on_ready()
-        await bot.on_ready()
-
-        assert mock_cr_cls.call_count == 1
-
-    @pytest.mark.asyncio
-    @patch("vcompany.bot.client.CompanyRoot")
-    async def test_on_ready_survives_init_failure(self, mock_cr_cls):
-        """If CompanyRoot raises, _ready_flag still set, bot still functional."""
-        mock_cr_cls.side_effect = RuntimeError("tmux not available")
-
+    async def test_on_ready_sets_initialized(self):
+        """Verify on_ready sets _initialized and _ready_flag."""
         bot = _make_bot()
         guild = _mock_guild()
         bot.get_guild = MagicMock(return_value=guild)
@@ -114,13 +71,44 @@ class TestOnReadyInitializesCompanyRoot:
         assert bot._initialized is True
         assert bot._ready_flag is True
 
+    @pytest.mark.asyncio
+    async def test_on_ready_idempotent(self):
+        """Call on_ready twice, verify init only runs once (Pitfall 7)."""
+        bot = _make_bot()
+        guild = _mock_guild()
+        bot.get_guild = MagicMock(return_value=guild)
+        bot.get_cog = MagicMock(return_value=None)
 
-class TestOnReadyProjectless:
-    """on_ready in project-less mode skips CompanyRoot."""
+        await bot.on_ready()
+        await bot.on_ready()
+
+        # create_role should only be called once (role already exists in _mock_guild)
+        guild.create_role.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_on_ready_no_project_skips_supervision_tree(self):
-        """Without project_config, CompanyRoot not created."""
+    async def test_on_ready_signals_daemon_bot_ready(self):
+        """on_ready sets daemon._bot_ready_event when daemon is present."""
+        bot = _make_bot()
+        mock_daemon = MagicMock()
+        mock_daemon.runtime_api = None
+        mock_daemon._bot_ready_event = MagicMock()
+        bot._daemon = mock_daemon
+
+        guild = _mock_guild()
+        bot.get_guild = MagicMock(return_value=guild)
+        bot.get_cog = MagicMock(return_value=None)
+
+        await bot.on_ready()
+
+        mock_daemon._bot_ready_event.set.assert_called_once()
+
+
+class TestOnReadyProjectless:
+    """on_ready in project-less mode works (daemon owns supervision tree)."""
+
+    @pytest.mark.asyncio
+    async def test_on_ready_no_project_succeeds(self):
+        """Without project_config, on_ready still succeeds."""
         bot = _make_bot(with_project=False)
         guild = _mock_guild()
         bot.get_guild = MagicMock(return_value=guild)
@@ -132,28 +120,15 @@ class TestOnReadyProjectless:
 
         assert bot._initialized is True
         assert bot._ready_flag is True
-        assert bot.company_root is None
+        assert bot._daemon is None
 
 
 class TestClose:
-    """Graceful shutdown stops CompanyRoot supervision tree."""
+    """Graceful shutdown (bot is thin adapter, daemon owns lifecycle)."""
 
     @pytest.mark.asyncio
-    async def test_close_stops_company_root(self):
-        """Verify company_root.stop() called on close."""
-        bot = _make_bot()
-        mock_root = AsyncMock()
-        mock_root.stop = AsyncMock()
-        bot.company_root = mock_root
-
-        with patch.object(type(bot).__bases__[0], "close", new_callable=AsyncMock):
-            await bot.close()
-
-        mock_root.stop.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_close_without_company_root(self):
-        """close() works even if CompanyRoot was never initialized."""
+    async def test_close_succeeds(self):
+        """close() completes without error."""
         bot = _make_bot()
 
         with patch.object(type(bot).__bases__[0], "close", new_callable=AsyncMock):

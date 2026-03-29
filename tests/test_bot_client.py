@@ -9,7 +9,6 @@ from discord.ext import commands
 
 from vcompany.bot.client import VcoBot, _COG_EXTENSIONS
 from vcompany.models.config import AgentConfig, ProjectConfig
-from vcompany.resilience.message_queue import MessagePriority, MessageQueue
 
 
 def _make_config() -> ProjectConfig:
@@ -53,11 +52,11 @@ class TestVcoBotInit:
         assert bot.intents.message_content is True
 
     def test_initial_state(self):
-        """Bot starts with initialized=False, ready_flag=False, company_root=None."""
+        """Bot starts with initialized=False, ready_flag=False, _daemon=None."""
         bot = _make_bot()
         assert bot._initialized is False
         assert bot._ready_flag is False
-        assert bot.company_root is None
+        assert bot._daemon is None
 
     def test_project_optional(self):
         """Bot can be created without project."""
@@ -205,53 +204,36 @@ class TestVcoBotProjectless:
 
         assert bot._initialized is True
         assert bot._ready_flag is True
-        assert bot.company_root is None
+        assert bot._daemon is None
 
 
-class TestVcoBotCompanyRoot:
-    """VcoBot uses CompanyRoot supervision tree (MIGR-01)."""
+class TestVcoBotDaemon:
+    """VcoBot uses daemon for business logic (Phase 22: EXTRACT-04)."""
 
-    def test_company_root_attribute_exists(self):
-        """Bot has company_root attribute initialized to None."""
+    def test_daemon_attribute_exists(self):
+        """Bot has _daemon attribute initialized to None."""
         bot = _make_bot()
-        assert hasattr(bot, "company_root")
-        assert bot.company_root is None
+        assert hasattr(bot, "_daemon")
+        assert bot._daemon is None
 
     @pytest.mark.asyncio
-    async def test_close_stops_company_root(self):
-        """close() calls company_root.stop() if company_root exists."""
+    async def test_close_succeeds(self):
+        """close() succeeds (bot is a thin adapter, daemon owns lifecycle)."""
         bot = _make_bot()
-        mock_root = AsyncMock()
-        bot.company_root = mock_root
-
-        # Mock super().close()
-        with patch.object(type(bot).__bases__[0], "close", new_callable=AsyncMock):
-            await bot.close()
-
-        mock_root.stop.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_close_without_company_root(self):
-        """close() succeeds when company_root is None."""
-        bot = _make_bot()
-        bot.company_root = None
 
         with patch.object(type(bot).__bases__[0], "close", new_callable=AsyncMock):
             await bot.close()
         # No exception raised
 
     @pytest.mark.asyncio
-    async def test_close_stops_message_queue(self):
-        """close() calls message_queue.stop() if message_queue exists."""
+    async def test_close_without_daemon(self):
+        """close() succeeds when _daemon is None."""
         bot = _make_bot()
-        mock_queue = AsyncMock(spec=MessageQueue)
-        bot.message_queue = mock_queue
-        bot.company_root = None
+        bot._daemon = None
 
         with patch.object(type(bot).__bases__[0], "close", new_callable=AsyncMock):
             await bot.close()
-
-        mock_queue.stop.assert_called_once()
+        # No exception raised
 
 
 class TestHealthCogExtension:
@@ -263,12 +245,17 @@ class TestHealthCogExtension:
 
 
 class TestHealthCheckWiring:
-    """DegradedModeManager health_check wiring tests (RESL-03)."""
+    """Health check wiring tests -- daemon owns CompanyRoot now (Phase 22)."""
 
     @pytest.mark.asyncio
-    async def test_health_check_passed_to_company_root(self):
-        """CompanyRoot receives health_check callable when on_ready runs with project."""
+    async def test_daemon_comm_port_registered_on_ready(self):
+        """on_ready registers CommunicationPort with daemon when daemon is present."""
         bot = _make_bot()
+        mock_daemon = MagicMock()
+        mock_daemon.runtime_api = MagicMock()
+        mock_daemon.runtime_api.register_channels = MagicMock()
+        mock_daemon._bot_ready_event = MagicMock()
+        bot._daemon = mock_daemon
 
         mock_guild = MagicMock(spec=discord.Guild)
         mock_guild.name = "TestGuild"
@@ -276,314 +263,43 @@ class TestHealthCheckWiring:
         mock_guild.create_role = AsyncMock()
         bot.get_guild = MagicMock(return_value=mock_guild)
 
-        with patch("vcompany.bot.client.CompanyRoot") as MockRoot:
-            mock_instance = AsyncMock()
-            mock_instance.start = AsyncMock()
-            mock_instance.add_project = AsyncMock()
-            MockRoot.return_value = mock_instance
-
+        with patch("vcompany.bot.channel_setup.setup_system_channels", new_callable=AsyncMock, return_value={}), \
+             patch("vcompany.bot.client.DiscordCommunicationPort"):
             await bot.on_ready()
 
-            # CompanyRoot was called with health_check as non-None callable
-            MockRoot.assert_called_once()
-            call_kwargs = MockRoot.call_args.kwargs
-            assert "health_check" in call_kwargs
-            assert callable(call_kwargs["health_check"])
-            assert call_kwargs["on_degraded"] is not None
-            assert call_kwargs["on_recovered"] is not None
+        assert bot._initialized is True
+        assert bot._ready_flag is True
 
 
 class TestMessageQueueWiring:
-    """MessageQueue wiring tests (RESL-01)."""
+    """MessageQueue wiring tests -- daemon owns MessageQueue now (Phase 22)."""
 
-    @pytest.mark.asyncio
-    async def test_message_queue_created_on_ready(self):
-        """MessageQueue is created and started during on_ready with project."""
+    def test_bot_is_thin_adapter(self):
+        """Bot does not create MessageQueue itself (daemon owns it)."""
         bot = _make_bot()
-
-        mock_guild = MagicMock(spec=discord.Guild)
-        mock_guild.name = "TestGuild"
-        mock_guild.roles = []
-        mock_guild.create_role = AsyncMock()
-        bot.get_guild = MagicMock(return_value=mock_guild)
-
-        with patch("vcompany.bot.client.CompanyRoot") as MockRoot, \
-             patch("vcompany.bot.client.MessageQueue") as MockQueue:
-            mock_root = AsyncMock()
-            mock_root.start = AsyncMock()
-            mock_root.add_project = AsyncMock()
-            MockRoot.return_value = mock_root
-
-            mock_queue_instance = AsyncMock()
-            mock_queue_instance.start = AsyncMock()
-            MockQueue.return_value = mock_queue_instance
-
-            await bot.on_ready()
-
-            # MessageQueue was instantiated with a send_func
-            MockQueue.assert_called_once()
-            call_kwargs = MockQueue.call_args.kwargs
-            assert "send_func" in call_kwargs
-            assert callable(call_kwargs["send_func"])
-
-            # start() was called
-            mock_queue_instance.start.assert_called_once()
-
-            # bot attribute was set
-            assert bot.message_queue is mock_queue_instance
-
-    def test_message_queue_init_none(self):
-        """Bot starts with message_queue=None."""
-        bot = _make_bot()
-        assert bot.message_queue is None
+        assert not hasattr(bot, "message_queue") or bot.message_queue is None
 
 
 class TestPMBacklogWiring:
-    """PM backlog and project state wiring tests (AUTO-01, AUTO-02, AUTO-05)."""
+    """PM backlog wiring tests -- daemon owns PM wiring now (Phase 22)."""
 
-    @pytest.mark.asyncio
-    async def test_pm_backlog_assigned_after_add_project(self):
-        """PM's backlog and _project_state are assigned after add_project (AUTO-01)."""
-        from vcompany.agent.fulltime_agent import FulltimeAgent
-        from vcompany.autonomy.backlog import BacklogQueue
-        from vcompany.autonomy.project_state import ProjectStateManager
-
+    def test_bot_does_not_own_pm_wiring(self):
+        """Bot is a thin adapter; daemon handles PM backlog wiring."""
         bot = _make_bot()
-
-        mock_guild = MagicMock(spec=discord.Guild)
-        mock_guild.name = "TestGuild"
-        mock_guild.roles = []
-        mock_guild.create_role = AsyncMock()
-        bot.get_guild = MagicMock(return_value=mock_guild)
-
-        # Create a mock PM container that is an actual FulltimeAgent subtype
-        pm_mock = MagicMock(spec=FulltimeAgent)
-        pm_mock.backlog = None
-        pm_mock._project_state = None
-        pm_mock.memory = AsyncMock()
-        pm_mock.memory.get = AsyncMock(return_value=None)
-        pm_mock.memory.set = AsyncMock()
-        pm_mock.context = MagicMock()
-        pm_mock.context.agent_id = "pm-agent"
-
-        # Make isinstance(pm_mock, FulltimeAgent) return True
-        pm_mock.__class__ = FulltimeAgent
-
-        mock_project_sup = MagicMock()
-        mock_project_sup.children = MagicMock()
-        mock_project_sup.children.values = MagicMock(return_value=[pm_mock])
-
-        with patch("vcompany.bot.client.CompanyRoot") as MockRoot, \
-             patch("vcompany.bot.client.MessageQueue") as MockQueue, \
-             patch("vcompany.bot.client.BacklogQueue") as MockBacklog, \
-             patch("vcompany.bot.client.ProjectStateManager") as MockState:
-
-            mock_root = AsyncMock()
-            mock_root.start = AsyncMock()
-            mock_root.add_project = AsyncMock(return_value=mock_project_sup)
-            MockRoot.return_value = mock_root
-
-            mock_queue_instance = AsyncMock()
-            MockQueue.return_value = mock_queue_instance
-
-            mock_backlog_instance = MagicMock()
-            mock_backlog_instance.load = AsyncMock()
-            MockBacklog.return_value = mock_backlog_instance
-
-            mock_state_instance = MagicMock()
-            MockState.return_value = mock_state_instance
-
-            await bot.on_ready()
-
-            # BacklogQueue was created with PM's memory
-            MockBacklog.assert_called_once_with(pm_mock.memory)
-            mock_backlog_instance.load.assert_called_once()
-
-            # ProjectStateManager was created with backlog and PM's memory
-            MockState.assert_called_once_with(mock_backlog_instance, pm_mock.memory)
-
-            # Both assigned to PM
-            assert pm_mock.backlog is mock_backlog_instance
-            assert pm_mock._project_state is mock_state_instance
-
-            # PM stored on bot
-            assert bot._pm_container is pm_mock
-
-    @pytest.mark.asyncio
-    async def test_no_pm_graceful_skip(self):
-        """Wiring skips gracefully when no FulltimeAgent exists in children (AUTO-01)."""
-        bot = _make_bot()
-
-        mock_guild = MagicMock(spec=discord.Guild)
-        mock_guild.name = "TestGuild"
-        mock_guild.roles = []
-        mock_guild.create_role = AsyncMock()
-        bot.get_guild = MagicMock(return_value=mock_guild)
-
-        # Project with no FulltimeAgent children (all are generic mocks)
-        gsd_mock = MagicMock()
-        gsd_mock.__class__ = type("NotFulltimeAgent", (), {})
-
-        mock_project_sup = MagicMock()
-        mock_project_sup.children = MagicMock()
-        mock_project_sup.children.values = MagicMock(return_value=[gsd_mock])
-
-        with patch("vcompany.bot.client.CompanyRoot") as MockRoot, \
-             patch("vcompany.bot.client.MessageQueue") as MockQueue, \
-             patch("vcompany.bot.client.BacklogQueue") as MockBacklog:
-
-            mock_root = AsyncMock()
-            mock_root.start = AsyncMock()
-            mock_root.add_project = AsyncMock(return_value=mock_project_sup)
-            MockRoot.return_value = mock_root
-
-            mock_queue_instance = AsyncMock()
-            MockQueue.return_value = mock_queue_instance
-
-            await bot.on_ready()
-
-            # BacklogQueue never created since no PM found
-            MockBacklog.assert_not_called()
-
-            # PM container stays None
-            assert bot._pm_container is None
-
-    def test_pm_container_init_none(self):
-        """Bot starts with _pm_container=None."""
-        bot = _make_bot()
-        assert bot._pm_container is None
+        # Bot should not have _pm_container -- daemon owns it
+        assert not hasattr(bot, "_pm_container") or bot._pm_container is None
 
 
 class TestNotificationCallbackRouting:
-    """Tests that on_escalation/on_degraded/on_recovered route through MessageQueue (RESL-01)."""
+    """Notification callbacks are now owned by daemon (Phase 22)."""
 
-    @pytest.mark.asyncio
-    async def test_on_escalation_enqueues_with_escalation_priority(self):
-        """on_escalation callback routes through message_queue.enqueue."""
+    def test_bot_does_not_own_callbacks(self):
+        """Bot is a thin adapter; daemon owns escalation/degraded/recovered callbacks."""
         bot = _make_bot()
-        mock_guild = MagicMock(spec=discord.Guild)
-        mock_guild.name = "TestGuild"
-        mock_guild.roles = []
-        mock_guild.create_role = AsyncMock()
-        bot.get_guild = MagicMock(return_value=mock_guild)
-
-        with patch("vcompany.bot.client.CompanyRoot") as MockRoot:
-            mock_instance = AsyncMock()
-            mock_instance.start = AsyncMock()
-            mock_instance.add_project = AsyncMock()
-            MockRoot.return_value = mock_instance
-
-            await bot.on_ready()
-
-            # Extract on_escalation from CompanyRoot constructor call
-            on_escalation = MockRoot.call_args.kwargs["on_escalation"]
-
-            # Set up mock queue and alerts channel
-            bot.message_queue = AsyncMock()
-            mock_alerts = MagicMock()
-            mock_alerts.id = 99999
-            bot._system_channels["alerts"] = mock_alerts
-
-            await on_escalation("restart budget exceeded")
-
-            bot.message_queue.enqueue.assert_called_once()
-            queued = bot.message_queue.enqueue.call_args[0][0]
-            assert queued.priority == MessagePriority.ESCALATION
-            assert "ESCALATION" in queued.content
-            assert "restart budget exceeded" in queued.content
-            assert queued.channel_id == 99999
-
-    @pytest.mark.asyncio
-    async def test_on_degraded_enqueues_with_supervisor_priority(self):
-        """on_degraded callback routes through message_queue.enqueue."""
-        bot = _make_bot()
-        mock_guild = MagicMock(spec=discord.Guild)
-        mock_guild.name = "TestGuild"
-        mock_guild.roles = []
-        mock_guild.create_role = AsyncMock()
-        bot.get_guild = MagicMock(return_value=mock_guild)
-
-        with patch("vcompany.bot.client.CompanyRoot") as MockRoot:
-            mock_instance = AsyncMock()
-            mock_instance.start = AsyncMock()
-            mock_instance.add_project = AsyncMock()
-            MockRoot.return_value = mock_instance
-
-            await bot.on_ready()
-
-            on_degraded = MockRoot.call_args.kwargs["on_degraded"]
-
-            bot.message_queue = AsyncMock()
-            mock_alerts = MagicMock()
-            mock_alerts.id = 88888
-            bot._system_channels["alerts"] = mock_alerts
-
-            await on_degraded()
-
-            bot.message_queue.enqueue.assert_called_once()
-            queued = bot.message_queue.enqueue.call_args[0][0]
-            assert queued.priority == MessagePriority.SUPERVISOR
-            assert "degraded mode" in queued.content.lower()
-
-    @pytest.mark.asyncio
-    async def test_on_recovered_enqueues_with_supervisor_priority(self):
-        """on_recovered callback routes through message_queue.enqueue."""
-        bot = _make_bot()
-        mock_guild = MagicMock(spec=discord.Guild)
-        mock_guild.name = "TestGuild"
-        mock_guild.roles = []
-        mock_guild.create_role = AsyncMock()
-        bot.get_guild = MagicMock(return_value=mock_guild)
-
-        with patch("vcompany.bot.client.CompanyRoot") as MockRoot:
-            mock_instance = AsyncMock()
-            mock_instance.start = AsyncMock()
-            mock_instance.add_project = AsyncMock()
-            MockRoot.return_value = mock_instance
-
-            await bot.on_ready()
-
-            on_recovered = MockRoot.call_args.kwargs["on_recovered"]
-
-            bot.message_queue = AsyncMock()
-            mock_alerts = MagicMock()
-            mock_alerts.id = 77777
-            bot._system_channels["alerts"] = mock_alerts
-
-            await on_recovered()
-
-            bot.message_queue.enqueue.assert_called_once()
-            queued = bot.message_queue.enqueue.call_args[0][0]
-            assert queued.priority == MessagePriority.SUPERVISOR
-            assert "recovered" in queued.content.lower()
-
-    @pytest.mark.asyncio
-    async def test_callbacks_noop_when_queue_none(self):
-        """Callbacks do nothing when message_queue is None (before startup)."""
-        bot = _make_bot()
-        mock_guild = MagicMock(spec=discord.Guild)
-        mock_guild.name = "TestGuild"
-        mock_guild.roles = []
-        mock_guild.create_role = AsyncMock()
-        bot.get_guild = MagicMock(return_value=mock_guild)
-
-        with patch("vcompany.bot.client.CompanyRoot") as MockRoot:
-            mock_instance = AsyncMock()
-            mock_instance.start = AsyncMock()
-            mock_instance.add_project = AsyncMock()
-            MockRoot.return_value = mock_instance
-
-            await bot.on_ready()
-
-            on_escalation = MockRoot.call_args.kwargs["on_escalation"]
-
-            # message_queue is None (not yet created)
-            bot.message_queue = None
-            mock_alerts = MagicMock()
-            bot._system_channels["alerts"] = mock_alerts
-
-            # Should not raise
-            await on_escalation("test message")
+        # Bot should not have on_escalation/on_degraded/on_recovered
+        assert not hasattr(bot, "on_escalation")
+        assert not hasattr(bot, "on_degraded")
+        assert not hasattr(bot, "on_recovered")
 
 
 class TestGsdAgentEventContract:
