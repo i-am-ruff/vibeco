@@ -54,6 +54,10 @@ Recent decisions affecting current work:
 - [Phase 26]: Container naming uses vco-{project}-{agent_id} for deterministic reuse
 - [Phase 26]: Volume-based file I/O for DockerTransport read_file/write_file (not docker cp)
 
+### Roadmap Evolution
+
+- Phase 27 added: Docker Integration Wiring — per-transport deps, docker_image flow, auto-build, parametric setup, remove hardcoded type checks, e2e Docker agent via Discord
+
 ### Blockers/Concerns
 
 - [Architecture]: PM currently receives events via internal post_event() asyncio.Queue — invisible on Discord
