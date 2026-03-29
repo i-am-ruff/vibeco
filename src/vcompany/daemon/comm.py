@@ -61,6 +61,28 @@ class SubscribePayload(BaseModel):
     channel_id: str
 
 
+class CreateChannelPayload(BaseModel):
+    """Payload for creating a text channel, optionally under a category."""
+
+    category_name: str
+    channel_name: str
+
+
+class CreateChannelResult(BaseModel):
+    """Result returned after channel creation."""
+
+    channel_id: str
+    name: str
+
+
+class EditMessagePayload(BaseModel):
+    """Payload for editing an existing message."""
+
+    channel_id: str
+    message_id: str
+    content: str
+
+
 # --- Protocol ---
 
 
@@ -68,7 +90,7 @@ class SubscribePayload(BaseModel):
 class CommunicationPort(Protocol):
     """Platform-agnostic communication interface.
 
-    Any adapter (Discord, Slack, noop) must implement these four async methods.
+    Any adapter (Discord, Slack, noop) must implement these six async methods.
     Used by the daemon layer for all outbound messaging.
     """
 
@@ -81,6 +103,12 @@ class CommunicationPort(Protocol):
     ) -> ThreadResult | None: ...
 
     async def subscribe_to_channel(self, payload: SubscribePayload) -> bool: ...
+
+    async def create_channel(
+        self, payload: CreateChannelPayload
+    ) -> CreateChannelResult | None: ...
+
+    async def edit_message(self, payload: EditMessagePayload) -> bool: ...
 
 
 # --- Noop adapter (testing / fallback) ---
@@ -101,4 +129,14 @@ class NoopCommunicationPort:
         return ThreadResult(thread_id="noop-thread", name=payload.name)
 
     async def subscribe_to_channel(self, payload: SubscribePayload) -> bool:
+        return True
+
+    async def create_channel(
+        self, payload: CreateChannelPayload
+    ) -> CreateChannelResult | None:
+        return CreateChannelResult(
+            channel_id="noop-channel", name=payload.channel_name
+        )
+
+    async def edit_message(self, payload: EditMessagePayload) -> bool:
         return True

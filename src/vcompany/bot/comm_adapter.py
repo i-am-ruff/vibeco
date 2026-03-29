@@ -12,7 +12,10 @@ from typing import TYPE_CHECKING
 import discord
 
 from vcompany.daemon.comm import (
+    CreateChannelPayload,
+    CreateChannelResult,
     CreateThreadPayload,
+    EditMessagePayload,
     SendEmbedPayload,
     SendMessagePayload,
     SubscribePayload,
@@ -90,3 +93,81 @@ class DiscordCommunicationPort:
         """Check if a channel is visible to the bot."""
         channel = self._resolve_channel(payload.channel_id)
         return channel is not None
+
+    async def create_channel(
+        self, payload: CreateChannelPayload
+    ) -> CreateChannelResult | None:
+        """Find or create a text channel under the given category.
+
+        Uses the first guild (single-guild bot per D-22). Creates the
+        category if it does not exist.
+        """
+        try:
+            if not self._bot.guilds:
+                logger.warning("create_channel: no guilds available")
+                return None
+            guild = self._bot.guilds[0]
+
+            # Find or create category
+            category = discord.utils.get(
+                guild.categories, name=payload.category_name
+            )
+            if category is None:
+                category = await guild.create_category_channel(
+                    payload.category_name
+                )
+                logger.info(
+                    "Created category: %s", payload.category_name
+                )
+
+            # Find or create text channel under category
+            existing = discord.utils.get(
+                category.channels, name=payload.channel_name
+            )
+            if existing is not None:
+                return CreateChannelResult(
+                    channel_id=str(existing.id), name=existing.name
+                )
+
+            channel = await category.create_text_channel(
+                payload.channel_name
+            )
+            logger.info("Created channel: #%s", payload.channel_name)
+            return CreateChannelResult(
+                channel_id=str(channel.id), name=channel.name
+            )
+        except Exception:
+            logger.warning(
+                "create_channel failed for %s/%s",
+                payload.category_name,
+                payload.channel_name,
+                exc_info=True,
+            )
+            return None
+
+    async def edit_message(self, payload: EditMessagePayload) -> bool:
+        """Edit an existing message by channel and message ID."""
+        channel = self._resolve_channel(payload.channel_id)
+        if channel is None:
+            logger.warning(
+                "edit_message: channel %s not found", payload.channel_id
+            )
+            return False
+        try:
+            message = await channel.fetch_message(int(payload.message_id))
+            await message.edit(content=payload.content)
+            return True
+        except discord.NotFound:
+            logger.warning(
+                "edit_message: message %s not found in channel %s",
+                payload.message_id,
+                payload.channel_id,
+            )
+            return False
+        except discord.HTTPException:
+            logger.warning(
+                "edit_message: HTTP error editing message %s",
+                payload.message_id,
+                exc_info=True,
+            )
+            return False
