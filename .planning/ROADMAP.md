@@ -152,7 +152,9 @@ Plans:
   1. The Strategist can run `vco hire`, `vco give-task`, and `vco dismiss` from its Claude session's Bash tool and the commands succeed
   2. The `[CMD:...]` action tag parsing code is removed from StrategistCog
   3. The Strategist persona/system prompt references `vco` CLI commands for workforce management instead of action tags
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 23-01-PLAN.md -- Remove action tag dead code, update personas for vco CLI, fix stale tests
 
 ## Progress
 
@@ -166,4 +168,4 @@ Phases execute in numeric order: 18 -> 18.1 -> 18.2 -> 19 -> ... -> 23
 | 20. CompanyRoot Extraction | 4/4 | Complete    | 2026-03-29 |
 | 21. CLI Commands | 2/2 | Complete    | 2026-03-29 |
 | 22. Bot Thin Relay | 3/3 | Complete    | 2026-03-29 |
-| 23. Strategist Autonomy | 0/? | Not started | - |
+| 23. Strategist Autonomy | 0/1 | Not started | - |
