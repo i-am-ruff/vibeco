@@ -12,26 +12,26 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ## Current State
 
-**Shipped:** v2.1 Behavioral Integration (2026-03-28)
+## Current Milestone: v3.0 CLI-First Architecture Rewrite
+
+**Goal:** Extract all core logic from the Discord bot into a runtime daemon with Unix socket API, making the CLI the primary interface and the bot a thin Discord skin.
+
+**Target features:**
+- Runtime daemon with CompanyRoot, supervision tree, containers, health monitoring
+- Unix socket API (JSON protocol) for all operations
+- `vco up` starts runtime daemon + bot
+- CLI commands as thin API clients: `vco hire`, `vco give-task`, `vco dismiss`, `vco status`, `vco health`, `vco new-project`
+- `vco new-project` as composite command (`init` + `clone` + `hire` per agent) — unified code path
+- Bot becomes thin relay — slash commands call CLI/API, no container references in bot
+- State persistence — container state, pane IDs, task queues survive restarts
+- Strategist autonomy — Strategist calls `vco hire/give-task/dismiss` via Bash
+
+## Previously Shipped
+
+**v2.1 Behavioral Integration (2026-03-28):** Work initiation, PM review gates, auto work distribution, PM event routing, stuck-agent detection, health tree rendering
+**v2.0 Agent Container Architecture (2026-03-28):** 8-state lifecycle FSM, supervision tree, 4 agent types, health tree, resilience, PM autonomy
+**v1.0 MVP (2026-03-27):** CLI orchestration, Discord bot, plan review, AI decision system, integration pipeline
 **Stack:** Python 3.12, discord.py 2.7, anthropic SDK, libtmux, pydantic v2, click, uv
-
-**v2.1 delivered:**
-- Work initiation: agents receive GSD commands in tmux, start working autonomously after readiness poll
-- PM-led conversational review gates: asyncio.Future gate on GsdAgent, approve/modify/clarify flow
-- Auto work distribution: PM auto-assigns next backlog item when agent completes current task
-- Full PM event routing: health_change, gsd_transition, briefing, escalation events flow to PM queue
-- Strategist inverted: CompanyAgent._handle_event() owns logic, StrategistCog is thin Discord adapter
-- CommunicationPort wired: NoopCommunicationPort passed through all container creation paths
-- BLOCKED/STOPPING as real FSM states across all 4 lifecycle machines with reason strings
-- PM outbound actions: integration review, backlog injection, agent recruit/remove, Strategist escalation
-- Stuck-agent detection: background loop with per-agent suppression and Discord intervention
-- Health tree: CompanyRoot header, company agents, uptime, last_activity per agent
-- Message throttling: 30s per-agent minimum between review requests
-- ContinuousAgent delegation + state persistence, GsdAgent assignment restore on restart
-
-**Previously shipped:**
-- v2.0 Agent Container Architecture (2026-03-28): 8-state lifecycle FSM, supervision tree, 4 agent types, health tree, resilience, PM autonomy
-- v1.0 MVP (2026-03-27): CLI orchestration, Discord bot, plan review, AI decision system, integration pipeline
 
 ## Requirements
 
@@ -88,14 +88,19 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ### Active
 
-(None — start next milestone with `/gsd:new-milestone`)
+- [ ] Runtime daemon with Unix socket API
+- [ ] CLI commands as API clients (hire, give-task, dismiss, status, health, new-project)
+- [ ] `vco new-project` composite command using hire internally
+- [ ] Bot refactored to thin relay (slash commands → CLI/API)
+- [ ] State persistence for container state, pane IDs, task queues
+- [ ] Strategist Bash-based autonomy (vco hire/give-task/dismiss)
 
 ### Out of Scope
 
 - Any specific product implementation — vCompany is project-agnostic, products are inputs
 - Mobile app or web UI for vCompany itself — Discord is the interface
 - Multi-machine distributed agents — runs on a single local machine (v4 scope)
-- Non-Discord interaction channels — v3 scope (abstract channel backends)
+- Non-Discord interaction channels — v4 scope (abstract channel backends)
 - Clone disk space optimization — noted, not solving yet
 - CI/CD pipeline integration — agents build and test locally
 
@@ -147,4 +152,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after v2.1 milestone start*
+*Last updated: 2026-03-29 after v3.0 milestone start*

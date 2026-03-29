@@ -1,30 +1,32 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.1
-milestone_name: Behavioral Integration
-status: Milestone complete
-stopped_at: "Completed 17-01-PLAN.md: CompanyRoot header and per-agent uptime/activity added to health embed"
-last_updated: "2026-03-28T17:44:57.289Z"
+milestone: v3.0
+milestone_name: CLI-First Architecture Rewrite
+status: Defining requirements
+stopped_at: ""
+last_updated: "2026-03-29"
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 11
-  completed_plans: 11
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-28)
+See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** Agents run autonomously without hanging, stay coordinated through contracts and status awareness, and produce integrated code -- all operable from Discord.
-**Current focus:** Phase 12 — Work Initiation
+**Current focus:** Not started (defining requirements)
 
 ## Current Position
 
-Phase: 17
-Plan: Not started
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-29 — Milestone v3.0 started
 
 ## Performance Metrics
 
