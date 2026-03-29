@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from vcompany.daemon.comm import (
     CommunicationPort,
@@ -19,17 +19,8 @@ from vcompany.daemon.comm import (
 )
 
 if TYPE_CHECKING:
-    from vcompany.agent.company_agent import CompanyAgent
-    from vcompany.agent.continuous_agent import ContinuousAgent
-    from vcompany.agent.fulltime_agent import FulltimeAgent
-    from vcompany.agent.gsd_agent import GsdAgent
-    from vcompany.autonomy.backlog import BacklogQueue
-    from vcompany.autonomy.project_state import ProjectStateManager
-    from vcompany.container.child_spec import ChildSpec
-    from vcompany.container.context import ContainerContext
     from vcompany.models.config import ProjectConfig
     from vcompany.supervisor.company_root import CompanyRoot
-    from vcompany.supervisor.project_supervisor import ProjectSupervisor
 
 logger = logging.getLogger("vcompany.daemon.runtime_api")
 
@@ -52,7 +43,15 @@ class RuntimeAPI:
         self._channel_ids: dict[str, str] = {}
         self._project_config: ProjectConfig | None = None
         self._project_dir: Path | None = None
-        self._strategist_container: CompanyAgent | None = None
+        self._mention_router: Any | None = None
+
+    def set_mention_router(self, router: Any) -> None:
+        """Store reference to MentionRouterCog for agent handle registration.
+
+        Args:
+            router: MentionRouterCog instance (typed as Any to avoid discord.py import).
+        """
+        self._mention_router = router
 
     # ── Core lifecycle methods ────────────────────────────────────────
 
@@ -211,190 +210,7 @@ class RuntimeAPI:
                     SendMessagePayload(channel_id=alerts_id, content=f"[PM] {message}")
                 )
 
-    # ── Category B: Strategist response callback ─────────────────────
-
-    async def _on_strategist_response(self, response: str, channel_id: int) -> None:
-        """Closure #6: post strategist response to channel via CommunicationPort."""
-        ch_id = str(channel_id)
-        if len(response) > 2000:
-            remaining = response
-            while remaining:
-                chunk = remaining[:2000]
-                await self._get_comm().send_message(
-                    SendMessagePayload(channel_id=ch_id, content=chunk)
-                )
-                remaining = remaining[2000:]
-        else:
-            await self._get_comm().send_message(
-                SendMessagePayload(channel_id=ch_id, content=response)
-            )
-
-    # ── Category C: PM event routing (internal, no Discord) ──────────
-
-    def _make_pm_event_sink(self, pm_container: FulltimeAgent) -> Callable:
-        """Closure #10: PM event sink."""
-
-        async def pm_event_sink(event: dict[str, Any]) -> None:
-            await pm_container.post_event(event)
-
-        return pm_event_sink
-
-    def _make_gsd_cb(self, sink: Callable) -> Callable:
-        """Closure #11: GSD phase transition -> PM event."""
-
-        async def _cb(agent_id: str, from_phase: str, to_phase: str) -> None:
-            await sink(
-                {
-                    "type": "gsd_transition",
-                    "agent_id": agent_id,
-                    "from_phase": from_phase,
-                    "to_phase": to_phase,
-                }
-            )
-
-        return _cb
-
-    def _make_briefing_cb(self, sink: Callable) -> Callable:
-        """Closure #12: briefing -> PM event."""
-
-        async def _cb(agent_id: str, content: str) -> None:
-            await sink(
-                {
-                    "type": "briefing",
-                    "agent_id": agent_id,
-                    "content": content,
-                }
-            )
-
-        return _cb
-
-    # ── Category D: Review gate callbacks ─────────────────────────────
-
-    async def _post_review_request(self, agent_id: str, stage: str) -> None:
-        """Closure #13: post review request via CommunicationPort (replaces PlanReviewCog.post_review_request)."""
-        review_ch_id = self.get_channel_id("plan-review")
-        if review_ch_id:
-            await self._get_comm().send_message(
-                SendMessagePayload(
-                    channel_id=review_ch_id,
-                    content=f"[Review Request] Agent {agent_id} requests review at stage: {stage}",
-                )
-            )
-
-    async def _dispatch_pm_review(self, agent_id: str, stage: str) -> None:
-        """Closure #14: dispatch PM review via CommunicationPort."""
-        review_ch_id = self.get_channel_id("plan-review")
-        if review_ch_id:
-            await self._get_comm().send_message(
-                SendMessagePayload(
-                    channel_id=review_ch_id,
-                    content=f"[PM Review] Agent {agent_id} PM review at stage: {stage}",
-                )
-            )
-
-    # ── Category E: PM action callbacks ───────────────────────────────
-
-    async def _on_assign_task(
-        self, agent_id: str, item: Any, project_sup: ProjectSupervisor
-    ) -> None:
-        """Closure #15: assign task to GSD agent."""
-        from vcompany.agent.gsd_agent import GsdAgent
-
-        for child in project_sup.children.values():
-            if isinstance(child, GsdAgent) and child.context.agent_id == agent_id:
-                await child.set_assignment(item.model_dump())
-                break
-
-    async def _on_recruit_agent(
-        self,
-        spec: Any,
-        project_sup: ProjectSupervisor,
-        pm_event_sink: Callable,
-    ) -> None:
-        """Closure #16: recruit new agent into project."""
-        from vcompany.agent.continuous_agent import ContinuousAgent
-        from vcompany.agent.gsd_agent import GsdAgent
-
-        await project_sup.add_child_spec(spec)
-        new_child = project_sup.children.get(spec.child_id)
-        if isinstance(new_child, GsdAgent):
-            new_child._on_phase_transition = self._make_gsd_cb(pm_event_sink)
-            # Review request wiring
-            def _make_review_cb(api: RuntimeAPI) -> Callable:
-                async def _cb(agent_id: str, stage: str) -> None:
-                    await api._post_review_request(agent_id, stage)
-
-                return _cb
-
-            new_child._on_review_request = _make_review_cb(self)
-        elif isinstance(new_child, ContinuousAgent):
-            new_child._on_briefing = self._make_briefing_cb(pm_event_sink)
-            new_child._request_delegation = project_sup.handle_delegation_request
-
-    async def _on_remove_agent(
-        self, agent_id: str, project_sup: ProjectSupervisor
-    ) -> None:
-        """Closure #17: remove agent from project."""
-        await project_sup.remove_child(agent_id)
-
-    async def _on_escalate_to_strategist(
-        self, agent_id: str, question: str, score: float
-    ) -> str | None:
-        """Closure #18: route PM escalation to Strategist via CompanyAgent."""
-        if self._strategist_container is None:
-            return None
-        future: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
-        await self._strategist_container.post_event(
-            {
-                "type": "pm_escalation",
-                "agent_id": agent_id,
-                "question": question,
-                "confidence": score,
-                "_response_future": future,
-            }
-        )
-        return await future
-
-    # ── Category F: Inbound relay methods (COMM-04/COMM-05) ──────────
-
-    async def relay_strategist_message(
-        self, user_message: str, channel_id: str, user_name: str = "user"
-    ) -> None:
-        """COMM-04 receive path: relay inbound user message to Strategist.
-
-        Called by StrategistCog.on_message instead of calling CompanyAgent.post_event directly.
-        This keeps the bot cog decoupled from agent container internals.
-        """
-        if self._strategist_container is None:
-            logger.warning("relay_strategist_message: no strategist container")
-            return
-        await self._strategist_container.post_event(
-            {
-                "type": "user_message",
-                "content": user_message,
-                "channel_id": channel_id,
-                "user_name": user_name,
-            }
-        )
-
-    async def relay_strategist_escalation_reply(
-        self, reply_text: str, escalation_message_id: str
-    ) -> None:
-        """COMM-04 receive path: relay owner reply to a pending escalation.
-
-        Called by StrategistCog when owner replies to an escalation message.
-        """
-        if self._strategist_container is None:
-            return
-        await self._strategist_container.post_event(
-            {
-                "type": "escalation_reply",
-                "reply": reply_text,
-                "escalation_message_id": escalation_message_id,
-            }
-        )
-
-    # ── Category G: Bot cog delegation methods (Phase 22) ──────────
+    # ── Bot cog delegation methods ──────────────────────────────────
 
     async def dispatch(self, agent_id: str) -> None:
         """Start or restart an agent container.
@@ -512,11 +328,24 @@ class RuntimeAPI:
     async def remove_project(self, project_name: str) -> None:
         """Remove a project from CompanyRoot.
 
-        Stops all agents in the project and removes the project supervisor.
+        Unregisters agent handles from MentionRouterCog, stops all agents
+        in the project, and removes the project supervisor.
 
         Raises:
             KeyError: If project_name is not found.
         """
+        # Unregister agent handles before removing project
+        if self._mention_router:
+            project_sup = self._root.projects.get(project_name)
+            if project_sup is not None:
+                from vcompany.agent.fulltime_agent import FulltimeAgent
+
+                for child_id, child in project_sup.children.items():
+                    if isinstance(child, FulltimeAgent):
+                        self._mention_router.unregister_agent(f"PM{project_name}")
+                    else:
+                        self._mention_router.unregister_agent(f"agent-{child_id}")
+            self._mention_router.unregister_agent("Strategist")
         await self._root.remove_project(project_name)
 
     async def relay_channel_message(self, agent_id: str, content: str) -> bool:
@@ -636,48 +465,6 @@ class RuntimeAPI:
         )
         return {"success": result.success, "stdout": result.stdout.strip() if result.stdout else ""}
 
-    async def log_plan_decision(
-        self, agent_id: str, plan_path: str, decision: str, confidence_level: str
-    ) -> None:
-        """Log a plan review decision to the strategist's decision logger if available."""
-        from vcompany.strategist.models import DecisionLogEntry
-        from datetime import datetime, timezone
-
-        # Access strategist container's decision logger
-        if self._strategist_container is not None:
-            decision_logger = getattr(self._strategist_container, "decision_logger", None)
-            if decision_logger:
-                await decision_logger.log_decision(
-                    DecisionLogEntry(
-                        timestamp=datetime.now(timezone.utc),
-                        question_or_plan=f"Plan review: {plan_path}",
-                        decision=decision,
-                        confidence_level=confidence_level,
-                        decided_by="PM",
-                        agent_id=agent_id,
-                    )
-                )
-
-    async def signal_workflow_stage(
-        self, agent_id: str, stage: str, data: dict | None = None
-    ) -> bool:
-        """Signal a workflow stage event for an agent container.
-
-        Used by WorkflowOrchestratorCog to interact with agent FSM
-        without direct container access.
-
-        Returns True if the container was found and event posted.
-        """
-        container = await self._root._find_container(agent_id)
-        if container is None:
-            return False
-        event = {"type": "workflow_stage", "stage": stage}
-        if data:
-            event.update(data)
-        if hasattr(container, "post_event"):
-            await container.post_event(event)
-        return True
-
     async def get_container_info(self, agent_id: str) -> dict | None:
         """Get container info dict (state, type, has completion event support).
 
@@ -694,66 +481,6 @@ class RuntimeAPI:
         }
         return info
 
-    async def route_completion_to_pm(self, agent_id: str) -> bool:
-        """Route a phase completion event from an agent to the PM container.
-
-        Finds the agent container, creates completion event, posts to PM.
-        Returns True if event was routed, False otherwise.
-        """
-        from vcompany.agent.fulltime_agent import FulltimeAgent
-
-        container = await self._root._find_container(agent_id)
-        if container is None:
-            return False
-        if not hasattr(container, "make_completion_event"):
-            return False
-
-        # Find PM container
-        pm_container = None
-        for _pid, ps in self._root._projects.items():
-            for child in ps.children.values():
-                if isinstance(child, FulltimeAgent):
-                    pm_container = child
-                    break
-            if pm_container:
-                break
-
-        if pm_container is None:
-            return False
-
-        assignment = await container.get_assignment() if hasattr(container, "get_assignment") else None
-        item_id = assignment.get("item_id", agent_id) if assignment else agent_id
-        event = container.make_completion_event(item_id)
-        await pm_container.post_event(event)
-        return True
-
-    # ── Category H: Bot cog support methods (Phase 22-03) ────────
-
-    async def handle_pm_escalation(
-        self, agent_id: str, question: str, confidence_score: float
-    ) -> str | None:
-        """Forward PM escalation to Strategist via CompanyAgent.
-
-        Called by StrategistCog instead of direct CompanyAgent.post_event.
-
-        Returns:
-            Response text if Strategist is confident, None if owner
-            escalation is needed.
-        """
-        if self._strategist_container is None:
-            return None
-        future: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
-        await self._strategist_container.post_event(
-            {
-                "type": "pm_escalation",
-                "agent_id": agent_id,
-                "question": question,
-                "confidence": confidence_score,
-                "_response_future": future,
-            }
-        )
-        return await future
-
     async def log_decision(
         self,
         agent_id: str,
@@ -769,8 +496,9 @@ class RuntimeAPI:
         from vcompany.strategist.models import DecisionLogEntry
         from datetime import datetime, timezone
 
-        if self._strategist_container is not None:
-            decision_logger = getattr(self._strategist_container, "decision_logger", None)
+        strategist = self._root._company_agents.get("strategist")
+        if strategist is not None:
+            decision_logger = getattr(strategist, "decision_logger", None)
             if decision_logger:
                 await decision_logger.log_decision(
                     DecisionLogEntry(
@@ -914,15 +642,17 @@ class RuntimeAPI:
         project_dir: Path,
         persona_path: Path | None = None,
     ) -> None:
-        """Initialize a project: Strategist, supervision tree, PM wiring.
+        """Initialize a project: Strategist, supervision tree, Discord routing.
 
-        Replaces the entire project-only section of on_ready() (lines 206-614).
-        CRITICAL: PM event sink must be wired LAST (Research Pitfall 2).
+        Creates Strategist as a company agent, builds project supervisor from
+        agents.yaml specs, wires PM backlog with on_mutation callback to
+        #backlog channel, and registers all agent handles with MentionRouterCog.
+
+        All inter-agent communication flows through Discord -- no internal
+        event sinks or callback wiring needed (D-10, D-11).
         """
         from vcompany.agent.company_agent import CompanyAgent
-        from vcompany.agent.continuous_agent import ContinuousAgent
         from vcompany.agent.fulltime_agent import FulltimeAgent
-        from vcompany.agent.gsd_agent import GsdAgent
         from vcompany.autonomy.backlog import BacklogQueue
         from vcompany.autonomy.project_state import ProjectStateManager
         from vcompany.container.child_spec import ChildSpec
@@ -945,14 +675,16 @@ class RuntimeAPI:
         )
         strategist_container = await self._root.add_company_agent(strategist_spec)
 
-        # Wire Strategist conversation and callbacks
+        # Wire Strategist conversation
         if isinstance(strategist_container, CompanyAgent):
-            self._strategist_container = strategist_container
             strategist_container.initialize_conversation(persona_path)
-            strategist_container._on_response = self._on_strategist_response
-            strategist_container._on_hire = self.hire
-            strategist_container._on_give_task = self.give_task
-            strategist_container._on_dismiss = self.dismiss
+            # Register Strategist handle with MentionRouterCog
+            if self._mention_router:
+                self._mention_router.register_agent(
+                    "Strategist",
+                    strategist_container,
+                    channel_id=self.get_channel_id("strategist"),
+                )
 
         # 2. Build child specs from agents.yaml
         specs = []
@@ -977,81 +709,44 @@ class RuntimeAPI:
             child_specs=specs,
         )
 
-        # 3. Wire PM backlog and project state
+        # 3. Wire PM backlog with on_mutation callback to #backlog channel
         pm_container: FulltimeAgent | None = None
         for child in project_sup.children.values():
             if isinstance(child, FulltimeAgent):
                 pm_container = child
                 break
 
-        pm_event_sink: Callable | None = None
         if pm_container is not None:
-            backlog = BacklogQueue(pm_container.memory)
+            # Create backlog mutation callback that posts to #backlog channel
+            backlog_channel = self.get_channel_id("backlog")
+
+            async def _backlog_notify(msg: str) -> None:
+                if backlog_channel:
+                    await self._get_comm().send_message(
+                        SendMessagePayload(channel_id=backlog_channel, content=msg)
+                    )
+
+            backlog = BacklogQueue(pm_container.memory, on_mutation=_backlog_notify)
             await backlog.load()
             state_mgr = ProjectStateManager(backlog, pm_container.memory)
             pm_container.backlog = backlog
             pm_container._project_state = state_mgr
 
-            pm_event_sink = self._make_pm_event_sink(pm_container)
+            # Register PM handle with MentionRouterCog
+            if self._mention_router:
+                self._mention_router.register_agent(
+                    f"PM{project_config.project}",
+                    pm_container,
+                    channel_id=self.get_channel_id("decisions"),
+                )
 
-            # Wire GSD transitions and briefings
-            for child in project_sup.children.values():
-                if isinstance(child, GsdAgent):
-                    child._on_phase_transition = self._make_gsd_cb(pm_event_sink)
-                elif isinstance(child, ContinuousAgent):
-                    child._on_briefing = self._make_briefing_cb(pm_event_sink)
-                    child._request_delegation = project_sup.handle_delegation_request
-
-        # 4. Wire review gate callbacks
-        for child in project_sup.children.values():
-            if isinstance(child, GsdAgent):
-
-                def _make_review_cb(api: RuntimeAPI) -> Callable:
-                    async def _cb(agent_id: str, stage: str) -> None:
-                        await api._post_review_request(agent_id, stage)
-
-                    return _cb
-
-                child._on_review_request = _make_review_cb(self)
-
-        if pm_container is not None:
-
-            async def _gsd_review_cb(agent_id: str, stage: str) -> None:
-                await self._dispatch_pm_review(agent_id, stage)
-
-            pm_container._on_gsd_review = _gsd_review_cb
-
-        # 5. Wire PM action callbacks
-        if pm_container is not None:
-
-            # Assign task
-            async def _assign(agent_id: str, item: Any) -> None:
-                await self._on_assign_task(agent_id, item, project_sup)
-
-            pm_container._on_assign_task = _assign
-
-            pm_container._on_trigger_integration_review = (
-                self._on_trigger_integration_review
-            )
-
-            # Recruit agent
-            async def _recruit(spec: Any) -> None:
-                await self._on_recruit_agent(spec, project_sup, pm_event_sink)
-
-            pm_container._on_recruit_agent = _recruit
-
-            # Remove agent
-            async def _remove(agent_id: str) -> None:
-                await self._on_remove_agent(agent_id, project_sup)
-
-            pm_container._on_remove_agent = _remove
-
-            # Escalate to strategist
-            pm_container._on_escalate_to_strategist = self._on_escalate_to_strategist
-
-            # Send intervention
-            pm_container._on_send_intervention = self._on_send_intervention
-
-        # 6. LAST: Wire PM event sink (Research Pitfall 2 -- must be after all callbacks)
-        if pm_container is not None and pm_event_sink is not None:
-            project_sup.set_pm_event_sink(pm_event_sink)
+        # 4. Register all agent handles with MentionRouterCog
+        if self._mention_router:
+            for child_id, child in project_sup.children.items():
+                if isinstance(child, FulltimeAgent):
+                    continue  # PM already registered above
+                self._mention_router.register_agent(
+                    f"agent-{child_id}",
+                    child,
+                    channel_id=self.get_channel_id(f"agent-{child_id}"),
+                )
