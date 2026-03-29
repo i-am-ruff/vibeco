@@ -92,6 +92,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - [ ] CLI commands as API clients (hire, give-task, dismiss, status, health, new-project)
 - [ ] `vco new-project` composite command using hire internally
 - [x] CommunicationPort protocol + DiscordCommunicationPort adapter — Phase 19
+- [x] CompanyRoot extracted to daemon with RuntimeAPI gateway — Phase 20
 - [ ] Bot refactored to thin relay (slash commands → CLI/API)
 - [ ] State persistence for container state, pane IDs, task queues
 - [ ] Strategist Bash-based autonomy (vco hire/give-task/dismiss)
@@ -114,6 +115,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - v2.0 container architecture fully operational with 740 passing tests
 - v3.0 Phase 18 complete — daemon with Unix socket, NDJSON protocol, PID lifecycle, signal handling, vco up/down
 - v3.0 Phase 19 complete — CommunicationPort protocol abstraction with Discord adapter
+- v3.0 Phase 20 complete — CompanyRoot extraction, RuntimeAPI gateway (597 lines), bot gutted (714→252 lines)
 
 ## Constraints
 
@@ -155,4 +157,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after Phase 19 completion*
+*Last updated: 2026-03-29 after Phase 20 completion*
