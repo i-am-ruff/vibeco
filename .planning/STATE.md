@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
-status: Ready to execute
-stopped_at: Completed 27-03-PLAN.md
-last_updated: "2026-03-29T23:20:23.005Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 27-04-PLAN.md
+last_updated: "2026-03-29T23:25:24.279Z"
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -58,6 +58,8 @@ Recent decisions affecting current work:
 - [Phase 27]: Module-level set/get pattern for agent types config avoids threading through constructors
 - [Phase 27]: hasattr duck typing over isinstance for method guards (resolve_review, initialize_conversation, backlog)
 - [Phase 27]: Dual registry by type string and class name enables docker-gsd -> GsdAgent mapping via container_class config
+- [Phase 27]: Auto-build placed in company_root.hire() not factory -- factory is sync, ensure_docker_image is async
+- [Phase 27]: Transport type detection in health_report uses hasattr duck typing on _image attribute
 
 ### Roadmap Evolution
 
@@ -82,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T23:20:23.001Z
-Stopped at: Completed 27-03-PLAN.md
+Last session: 2026-03-29T23:25:24.276Z
+Stopped at: Completed 27-04-PLAN.md
 Resume file: None
