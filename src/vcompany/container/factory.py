@@ -17,6 +17,7 @@ from typing import Callable
 from vcompany.container.child_spec import ChildSpec
 from vcompany.container.container import AgentContainer
 from vcompany.container.health import HealthReport
+from vcompany.transport.docker import DockerTransport
 from vcompany.transport.local import LocalTransport
 from vcompany.transport.protocol import AgentTransport
 
@@ -28,7 +29,7 @@ _REGISTRY: dict[str, type[AgentContainer]] = {}
 # Transport registry: transport name -> transport class (D-07)
 _TRANSPORT_REGISTRY: dict[str, type] = {
     "local": LocalTransport,
-    # "docker": DockerTransport,  # Phase 26
+    "docker": DockerTransport,
 }
 
 
