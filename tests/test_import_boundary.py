@@ -133,7 +133,6 @@ def _get_all_import_lines(content: str) -> list[tuple[int, str]]:
     return imports
 
 
-@pytest.mark.xfail(reason="Phase 22 plan 03 will fix remaining violations in client.py, strategist.py, etc.")
 def test_no_container_imports_in_bot():
     """Bot layer must not import container/supervisor modules at runtime (module-level only).
 
@@ -169,7 +168,6 @@ def test_no_discord_in_daemon():
     assert not violations, f"discord imports found in daemon: {violations}"
 
 
-@pytest.mark.xfail(reason="Phase 22 plan 03 will fix remaining violations in client.py, strategist.py, etc.")
 def test_no_function_level_prohibited_imports():
     """Bot cog files must not have prohibited imports even inside function bodies.
 
@@ -195,7 +193,6 @@ def test_no_function_level_prohibited_imports():
     )
 
 
-@pytest.mark.xfail(reason="Phase 22 plan 03 will fix remaining violations in client.py, strategist.py, etc.")
 def test_no_company_root_attribute_access():
     """Bot cog files must not access company_root directly.
 
