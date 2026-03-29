@@ -3,6 +3,7 @@
 import click
 
 from vcompany.cli.bot_cmd import bot
+from vcompany.cli.build_cmd import build
 from vcompany.cli.clone_cmd import clone
 from vcompany.cli.init_cmd import init
 from vcompany.cli.monitor_cmd import monitor
@@ -30,6 +31,7 @@ def cli():
 
 
 cli.add_command(bot)
+cli.add_command(build)
 cli.add_command(clone)
 cli.add_command(init)
 cli.add_command(monitor)
