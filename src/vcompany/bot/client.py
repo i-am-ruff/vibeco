@@ -28,6 +28,7 @@ from vcompany.container.context import ContainerContext
 from vcompany.models.config import ProjectConfig
 from vcompany.resilience.message_queue import MessageQueue, MessagePriority, QueuedMessage, RateLimited
 from vcompany.supervisor.company_root import CompanyRoot
+from vcompany.bot.comm_adapter import DiscordCommunicationPort
 from vcompany.tmux.session import TmuxManager
 
 logger = logging.getLogger("vcompany.bot.client")
@@ -42,6 +43,7 @@ _COG_EXTENSIONS: list[str] = [
     "vcompany.bot.cogs.workflow_master",
     "vcompany.bot.cogs.workflow_orchestrator_cog",
     "vcompany.bot.cogs.health",
+    "vcompany.bot.cogs.task_relay",
 ]
 
 
@@ -58,6 +60,7 @@ class VcoBot(commands.Bot):
         guild_id: int,
         project_dir: Path | None = None,
         config: ProjectConfig | None = None,
+        daemon: object | None = None,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True  # privileged intent required for Strategist on_message
@@ -89,6 +92,10 @@ class VcoBot(commands.Bot):
 
         # TmuxManager for real agent session management (Phase 8.2)
         self._tmux_manager: TmuxManager | None = None
+
+        # Daemon reference for CommunicationPort registration (COMM-03)
+        self._daemon = daemon
+        self._comm_registered: bool = False
 
     async def setup_hook(self) -> None:
         """Load Cog extensions and sync slash commands to guild (D-12, DISC-01)."""
@@ -309,6 +316,27 @@ class VcoBot(commands.Bot):
                     if strategist_cog_ref is not None:
                         strategist_cog_ref.set_company_agent(strategist_container)
 
+                    # Wire agent management callbacks (Strategist → CompanyRoot)
+                    async def _on_hire(agent_id: str, template: str = "generic") -> Any:
+                        guild = self.get_guild(self._guild_id)
+                        return await self.company_root.hire(
+                            agent_id=agent_id, template=template, guild=guild,
+                        )
+
+                    async def _on_give_task(agent_id: str, task: str) -> None:
+                        container = await self.company_root._find_container(agent_id)
+                        if container is not None:
+                            await container.give_task(task)
+                        else:
+                            logger.warning("give_task: agent %s not found", agent_id)
+
+                    async def _on_dismiss(agent_id: str) -> None:
+                        await self.company_root.dismiss(agent_id)
+
+                    strategist_container._on_hire = _on_hire
+                    strategist_container._on_give_task = _on_give_task
+                    strategist_container._on_dismiss = _on_dismiss
+
                     logger.info("Strategist CompanyAgent wired (conversation + callbacks)")
 
                 # MessageQueue for outbound notifications (RESL-01)
@@ -343,6 +371,7 @@ class VcoBot(commands.Bot):
                         gsd_mode=agent_cfg.gsd_mode,
                         system_prompt=agent_cfg.system_prompt,
                         gsd_command="/gsd:discuss-phase 1" if agent_cfg.type == "gsd" else None,
+                        uses_tmux=agent_cfg.type in ("gsd", "continuous"),
                     )
                     specs.append(ChildSpec(child_id=agent_cfg.id, agent_type=ctx.agent_type, context=ctx))
 
@@ -585,6 +614,13 @@ class VcoBot(commands.Bot):
                 logger.exception("Failed to initialize PM/PlanReviewer")
         else:
             logger.info("No project loaded -- running in Strategist-only mode")
+
+        # ── Register CommunicationPort with daemon (COMM-03) ──────────
+        if self._daemon is not None and not self._comm_registered:
+            adapter = DiscordCommunicationPort(bot=self)
+            self._daemon.set_comm_port(adapter)
+            self._comm_registered = True
+            logger.info("CommunicationPort registered with daemon")
 
         self._initialized = True
         self._ready_flag = True

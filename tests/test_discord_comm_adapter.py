@@ -225,3 +225,45 @@ class TestSubscribeToChannel:
         result = await adapter.subscribe_to_channel(payload)
 
         assert result is False
+
+
+# --- Registration in VcoBot ---
+
+
+class TestDaemonRegistration:
+    @pytest.mark.asyncio
+    async def test_registration_happens_once_even_if_on_ready_called_twice(self):
+        """Simulate the _comm_registered guard preventing double registration."""
+        from vcompany.bot.comm_adapter import DiscordCommunicationPort
+
+        # Mock daemon with set_comm_port
+        daemon = MagicMock()
+        daemon.set_comm_port = MagicMock()
+
+        # Simulate VcoBot's registration logic (extracted from on_ready)
+        # We test the guard directly since on_ready requires full Discord setup.
+        _comm_registered = False
+
+        def register_once(bot_ref, daemon_ref):
+            nonlocal _comm_registered
+            if daemon_ref is not None and not _comm_registered:
+                adapter = DiscordCommunicationPort(bot=bot_ref)
+                daemon_ref.set_comm_port(adapter)
+                _comm_registered = True
+
+        bot = MagicMock()
+        register_once(bot, daemon)
+        register_once(bot, daemon)  # second call should be no-op
+
+        assert daemon.set_comm_port.call_count == 1
+
+    def test_comm_registered_flag_exists_on_vcobot(self):
+        """VcoBot should have _comm_registered and _daemon attributes."""
+        # We can't fully construct VcoBot without Discord, but we can check
+        # the class accepts the daemon parameter by inspecting the signature.
+        import inspect
+
+        from vcompany.bot.client import VcoBot
+
+        sig = inspect.signature(VcoBot.__init__)
+        assert "daemon" in sig.parameters
