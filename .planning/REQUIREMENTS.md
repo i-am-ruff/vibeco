@@ -3,70 +3,40 @@
 **Defined:** 2026-03-29
 **Core Value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
 
-## v3.0 Requirements
-
-Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
-
-### Daemon Lifecycle
-
-- [x] **DAEMON-01**: `vco up` starts runtime daemon as foreground process with CompanyRoot and supervision tree
-- [x] **DAEMON-02**: Runtime daemon creates PID file on start and removes on clean exit
-- [x] **DAEMON-03**: Runtime daemon handles SIGTERM/SIGINT for graceful shutdown (stops containers, closes socket)
-- [x] **DAEMON-04**: Runtime daemon cleans up stale socket file on start (PID probe before unlink)
-- [x] **DAEMON-05**: `vco down` sends graceful shutdown signal to running daemon
-- [x] **DAEMON-06**: `vco up` starts Discord bot alongside daemon in same event loop (`bot.start()`)
-
-### Socket API
-
-- [x] **SOCK-01**: Runtime daemon listens on Unix socket with asyncio.start_unix_server
-- [x] **SOCK-02**: NDJSON protocol for request-response communication (one JSON object per line)
-- [x] **SOCK-03**: Request framing includes method, params, and request ID
-- [x] **SOCK-04**: Error responses include error code, message, and request ID
-- [x] **SOCK-05**: Event subscription -- connected clients can subscribe to daemon events (health changes, agent transitions)
-- [x] **SOCK-06**: Protocol version field in handshake for forward compatibility
-
-### Communication Abstraction
-
-- [x] **COMM-01**: CommunicationPort protocol formalized with methods for send_message, send_embed, create_thread, subscribe_to_channel
-- [x] **COMM-02**: Daemon never imports discord.py -- all platform communication goes through CommunicationPort
-- [x] **COMM-03**: DiscordCommunicationPort adapter implements CommunicationPort protocol in the bot layer
-- [x] **COMM-04**: StrategistConversation runs in daemon, sends/receives through CommunicationPort (not StrategistCog)
-- [x] **COMM-05**: PM review flow state machine runs in daemon, sends review requests and receives responses through CommunicationPort
-- [x] **COMM-06**: Channel creation (project categories, agent channels) requested by daemon through CommunicationPort
-
-### CLI Commands
-
-- [x] **CLI-01**: `vco hire <type> <name>` creates agent container via socket API
-- [x] **CLI-02**: `vco give-task <agent> <task>` queues task for agent via socket API
-- [x] **CLI-03**: `vco dismiss <agent>` stops and cleans up agent via socket API
-- [x] **CLI-04**: `vco status` shows supervision tree and agent states via socket API
-- [x] **CLI-05**: `vco health` shows health tree with per-agent status via socket API
-- [x] **CLI-06**: `vco new-project` is composite command: init + clone + add_project via socket API (hires all agents from agents.yaml)
-
-### CompanyRoot Extraction
-
-- [x] **EXTRACT-01**: CompanyRoot and supervision tree run inside daemon process, not bot
-- [x] **EXTRACT-02**: RuntimeAPI gateway class provides typed methods for all CompanyRoot operations
-- [x] **EXTRACT-03**: All callback closures from on_ready() replaced with RuntimeAPI calls or event subscriptions
-- [x] **EXTRACT-04**: Bot accesses CompanyRoot exclusively through RuntimeAPI (no direct imports)
-
-### Bot Refactor
-
-- [x] **BOT-01**: All slash commands (/new-project, /dispatch, /kill, /relaunch, /health) call RuntimeAPI
-- [x] **BOT-02**: No container module imports in bot cogs
-- [x] **BOT-03**: Bot implements DiscordCommunicationPort and registers with daemon on startup
-- [x] **BOT-04**: Bot cogs are pure I/O adapters: Discord events -> daemon, daemon events -> Discord formatting (embeds, threads, reactions)
-- [x] **BOT-05**: Message relay handlers (on_message for agent/task channels) convert to generic messages and send to daemon
-
-### Strategist Autonomy
-
-- [x] **STRAT-01**: Strategist calls `vco hire`, `vco give-task`, `vco dismiss` via Bash tool
-- [x] **STRAT-02**: `[CMD:...]` action tag parsing removed from StrategistCog
-- [x] **STRAT-03**: Strategist persona updated to reference `vco` CLI commands instead of action tags
-
 ## v3.1 Requirements
 
-Deferred to future release. Tracked but not in current roadmap.
+Requirements for Container Runtime Abstraction. Each maps to roadmap phases.
+
+### Discord Visibility
+
+- [ ] **VIS-01**: Every inter-agent event (phase complete, task assigned, plan reviewed, escalation) produces a Discord message in the appropriate channel before the event takes effect
+- [ ] **VIS-02**: PM backlog operations (add, remove, prioritize) are posted to Discord with the change described, not silently mutated
+- [ ] **VIS-03**: Plan review decisions (approve/reject with confidence score and reasoning) are posted to Discord before the approval/rejection is processed
+- [ ] **VIS-04**: RuntimeAPI has no agent-type-specific routing methods -- no hardcoded "send this to PM" or "send this to Strategist" wiring
+- [ ] **VIS-05**: Agent-to-agent coordination uses Discord channel subscriptions, not Python post_event() calls -- any agent watching a channel can react to events
+- [ ] **VIS-06**: Task assignment from PM to GSD agent is a Discord message in the agent's channel, not an internal queue_task() bypass
+
+### Transport Abstraction
+
+- [ ] **TXPT-01**: AgentTransport protocol exists with setup/teardown/exec/is_alive/read_file/write_file methods that abstract the execution environment boundary
+- [ ] **TXPT-02**: LocalTransport implements AgentTransport using TmuxManager for interactive sessions and subprocess for piped invocations
+- [ ] **TXPT-03**: AgentContainer uses injected AgentTransport instead of direct TmuxManager calls
+- [ ] **TXPT-04**: StrategistConversation uses injected AgentTransport.exec() instead of direct asyncio.create_subprocess_exec
+- [ ] **TXPT-05**: Agent readiness and idle signaling uses daemon socket (vco signal --ready/--idle) instead of sentinel temp files
+- [ ] **TXPT-06**: AgentConfig has a transport field (default "local") that factory uses to inject the correct transport implementation
+
+### Docker Runtime
+
+- [ ] **DOCK-01**: DockerTransport implements AgentTransport using docker exec for both interactive (tmux inside container) and piped (claude -p) modes
+- [ ] **DOCK-02**: Dockerfile exists for building a Claude Code image with tweakcc patches applied
+- [ ] **DOCK-03**: Docker container receives daemon Unix socket via volume mount so vco CLI commands work from inside
+- [ ] **DOCK-04**: Docker container mounts agent work directory as a volume for code access
+- [ ] **DOCK-05**: AgentConfig.docker_image field specifies which image to use when transport is "docker"
+- [ ] **DOCK-06**: Persistent Docker containers (docker create + start/stop) preserve ~/.claude session state across agent restarts
+
+## v3.2+ Requirements
+
+Deferred to future release.
 
 ### State Persistence
 
@@ -79,61 +49,39 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Feature | Reason |
 |---------|--------|
-| State persistence / crash recovery | Deferred to v3.1 -- daemon restart loses state for now |
-| Multi-machine distributed agents | v4 scope -- single machine only |
-| Non-Discord CommunicationPort adapters (Slack, web) | v4 scope -- only DiscordCommunicationPort in v3.0, but abstraction is ready |
-| HTTP/gRPC protocol | NDJSON over Unix socket is sufficient for single-machine |
-| Database for state | Filesystem + aiosqlite is correct for v3.0 |
-| Agent-to-agent direct messaging | v4 scope -- agents communicate through supervision tree and CommunicationPort |
+| State persistence / crash recovery | Deferred to v3.2 -- daemon restart loses state for now |
+| Multi-machine distributed agents | v4 scope -- NetworkTransport not in v3.1 |
+| Non-Discord CommunicationPort adapters (Slack, web) | v4 scope -- only DiscordCommunicationPort |
+| Kubernetes/orchestrator integration | v4 scope -- Docker only for v3.1 |
+| Agent-to-agent direct messaging | By design -- all communication through Discord channels |
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DAEMON-01 | Phase 18 | Complete |
-| DAEMON-02 | Phase 18 | Complete |
-| DAEMON-03 | Phase 18 | Complete |
-| DAEMON-04 | Phase 18 | Complete |
-| DAEMON-05 | Phase 18 | Complete |
-| DAEMON-06 | Phase 18 | Complete |
-| SOCK-01 | Phase 18 | Complete |
-| SOCK-02 | Phase 18 | Complete |
-| SOCK-03 | Phase 18 | Complete |
-| SOCK-04 | Phase 18 | Complete |
-| SOCK-05 | Phase 18 | Complete |
-| SOCK-06 | Phase 18 | Complete |
-| COMM-01 | Phase 19 | Complete |
-| COMM-02 | Phase 19 | Complete |
-| COMM-03 | Phase 19 | Complete |
-| COMM-04 | Phase 20 | Complete |
-| COMM-05 | Phase 20 | Complete |
-| COMM-06 | Phase 20 | Complete |
-| EXTRACT-01 | Phase 20 | Complete |
-| EXTRACT-02 | Phase 20 | Complete |
-| EXTRACT-03 | Phase 20 | Complete |
-| EXTRACT-04 | Phase 20 | Complete |
-| CLI-01 | Phase 21 | Complete |
-| CLI-02 | Phase 21 | Complete |
-| CLI-03 | Phase 21 | Complete |
-| CLI-04 | Phase 21 | Complete |
-| CLI-05 | Phase 21 | Complete |
-| CLI-06 | Phase 21 | Complete |
-| BOT-01 | Phase 22 | Complete |
-| BOT-02 | Phase 22 | Complete |
-| BOT-03 | Phase 22 | Complete |
-| BOT-04 | Phase 22 | Complete |
-| BOT-05 | Phase 22 | Complete |
-| STRAT-01 | Phase 23 | Complete |
-| STRAT-02 | Phase 23 | Complete |
-| STRAT-03 | Phase 23 | Complete |
+| VIS-01 | TBD | Pending |
+| VIS-02 | TBD | Pending |
+| VIS-03 | TBD | Pending |
+| VIS-04 | TBD | Pending |
+| VIS-05 | TBD | Pending |
+| VIS-06 | TBD | Pending |
+| TXPT-01 | TBD | Pending |
+| TXPT-02 | TBD | Pending |
+| TXPT-03 | TBD | Pending |
+| TXPT-04 | TBD | Pending |
+| TXPT-05 | TBD | Pending |
+| TXPT-06 | TBD | Pending |
+| DOCK-01 | TBD | Pending |
+| DOCK-02 | TBD | Pending |
+| DOCK-03 | TBD | Pending |
+| DOCK-04 | TBD | Pending |
+| DOCK-05 | TBD | Pending |
+| DOCK-06 | TBD | Pending |
 
 **Coverage:**
-- v3.0 requirements: 36 total
-- Mapped to phases: 36
-- Unmapped: 0
+- v3.1 requirements: 18 total
+- Mapped to phases: 0 (pending roadmap)
+- Unmapped: 18
 
 ---
 *Requirements defined: 2026-03-29*
-*Last updated: 2026-03-29 after roadmap traceability mapping*
