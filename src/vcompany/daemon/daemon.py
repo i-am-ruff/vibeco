@@ -14,10 +14,12 @@ from pathlib import Path
 
 from aiohttp import web
 
+from vcompany.container.factory import set_agent_types_config
 from vcompany.daemon.comm import CommunicationPort, NoopCommunicationPort, SendMessagePayload
 from vcompany.daemon.runtime_api import RuntimeAPI
 from vcompany.daemon.server import SocketServer
 from vcompany.daemon.signal_handler import SignalRouter, create_signal_app
+from vcompany.models.agent_types import get_default_config, load_agent_types
 from vcompany.shared.paths import VCO_PID_PATH, VCO_SOCKET_PATH
 
 logger = logging.getLogger("vcompany.daemon")
@@ -205,7 +207,20 @@ class Daemon:
         async def _noop_async() -> None:
             pass
 
-        transport_deps = {"tmux_manager": tmux_manager}
+        transport_deps = {
+            "tmux_manager": tmux_manager,
+            "project_name": project_dir.name if project_dir else "",
+        }
+
+        # Load agent-types config (D-05: single source of truth)
+        agent_types_yaml = Path(__file__).parent.parent.parent.parent / "agent-types.yaml"
+        if agent_types_yaml.exists():
+            agent_types_config = load_agent_types(agent_types_yaml)
+            logger.info("Loaded agent-types config from %s", agent_types_yaml)
+        else:
+            agent_types_config = get_default_config()
+            logger.info("Using built-in agent-types defaults")
+        set_agent_types_config(agent_types_config)
 
         company_root = CompanyRoot(
             on_escalation=lambda msg: api_ref[0]._on_escalation(msg) if api_ref[0] else _noop_async(),

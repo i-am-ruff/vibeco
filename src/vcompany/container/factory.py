@@ -17,6 +17,7 @@ from typing import Callable
 from vcompany.container.child_spec import ChildSpec
 from vcompany.container.container import AgentContainer
 from vcompany.container.health import HealthReport
+from vcompany.models.agent_types import AgentTypeConfig, AgentTypesConfig
 from vcompany.transport.docker import DockerTransport
 from vcompany.transport.local import LocalTransport
 from vcompany.transport.protocol import AgentTransport
@@ -31,6 +32,47 @@ _TRANSPORT_REGISTRY: dict[str, type] = {
     "local": LocalTransport,
     "docker": DockerTransport,
 }
+
+# Module-level agent types config -- set once at daemon startup via set_agent_types_config()
+_agent_types_config: AgentTypesConfig | None = None
+
+
+def set_agent_types_config(config: AgentTypesConfig) -> None:
+    """Set the agent types config for factory transport resolution.
+
+    Called once at daemon startup after loading agent-types.yaml.
+    """
+    global _agent_types_config
+    _agent_types_config = config
+
+
+def get_agent_types_config() -> AgentTypesConfig | None:
+    """Return the current agent types config, or None if not set."""
+    return _agent_types_config
+
+
+def _resolve_transport_deps(
+    transport_name: str,
+    global_deps: dict,
+    type_config: AgentTypeConfig | None,
+) -> dict:
+    """Resolve per-transport constructor dependencies from global deps and agent type config.
+
+    Args:
+        transport_name: Transport name ("local", "docker", etc.).
+        global_deps: Global dependency dict from daemon (tmux_manager, project_name, etc.).
+        type_config: Agent type config with transport-specific fields (docker_image, etc.).
+
+    Returns:
+        Dict of kwargs for the transport constructor.
+    """
+    if transport_name == "local":
+        return {"tmux_manager": global_deps.get("tmux_manager")}
+    if transport_name == "docker":
+        image = type_config.docker_image if type_config else "vco-agent:latest"
+        project = global_deps.get("project_name", "")
+        return {"docker_image": image, "project_name": project}
+    return {}
 
 
 def register_agent_type(agent_type: str, cls: type[AgentContainer]) -> None:
@@ -76,11 +118,17 @@ def create_container(
         An AgentContainer instance (or subclass thereof).
     """
     if transport is None:
-        # D-07: Look up transport name from spec, instantiate from registry
+        # D-07 + D-01: Look up transport from spec, resolve per-transport deps via config
         transport_name = spec.transport
         transport_cls = _TRANSPORT_REGISTRY.get(transport_name)
         if transport_cls is not None:
-            deps = transport_deps or {}
+            type_config = None
+            if _agent_types_config is not None:
+                try:
+                    type_config = _agent_types_config.get_type(spec.agent_type)
+                except KeyError:
+                    pass
+            deps = _resolve_transport_deps(transport_name, transport_deps or {}, type_config)
             transport = transport_cls(**deps)
 
     cls = _REGISTRY.get(spec.agent_type, AgentContainer)
