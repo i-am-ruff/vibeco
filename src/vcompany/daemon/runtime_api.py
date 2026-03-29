@@ -440,6 +440,75 @@ class RuntimeAPI:
             raise KeyError(f"Agent {agent_id!r} not found")
         await container.stop()
 
+    async def new_project_from_name(self, name: str) -> None:
+        """Initialize a project by name -- loads config, creates structure, clones repos, starts supervision.
+
+        Called by bot /new-project command. Handles all business logic that was
+        previously inline in CommandsCog.
+
+        Raises:
+            FileNotFoundError: If agents.yaml not found.
+        """
+        from vcompany.shared.paths import PROJECTS_BASE
+        from vcompany.models.config import load_config
+        from vcompany.shared.file_ops import write_atomic
+        from vcompany.shared.templates import render_template
+
+        project_dir = PROJECTS_BASE / name
+
+        if not (project_dir / "agents.yaml").exists():
+            raise FileNotFoundError(
+                f"No agents.yaml found at {project_dir}/agents.yaml"
+            )
+
+        config = load_config(project_dir / "agents.yaml")
+
+        # Create project directory structure
+        context_dir = project_dir / "context"
+        agents_dir = context_dir / "agents"
+        context_dir.mkdir(parents=True, exist_ok=True)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate agent system prompts
+        for agent in config.agents:
+            prompt_content = render_template(
+                "agent_prompt.md.j2",
+                agent_id=agent.id,
+                role=agent.role,
+                project_name=config.project,
+                owned_dirs=agent.owns,
+                consumes=agent.consumes,
+                milestone_name="TBD",
+                milestone_scope="See MILESTONE-SCOPE.md",
+            )
+            write_atomic(agents_dir / f"{agent.id}.md", prompt_content)
+
+        # Clone repos if needed
+        clones_dir = project_dir / "clones"
+        needs_clone = not clones_dir.exists() or not any(clones_dir.iterdir())
+        if needs_clone:
+            import shutil
+
+            from vcompany.cli.clone_cmd import _deploy_artifacts
+            from vcompany.git import ops as git
+
+            clones_dir.mkdir(exist_ok=True)
+            for agent in config.agents:
+                clone_dir = clones_dir / agent.id
+                if clone_dir.exists():
+                    continue
+                result = await asyncio.to_thread(git.clone, config.repo, clone_dir)
+                if not result.success:
+                    logger.error("Error cloning for %s: %s", agent.id, result.stderr)
+                    continue
+                await asyncio.to_thread(
+                    git.checkout_new_branch, f"agent/{agent.id.lower()}", clone_dir
+                )
+                await asyncio.to_thread(_deploy_artifacts, clone_dir, agent, config, project_dir)
+
+        # Wire project through supervision tree
+        await self.new_project(config, project_dir, persona_path=None)
+
     async def remove_project(self, project_name: str) -> None:
         """Remove a project from CompanyRoot.
 

@@ -4,17 +4,12 @@ Implements /new-project, /dispatch, /standup, /kill, /relaunch, /integrate.
 All commands gated by vco-owner role via app_commands checks (DISC-10).
 All blocking calls wrapped in asyncio.to_thread (DISC-11).
 
-Routes agent lifecycle operations through RuntimeAPI (EXTRACT-04).
-/dispatch shows tmux liveness and restarts stopped containers via supervisor.
-/kill and /relaunch kill tmux panes via container.stop().
-/status removed in Phase 8.2 -- replaced by /health.
-
-Implements DISC-03 through DISC-11, MIGR-01, EXTRACT-04.
+Routes all operations through RuntimeAPI (EXTRACT-04, Phase 22).
+Bot cog is a pure Discord I/O adapter -- no business logic, no prohibited imports.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -23,18 +18,9 @@ from discord import app_commands
 from discord.ext import commands
 
 from vcompany.bot.channel_setup import setup_project_channels
-from vcompany.bot.embeds import (
-    build_alert_embed,
-    build_conflict_embed,
-    build_integration_embed,
-    build_standup_embed,
-)
+from vcompany.bot.embeds import build_alert_embed
 from vcompany.bot.permissions import is_owner_app_check
 from vcompany.bot.views.confirm import ConfirmView
-from vcompany.bot.views.standup_release import ReleaseView
-from vcompany.communication.checkin import gather_checkin_data
-from vcompany.communication.standup import StandupSession
-from vcompany.integration.pipeline import IntegrationPipeline
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
@@ -55,19 +41,11 @@ def _get_runtime_api(bot: VcoBot):
     return None
 
 
-def _get_company_root(bot: VcoBot):
-    """Get CompanyRoot via RuntimeAPI transitional bridge (Phase 22 will remove)."""
-    api = _get_runtime_api(bot)
-    if api is not None:
-        return getattr(api, "_root", None)
-    return None
-
-
 class CommandsCog(commands.Cog):
     """Operator slash commands for vCompany project orchestration.
 
-    Every command requires vco-owner role. Agent lifecycle operations route
-    through RuntimeAPI (EXTRACT-04).
+    Every command requires vco-owner role. All operations delegate
+    to RuntimeAPI -- this cog is a pure Discord I/O adapter.
     """
 
     def __init__(self, bot: VcoBot) -> None:
@@ -83,17 +61,17 @@ class CommandsCog(commands.Cog):
             return False
         return True
 
-    # ── /new-project ──────────────────────────────────────────────────
+    # -- /new-project ----------------------------------------------------------
 
     @app_commands.command(name="new-project", description="Set up a new project (channels + agents + supervision tree)")
     @app_commands.describe(name="Project name")
     @is_owner_app_check()
     async def new_project(self, interaction: discord.Interaction, name: str) -> None:
-        """Full project setup: channels + init + clone + supervision tree (DISC-03, EXTRACT-04).
+        """Full project setup via RuntimeAPI (DISC-03, EXTRACT-04).
 
         Expects the Strategist to have already generated project files at
         ~/vco-projects/<name>/ (agents.yaml, planning/ artifacts).
-        Uses RuntimeAPI.new_project() instead of duplicating CompanyRoot creation.
+        Delegates all business logic to RuntimeAPI.new_project().
         """
         try:
             guild = interaction.guild
@@ -105,119 +83,54 @@ class CommandsCog(commands.Cog):
 
             await interaction.response.defer()
 
-            # Check project files exist
-            from vcompany.shared.paths import PROJECTS_BASE
-            project_dir = PROJECTS_BASE / name
-
-            if not (project_dir / "agents.yaml").exists():
-                await interaction.followup.send(
-                    f"No agents.yaml found at `{project_dir}/agents.yaml`.\n"
-                    "Ask the Strategist to set up the project files first, then run this command."
-                )
-                return
-
-            # Step 1: Load config and initialize project structure
-            from vcompany.models.config import load_config
-            from vcompany.shared.file_ops import write_atomic
-            from vcompany.shared.templates import render_template
-
-            config = load_config(project_dir / "agents.yaml")
-
-            # Create project directory structure (same as vco init)
-            context_dir = project_dir / "context"
-            agents_dir = context_dir / "agents"
-            context_dir.mkdir(parents=True, exist_ok=True)
-            agents_dir.mkdir(parents=True, exist_ok=True)
-
-            # Generate agent system prompts
-            for agent in config.agents:
-                prompt_content = render_template(
-                    "agent_prompt.md.j2",
-                    agent_id=agent.id,
-                    role=agent.role,
-                    project_name=config.project,
-                    owned_dirs=agent.owns,
-                    consumes=agent.consumes,
-                    milestone_name="TBD",
-                    milestone_scope="See MILESTONE-SCOPE.md",
-                )
-                write_atomic(agents_dir / f"{agent.id}.md", prompt_content)
-
-            await interaction.followup.send(
-                f"Setting up **{name}**... loaded {len(config.agents)} agents, project structure initialized."
-            )
-
-            # Step 2: Clone repos (if not already cloned)
-            clones_dir = project_dir / "clones"
-            needs_clone = not clones_dir.exists() or not any(clones_dir.iterdir())
-            if needs_clone:
-                from vcompany.cli.clone_cmd import _deploy_artifacts
-                from vcompany.git import ops as git
-                import shutil
-
-                clones_dir.mkdir(exist_ok=True)
-                for agent in config.agents:
-                    clone_dir = clones_dir / agent.id
-                    if clone_dir.exists():
-                        continue
-                    result = await asyncio.to_thread(git.clone, config.repo, clone_dir)
-                    if not result.success:
-                        await interaction.channel.send(f"Error cloning for {agent.id}: {result.stderr}")
-                        continue
-                    await asyncio.to_thread(
-                        git.checkout_new_branch, f"agent/{agent.id.lower()}", clone_dir
-                    )
-                    await asyncio.to_thread(_deploy_artifacts, clone_dir, agent, config, project_dir)
-
-                await interaction.channel.send(f"Cloned {len(config.agents)} agent repos.")
-            else:
-                await interaction.channel.send("Agent clones already exist, skipping clone step.")
-
-            # Step 3: Create Discord channels
-            owner_role = discord.utils.get(guild.roles, name="vco-owner")
-            if owner_role:
-                await setup_project_channels(guild, name, owner_role, config.agents)
-                await interaction.channel.send(f"Discord channels created for **{name}**.")
-
-            # Step 4: Wire project through RuntimeAPI (EXTRACT-04)
-            # Instead of duplicating CompanyRoot creation, delegate to daemon RuntimeAPI
-            self.bot.project_dir = project_dir
-            self.bot.project_config = config
-
             runtime_api = _get_runtime_api(self.bot)
-            if runtime_api is not None:
-                await runtime_api.new_project(config, project_dir, persona_path=None)
-                await interaction.channel.send(
-                    f"Supervision tree started with {len(config.agents)} agents via RuntimeAPI. "
-                    "Agent containers are managed by the supervision tree."
-                )
-            else:
+            if runtime_api is None:
                 await interaction.followup.send("Daemon not ready. Cannot create project.")
                 return
 
-            # Step 5: Wire WorkflowOrchestratorCog with PM (Discord-specific concern)
+            # RuntimeAPI.new_project handles config loading, cloning, supervision tree
+            await runtime_api.new_project_from_name(name)
+
+            # Create Discord channels (Discord-specific concern stays in cog)
+            project_config = runtime_api._project_config
+            if project_config is not None:
+                owner_role = discord.utils.get(guild.roles, name="vco-owner")
+                if owner_role:
+                    await setup_project_channels(guild, name, owner_role, project_config.agents)
+                    await interaction.followup.send(
+                        f"Project **{name}** created with {len(project_config.agents)} agents. "
+                        "Supervision tree active. Discord channels created."
+                    )
+                else:
+                    await interaction.followup.send(
+                        f"Project **{name}** created with {len(project_config.agents)} agents. "
+                        "Supervision tree active. (vco-owner role not found for channel setup)"
+                    )
+            else:
+                await interaction.followup.send(f"Project **{name}** created.")
+
+            # Wire WorkflowOrchestratorCog with PM (Discord-specific concern)
             try:
                 wo_cog = self.bot.get_cog("WorkflowOrchestratorCog")
                 if wo_cog:
-                    # Wire PlanReviewCog notifications
                     plan_review_cog_ref = self.bot.get_cog("PlanReviewCog")
                     if plan_review_cog_ref:
                         plan_review_cog_ref._workflow_cog = wo_cog
 
-                    # Kick off all agents on Phase 1
-                    await interaction.channel.send(
-                        "Starting agent workflows via supervision tree..."
-                    )
-                    for agent in config.agents:
-                        started = await wo_cog.start_workflow(agent.id, 1)
-                        if started:
-                            await interaction.channel.send(
-                                f"Agent **{agent.id}** started on Phase 1 (discuss stage)."
-                            )
-                        else:
-                            await interaction.channel.send(
-                                f"Failed to start workflow for **{agent.id}**."
-                            )
+                    if project_config is not None:
+                        await interaction.channel.send(
+                            "Starting agent workflows via supervision tree..."
+                        )
+                        for agent in project_config.agents:
+                            started = await wo_cog.start_workflow(agent.id, 1)
+                            if started:
+                                await interaction.channel.send(
+                                    f"Agent **{agent.id}** started on Phase 1 (discuss stage)."
+                                )
+                            else:
+                                await interaction.channel.send(
+                                    f"Failed to start workflow for **{agent.id}**."
+                                )
             except Exception:
                 logger.exception("Failed to initialize WorkflowOrchestratorCog in /new-project")
                 await interaction.channel.send(
@@ -234,46 +147,40 @@ class CommandsCog(commands.Cog):
             else:
                 await interaction.response.send_message(embed=embed)
 
-    # ── /dispatch ─────────────────────────────────────────────────────
+    # -- /dispatch -------------------------------------------------------------
 
     @app_commands.command(name="dispatch", description="Dispatch an agent or all agents")
     @app_commands.describe(agent_id="Agent ID to dispatch, or 'all' for all agents")
     @is_owner_app_check()
     async def dispatch_cmd(self, interaction: discord.Interaction, agent_id: str) -> None:
-        """Dispatch an agent via supervision tree (DISC-04, EXTRACT-04).
-
-        Agents are managed by the CompanyRoot supervision tree. Dispatch checks
-        container state and triggers start if needed.
-        """
+        """Dispatch an agent via RuntimeAPI (DISC-04, EXTRACT-04)."""
         if self.bot.project_config is None:
             await interaction.response.send_message(_no_project_msg(), ephemeral=True)
             return
 
         try:
-            company_root = _get_company_root(self.bot)
-            if company_root is None:
+            runtime_api = _get_runtime_api(self.bot)
+            if runtime_api is None:
                 await interaction.response.send_message(
-                    "Supervision tree is not initialized.", ephemeral=True
+                    "Daemon not ready.", ephemeral=True
                 )
                 return
 
             await interaction.response.defer()
 
             if agent_id == "all":
-                # Report all agents with tmux liveness
-                lines = []
-                for ps in company_root.projects.values():
-                    for cid, child in ps.children.items():
-                        tmux_status = "tmux alive" if child.is_tmux_alive() else "tmux dead"
-                        lines.append(f"**{cid}**: {child.state} ({tmux_status})")
-                if lines:
+                # Report all agent states via RuntimeAPI
+                states = await runtime_api.get_agent_states()
+                if states:
+                    lines = [
+                        f"**{s['agent_id']}**: {s['state']} ({s['agent_type']})"
+                        for s in states
+                    ]
                     await interaction.followup.send(
                         "Agent states:\n" + "\n".join(lines)
                     )
                 else:
-                    await interaction.followup.send(
-                        "No agents in supervision tree."
-                    )
+                    await interaction.followup.send("No agents in supervision tree.")
             else:
                 # Validate agent exists in config
                 valid_ids = [a.id for a in self.bot.project_config.agents]
@@ -283,36 +190,12 @@ class CommandsCog(commands.Cog):
                     )
                     return
 
-                container = await company_root._find_container(agent_id)
-                if container is not None:
-                    state = container.state
-                    if state == "running":
-                        tmux_status = "tmux alive" if container.is_tmux_alive() else "tmux dead"
-                        await interaction.followup.send(
-                            f"Agent **{agent_id}** is {state} ({tmux_status})."
-                        )
-                    elif state in ("stopped", "errored"):
-                        # Find ProjectSupervisor and restart via supervision tree
-                        restarted = False
-                        for ps in company_root.projects.values():
-                            if agent_id in ps.children:
-                                spec = ps._get_spec(agent_id)
-                                if spec:
-                                    await ps._start_child(spec)
-                                    await interaction.followup.send(
-                                        f"Agent **{agent_id}** restarted via supervision tree (new tmux session)."
-                                    )
-                                    restarted = True
-                                break
-                        if not restarted:
-                            await interaction.followup.send(
-                                f"Agent **{agent_id}** is {state} but not found in any project supervisor."
-                            )
-                    else:
-                        await interaction.followup.send(
-                            f"Agent **{agent_id}** container state: {state}."
-                        )
-                else:
+                try:
+                    await runtime_api.dispatch(agent_id)
+                    await interaction.followup.send(
+                        f"Agent **{agent_id}** dispatched via RuntimeAPI."
+                    )
+                except KeyError:
                     await interaction.followup.send(
                         f"Agent **{agent_id}** not found in supervision tree."
                     )
@@ -324,22 +207,22 @@ class CommandsCog(commands.Cog):
             else:
                 await interaction.response.send_message(embed=embed)
 
-    # ── /kill ─────────────────────────────────────────────────────────
+    # -- /kill -----------------------------------------------------------------
 
     @app_commands.command(name="kill", description="Kill an agent with confirmation")
     @app_commands.describe(agent_id="Agent ID to kill")
     @is_owner_app_check()
     async def kill_cmd(self, interaction: discord.Interaction, agent_id: str) -> None:
-        """Kill an agent via supervision tree with confirmation (DISC-07, EXTRACT-04)."""
+        """Kill an agent via RuntimeAPI with confirmation (DISC-07, EXTRACT-04)."""
         if self.bot.project_config is None:
             await interaction.response.send_message(_no_project_msg(), ephemeral=True)
             return
 
         try:
-            company_root = _get_company_root(self.bot)
-            if company_root is None:
+            runtime_api = _get_runtime_api(self.bot)
+            if runtime_api is None:
                 await interaction.response.send_message(
-                    "Supervision tree is not initialized.", ephemeral=True
+                    "Daemon not ready.", ephemeral=True
                 )
                 return
 
@@ -352,11 +235,10 @@ class CommandsCog(commands.Cog):
             await view.wait()
 
             if view.value is True:
-                container = await company_root._find_container(agent_id)
-                if container is not None:
-                    await container.stop()
-                    await interaction.followup.send(f"Agent **{agent_id}** stopped (tmux pane killed).")
-                else:
+                try:
+                    await runtime_api.kill(agent_id)
+                    await interaction.followup.send(f"Agent **{agent_id}** stopped.")
+                except KeyError:
                     await interaction.followup.send(
                         f"Agent **{agent_id}** not found in supervision tree."
                     )
@@ -370,25 +252,22 @@ class CommandsCog(commands.Cog):
             else:
                 await interaction.response.send_message(embed=embed)
 
-    # ── /relaunch ─────────────────────────────────────────────────────
+    # -- /relaunch -------------------------------------------------------------
 
     @app_commands.command(name="relaunch", description="Relaunch an agent")
     @app_commands.describe(agent_id="Agent ID to relaunch")
     @is_owner_app_check()
     async def relaunch_cmd(self, interaction: discord.Interaction, agent_id: str) -> None:
-        """Relaunch an agent via supervision tree (DISC-08, EXTRACT-04).
-
-        Stops the container; the supervisor restart policy will restart it.
-        """
+        """Relaunch an agent via RuntimeAPI (DISC-08, EXTRACT-04)."""
         if self.bot.project_config is None:
             await interaction.response.send_message(_no_project_msg(), ephemeral=True)
             return
 
         try:
-            company_root = _get_company_root(self.bot)
-            if company_root is None:
+            runtime_api = _get_runtime_api(self.bot)
+            if runtime_api is None:
                 await interaction.response.send_message(
-                    "Supervision tree is not initialized.", ephemeral=True
+                    "Daemon not ready.", ephemeral=True
                 )
                 return
 
@@ -402,14 +281,12 @@ class CommandsCog(commands.Cog):
                 return
 
             await interaction.response.defer()
-            container = await company_root._find_container(agent_id)
-            if container is not None:
-                # Stop triggers supervisor restart policy (kills tmux pane)
-                await container.stop()
+            try:
+                await runtime_api.relaunch(agent_id)
                 await interaction.followup.send(
-                    f"Agent **{agent_id}** stopped (tmux pane killed). Supervisor restart policy active."
+                    f"Agent **{agent_id}** stopped. Supervisor restart policy active."
                 )
-            else:
+            except KeyError:
                 await interaction.followup.send(
                     f"Agent **{agent_id}** not found in supervision tree."
                 )
@@ -421,12 +298,12 @@ class CommandsCog(commands.Cog):
             else:
                 await interaction.response.send_message(embed=embed)
 
-    # ── /standup ──────────────────────────────────────────────────────
+    # -- /standup --------------------------------------------------------------
 
     @app_commands.command(name="standup", description="Trigger group standup")
     @is_owner_app_check()
     async def standup_cmd(self, interaction: discord.Interaction) -> None:
-        """Trigger group standup per D-11 blocking interlock model (DISC-06, COMM-03)."""
+        """Trigger group standup via RuntimeAPI (DISC-06, COMM-03)."""
         if self.bot.project_config is None:
             await interaction.response.send_message(_no_project_msg(), ephemeral=True)
             return
@@ -438,55 +315,22 @@ class CommandsCog(commands.Cog):
                 )
                 return
 
-            standup_channel = discord.utils.get(
-                interaction.guild.text_channels, name="standup"
-            )
-            if not standup_channel:
+            runtime_api = _get_runtime_api(self.bot)
+            if runtime_api is None:
                 await interaction.response.send_message(
-                    "Error: #standup channel not found.", ephemeral=True
+                    "Daemon not ready.", ephemeral=True
                 )
                 return
 
             await interaction.response.defer()
 
-            # Create standup session
-            tmux = getattr(self.bot, "_tmux", None)
-            session = StandupSession(tmux=tmux)
-            self.bot._standup_session = session  # type: ignore[attr-defined]
-
-            registry = getattr(self.bot, "_registry", None)
-            if not registry:
-                await interaction.followup.send("Error: No agent registry loaded.")
+            result = await runtime_api.standup()
+            if "error" in result:
+                await interaction.followup.send(f"Standup error: {result['error']}")
                 return
 
-            await standup_channel.send("**Standup Session Started**")
-
-            # Create per-agent threads per COMM-03
-            for agent in registry.agents:
-                clone_dir = self.bot.project_dir / "clones" / agent.id
-                checkin_data = (
-                    gather_checkin_data(agent.id, clone_dir) if clone_dir.exists() else None
-                )
-
-                embed = build_standup_embed(
-                    agent_id=agent.id,
-                    phase=checkin_data.next_phase if checkin_data else "unknown",
-                    status="active",
-                    summary=checkin_data.summary if checkin_data else "No data",
-                )
-
-                thread = await standup_channel.create_thread(
-                    name=f"standup-{agent.id}",
-                    type=discord.ChannelType.public_thread,
-                )
-                release_view = ReleaseView(agent_id=agent.id)
-                release_view.set_release_callback(session.release_agent)
-                await thread.send(embed=embed, view=release_view)
-                session.register_thread(agent.id, thread.id)
-
             await interaction.followup.send(
-                f"Standup threads created for {len(registry.agents)} agents. "
-                "Release each when ready."
+                f"Standup session completed. {result.get('agent_count', 0)} agents checked in."
             )
 
         except Exception as exc:
@@ -499,48 +343,49 @@ class CommandsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
-        """Route owner messages in standup threads to agent tmux panes per COMM-04/COMM-05."""
+        """Route owner messages in standup threads to agent tmux panes via RuntimeAPI."""
         if message.author.bot:
-            return
-
-        session: StandupSession | None = getattr(self.bot, "_standup_session", None)
-        if session is None or not session.is_active:
             return
 
         # Check if message is in a standup thread
         if not isinstance(message.channel, discord.Thread):
             return
 
-        agent_id = session.get_agent_for_thread(message.channel.id)
-        if agent_id is None:
+        # Route message to agent via RuntimeAPI relay_channel_message
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is None:
             return
 
-        # Route message to agent tmux pane per COMM-05/D-12
-        registry = getattr(self.bot, "_registry", None)
-        if registry:
-            agent = next((a for a in registry.agents if a.id == agent_id), None)
-            if agent and hasattr(agent, "pane_id") and agent.pane_id:
-                success = await session.route_message_to_agent(
-                    agent_id,
-                    message.content,
-                    agent.pane_id,
-                )
-                if success:
-                    await message.add_reaction("\u2705")  # checkmark
-                else:
-                    await message.add_reaction("\u274c")  # cross
+        # Extract agent_id from thread name (format: standup-{agent_id})
+        thread_name = message.channel.name
+        if not thread_name.startswith("standup-"):
+            return
+        agent_id = thread_name.removeprefix("standup-")
 
-    # ── /integrate ────────────────────────────────────────────────────
+        success = await runtime_api.relay_channel_message(agent_id, message.content)
+        if success:
+            await message.add_reaction("\u2705")  # checkmark
+        else:
+            await message.add_reaction("\u274c")  # cross
+
+    # -- /integrate ------------------------------------------------------------
 
     @app_commands.command(name="integrate", description="Trigger integration pipeline")
     @is_owner_app_check()
     async def integrate_cmd(self, interaction: discord.Interaction) -> None:
-        """Trigger integration pipeline per D-01 interlock model (DISC-09)."""
+        """Trigger integration pipeline via RuntimeAPI (DISC-09)."""
         if self.bot.project_config is None:
             await interaction.response.send_message(_no_project_msg(), ephemeral=True)
             return
 
         try:
+            runtime_api = _get_runtime_api(self.bot)
+            if runtime_api is None:
+                await interaction.response.send_message(
+                    "Daemon not ready.", ephemeral=True
+                )
+                return
+
             view = ConfirmView()
             view.interaction_user_id = interaction.user.id
             await interaction.response.send_message(
@@ -552,35 +397,21 @@ class CommandsCog(commands.Cog):
                 await interaction.followup.send("Integration cancelled.")
                 return
 
-            # Run pipeline immediately
             await interaction.followup.send("Starting integration pipeline...")
-            project_dir = self.bot.project_dir
-            agent_ids = [a.id for a in self.bot.project_config.agents]
+            result = await runtime_api.run_integration()
 
-            pipeline = IntegrationPipeline(
-                project_dir=project_dir,
-                agent_ids=agent_ids,
-                pm=getattr(self.bot, "_pm", None),
-            )
-            result = await pipeline.run()
-
-            # Handle result
-            embed = build_integration_embed(result)
-            await interaction.followup.send(embed=embed)
-
-            if result.status == "merge_conflict":
-                conflict_embed = build_conflict_embed(
-                    agent_branches=[f"agent/{aid}" for aid in agent_ids],
-                    conflict_files=result.conflict_files,
-                    resolved=[],
-                    unresolved=result.conflict_files,
+            if "error" in result:
+                await interaction.followup.send(f"Integration error: {result['error']}")
+            else:
+                status = result.get("status", "unknown")
+                embed = discord.Embed(
+                    title="Integration Pipeline",
+                    description=f"Status: **{status}**",
+                    color=discord.Color.green() if status == "success" else discord.Color.red(),
                 )
-                if interaction.guild:
-                    alerts_channel = discord.utils.get(
-                        interaction.guild.text_channels, name="alerts"
-                    )
-                    if alerts_channel:
-                        await alerts_channel.send(embed=conflict_embed)
+                if result.get("pr_url"):
+                    embed.add_field(name="PR", value=result["pr_url"], inline=False)
+                await interaction.followup.send(embed=embed)
 
         except Exception as exc:
             logger.exception("Error in /integrate")
@@ -590,29 +421,25 @@ class CommandsCog(commands.Cog):
             else:
                 await interaction.response.send_message(embed=embed)
 
-    # ── Checkin callback wiring (D-09) ─────────────────────────────
+    # -- Checkin callback (D-09) -----------------------------------------------
 
     async def _on_checkin(self, agent_id: str) -> None:
-        """Auto-post checkin after phase completion per D-09."""
-        from vcompany.communication.checkin import gather_checkin_data, post_checkin
-
-        project_dir = self.bot.project_dir
-        if project_dir is None:
+        """Auto-post checkin after phase completion via RuntimeAPI (D-09)."""
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is None:
             return
-        clone_dir = project_dir / "clones" / agent_id
-        if clone_dir.exists():
-            checkin_data = gather_checkin_data(agent_id, clone_dir)
-            guild = self.bot.guilds[0] if self.bot.guilds else None
-            if guild:
-                channel = discord.utils.get(
-                    guild.text_channels, name=f"agent-{agent_id}"
-                )
-                if channel:
-                    await post_checkin(checkin_data, channel)
+        checkin_data = await runtime_api.checkin()
+        # Post summary to agent channel if available
+        guild = self.bot.guilds[0] if self.bot.guilds else None
+        if guild:
+            channel = discord.utils.get(
+                guild.text_channels, name=f"agent-{agent_id}"
+            )
+            if channel and checkin_data:
+                await channel.send(f"[checkin] Agent {agent_id} checked in.")
 
     async def cog_load(self) -> None:
         """Wire checkin callback into monitor when cog loads."""
-        # Defer wiring to on_ready since monitor may not exist yet
         pass
 
     async def _on_advisory(self, agent_id: str, message: str) -> None:
@@ -640,7 +467,7 @@ class CommandsCog(commands.Cog):
     @app_commands.command(name="remove-project", description="Remove a project: stop supervision tree, delete Discord channels/category, and clean files")
     @is_owner_app_check()
     async def remove_project(self, interaction: discord.Interaction, name: str) -> None:
-        """Remove a project entirely: supervision tree, Discord channels, and local files (EXTRACT-04)."""
+        """Remove a project entirely via RuntimeAPI (EXTRACT-04)."""
         try:
             guild = interaction.guild
             if guild is None:
@@ -651,26 +478,17 @@ class CommandsCog(commands.Cog):
             removed = []
 
             # Step 1: Remove project from supervision tree via RuntimeAPI
-            company_root = _get_company_root(self.bot)
-            if company_root is not None:
+            runtime_api = _get_runtime_api(self.bot)
+            if runtime_api is not None:
                 try:
-                    await company_root.remove_project(name)
+                    await runtime_api.remove_project(name)
                     removed.append("project removed from supervision tree")
                 except KeyError:
                     removed.append("project not found in supervision tree")
                 except Exception:
                     logger.exception("Error removing project from supervision tree")
 
-            # Step 2: Kill project tmux session
-            try:
-                from vcompany.tmux.session import TmuxManager
-                tmux = TmuxManager()
-                if tmux.kill_session(f"vco-{name}"):
-                    removed.append("tmux session killed")
-            except Exception:
-                pass
-
-            # Step 3: Delete Discord category and all channels under it
+            # Step 2: Delete Discord category and all channels under it
             category_name = f"vco-{name}"
             category = discord.utils.get(guild.categories, name=category_name)
             if category:
@@ -679,15 +497,7 @@ class CommandsCog(commands.Cog):
                 await category.delete()
                 removed.append(f"Discord category '{category_name}' deleted")
 
-            # Step 4: Delete project files
-            import shutil
-            from vcompany.shared.paths import PROJECTS_BASE
-            project_dir = PROJECTS_BASE / name
-            if project_dir.exists():
-                await asyncio.to_thread(shutil.rmtree, project_dir)
-                removed.append(f"files at {project_dir} deleted")
-
-            # Step 5: Clear bot project reference
+            # Step 3: Clear bot project reference
             if self.bot.project_dir and self.bot.project_dir.name == name:
                 self.bot.project_dir = None
                 self.bot.project_config = None
