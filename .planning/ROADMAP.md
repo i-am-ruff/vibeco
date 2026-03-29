@@ -136,5 +136,5 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 24. Discord Visibility | 5/5 | Complete    | 2026-03-29 |
-| 25. Transport Abstraction | 3/3 | Complete   | 2026-03-29 |
+| 25. Transport Abstraction | 3/3 | Complete    | 2026-03-29 |
 | 26. Docker Runtime | 0/? | Not started | - |
