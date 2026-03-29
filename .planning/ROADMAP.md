@@ -142,18 +142,24 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 | 24. Discord Visibility | 5/5 | Complete    | 2026-03-29 |
 | 25. Transport Abstraction | 3/3 | Complete    | 2026-03-29 |
 | 26. Docker Runtime | 2/2 | Complete    | 2026-03-29 |
-| 27. Docker Integration Wiring | 0/? | Not started | - |
+| 27. Docker Integration Wiring | 0/4 | Not started | - |
 
 ### Phase 27: Docker Integration Wiring
 **Goal**: Docker agents work end-to-end: per-transport deps resolution, docker_image flow from config to constructor, auto-build on first use, parametric agent setup (tweakcc profiles, custom settings via kwargs), and removal of hardcoded agent-type checks from business logic
 **Depends on**: Phase 26
 **Requirements**: WIRE-01, WIRE-02, WIRE-03, WIRE-04, WIRE-05, WIRE-06, WIRE-07
 **Success Criteria** (what must be TRUE):
-  1. Factory resolves transport_deps per transport type (LocalTransport gets tmux_manager, DockerTransport gets docker_image + project_name) — daemon no longer passes a single global dict
+  1. Factory resolves transport_deps per transport type (LocalTransport gets tmux_manager, DockerTransport gets docker_image + project_name) -- daemon no longer passes a single global dict
   2. docker_image flows from AgentConfig through ChildSpec to DockerTransport constructor without manual wiring
   3. Docker image auto-builds when an agent with transport "docker" is hired and the image doesn't exist (or `vco build` command exists)
   4. DockerTransport.setup() accepts parametric kwargs (tweakcc profile, custom settings.json path) so one universal image can be customized per agent at startup
-  5. No hardcoded agent-type if/in checks remain in runtime_api.py or supervisor.py — agent capabilities derived from config, not type string matching
+  5. No hardcoded agent-type if/in checks remain in runtime_api.py or supervisor.py -- agent capabilities derived from config, not type string matching
   6. A Docker agent can be hired via Discord, receives a task, signals readiness through the mounted daemon socket, and appears in health tree
-  7. Adding a new agent type (e.g., "cfo") requires only a config entry and optional container subclass — no business logic changes
-**Plans**: TBD
+  7. Adding a new agent type (e.g., "cfo") requires only a config entry and optional container subclass -- no business logic changes
+**Plans**: 4 plans
+
+Plans:
+- [ ] 27-01-PLAN.md -- Agent-types config model, loader, factory smart dep resolution
+- [ ] 27-02-PLAN.md -- Docker auto-build utility and vco build CLI command
+- [ ] 27-03-PLAN.md -- Type-check elimination in runtime_api.py and supervisor.py
+- [ ] 27-04-PLAN.md -- Parametric DockerTransport setup, hire flow wiring, e2e validation
