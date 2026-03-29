@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
 status: Ready to execute
-stopped_at: Completed 27-01-PLAN.md
-last_updated: "2026-03-29T23:15:25.328Z"
+stopped_at: Completed 27-03-PLAN.md
+last_updated: "2026-03-29T23:20:23.005Z"
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 ## Current Position
 
 Phase: 27 (docker-integration-wiring) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 
 ## Accumulated Context
 
@@ -56,6 +56,8 @@ Recent decisions affecting current work:
 - [Phase 27]: Separate async/sync Docker build interfaces: ensure_docker_image for hire-flow, build_image_sync for CLI
 - [Phase 27]: Factory resolves per-transport deps from agent type config instead of passing global dict (D-01)
 - [Phase 27]: Module-level set/get pattern for agent types config avoids threading through constructors
+- [Phase 27]: hasattr duck typing over isinstance for method guards (resolve_review, initialize_conversation, backlog)
+- [Phase 27]: Dual registry by type string and class name enables docker-gsd -> GsdAgent mapping via container_class config
 
 ### Roadmap Evolution
 
@@ -80,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T23:15:25.325Z
-Stopped at: Completed 27-01-PLAN.md
+Last session: 2026-03-29T23:20:23.001Z
+Stopped at: Completed 27-03-PLAN.md
 Resume file: None

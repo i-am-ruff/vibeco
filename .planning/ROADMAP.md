@@ -142,7 +142,7 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 | 24. Discord Visibility | 5/5 | Complete    | 2026-03-29 |
 | 25. Transport Abstraction | 3/3 | Complete    | 2026-03-29 |
 | 26. Docker Runtime | 2/2 | Complete    | 2026-03-29 |
-| 27. Docker Integration Wiring | 2/4 | In Progress|  |
+| 27. Docker Integration Wiring | 3/4 | In Progress|  |
 
 ### Phase 27: Docker Integration Wiring
 **Goal**: Docker agents work end-to-end: per-transport deps resolution, docker_image flow from config to constructor, auto-build on first use, parametric agent setup (tweakcc profiles, custom settings via kwargs), and removal of hardcoded agent-type checks from business logic
@@ -161,5 +161,5 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 Plans:
 - [x] 27-01-PLAN.md -- Agent-types config model, loader, factory smart dep resolution
 - [x] 27-02-PLAN.md -- Docker auto-build utility and vco build CLI command
-- [ ] 27-03-PLAN.md -- Type-check elimination in runtime_api.py and supervisor.py
+- [x] 27-03-PLAN.md -- Type-check elimination in runtime_api.py and supervisor.py
 - [ ] 27-04-PLAN.md -- Parametric DockerTransport setup, hire flow wiring, e2e validation
