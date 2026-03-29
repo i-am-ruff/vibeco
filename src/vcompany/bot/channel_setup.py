@@ -68,6 +68,7 @@ _PROJECT_CHANNELS: list[str] = [
     "plan-review",
     "standup",
     "decisions",
+    "backlog",
 ]
 
 
@@ -186,3 +187,57 @@ async def setup_project_channels(
         logger.info("Created agent channel: #%s", agent_channel_name)
 
     return category
+
+
+# Category for Strategist-dispatched task agents
+_TASKS_CATEGORY = "vco-tasks"
+
+
+async def setup_task_channel(
+    guild: discord.Guild,
+    task_id: str,
+) -> discord.TextChannel | None:
+    """Create a #task-{id} channel under the vco-tasks category.
+
+    Creates the vco-tasks category if it doesn't exist. Idempotent — returns
+    existing channel if already present.
+
+    Args:
+        guild: Discord guild.
+        task_id: Task agent identifier.
+
+    Returns:
+        The created (or existing) TextChannel, or None on failure.
+    """
+    # Find or create category
+    category = discord.utils.get(guild.categories, name=_TASKS_CATEGORY)
+    if category is None:
+        owner_role = discord.utils.get(guild.roles, name="vco-owner")
+        overwrites = {}
+        if owner_role:
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=False,
+                ),
+                owner_role: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    manage_messages=True,
+                ),
+            }
+        category = await guild.create_category_channel(
+            _TASKS_CATEGORY, overwrites=overwrites
+        )
+        logger.info("Created tasks category: %s", _TASKS_CATEGORY)
+
+    # Find or create channel
+    channel_name = f"task-{task_id}"
+    existing = discord.utils.get(category.channels, name=channel_name)
+    if existing is not None:
+        logger.info("Task channel already exists: #%s", channel_name)
+        return existing
+
+    channel = await category.create_text_channel(channel_name)
+    logger.info("Created task channel: #%s", channel_name)
+    return channel
