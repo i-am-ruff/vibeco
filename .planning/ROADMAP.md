@@ -90,13 +90,14 @@ See phase details in `.planning/milestones/v3.0-ROADMAP.md`.
   3. Plan review approve/reject decisions show confidence score and reasoning on Discord before the approval or rejection is processed internally
   4. RuntimeAPI contains no agent-type-specific routing methods (no "send to PM" or "send to Strategist" wiring) -- agent coordination goes through Discord channel subscriptions
   5. Task assignment from PM to a GSD agent appears as a message in the agent's Discord channel, not as an internal queue_task() call
-**Plans**: 4 plans
+**Plans**: 5 plans
 
 Plans:
 - [x] 24-01-PLAN.md -- MentionRouterCog, MessageContext model, channel setup, AgentContainer.receive_discord_message
 - [x] 24-02-PLAN.md -- BacklogQueue mutation notification callback
 - [x] 24-03-PLAN.md -- Agent Discord message handlers (FulltimeAgent, CompanyAgent, GsdAgent)
 - [x] 24-04-PLAN.md -- RuntimeAPI cleanup, Supervisor unwiring, PlanReviewCog update
+- [ ] 24-05-PLAN.md -- Gap closure: fix handle_plan_approval/rejection post_event and [Review] format consistency
 
 ### Phase 25: Transport Abstraction
 **Goal**: Agent execution environment is abstracted behind an AgentTransport protocol, with a working LocalTransport implementation and socket-based signaling replacing temp files
@@ -129,6 +130,6 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 24. Discord Visibility | 4/4 | Complete   | 2026-03-29 |
+| 24. Discord Visibility | 4/5 | Gap closure | 2026-03-29 |
 | 25. Transport Abstraction | 0/? | Not started | - |
 | 26. Docker Runtime | 0/? | Not started | - |
