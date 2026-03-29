@@ -59,29 +59,30 @@ Deferred to future release.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VIS-01 | TBD | Pending |
-| VIS-02 | TBD | Pending |
-| VIS-03 | TBD | Pending |
-| VIS-04 | TBD | Pending |
-| VIS-05 | TBD | Pending |
-| VIS-06 | TBD | Pending |
-| TXPT-01 | TBD | Pending |
-| TXPT-02 | TBD | Pending |
-| TXPT-03 | TBD | Pending |
-| TXPT-04 | TBD | Pending |
-| TXPT-05 | TBD | Pending |
-| TXPT-06 | TBD | Pending |
-| DOCK-01 | TBD | Pending |
-| DOCK-02 | TBD | Pending |
-| DOCK-03 | TBD | Pending |
-| DOCK-04 | TBD | Pending |
-| DOCK-05 | TBD | Pending |
-| DOCK-06 | TBD | Pending |
+| VIS-01 | Phase 24 | Pending |
+| VIS-02 | Phase 24 | Pending |
+| VIS-03 | Phase 24 | Pending |
+| VIS-04 | Phase 24 | Pending |
+| VIS-05 | Phase 24 | Pending |
+| VIS-06 | Phase 24 | Pending |
+| TXPT-01 | Phase 25 | Pending |
+| TXPT-02 | Phase 25 | Pending |
+| TXPT-03 | Phase 25 | Pending |
+| TXPT-04 | Phase 25 | Pending |
+| TXPT-05 | Phase 25 | Pending |
+| TXPT-06 | Phase 25 | Pending |
+| DOCK-01 | Phase 26 | Pending |
+| DOCK-02 | Phase 26 | Pending |
+| DOCK-03 | Phase 26 | Pending |
+| DOCK-04 | Phase 26 | Pending |
+| DOCK-05 | Phase 26 | Pending |
+| DOCK-06 | Phase 26 | Pending |
 
 **Coverage:**
 - v3.1 requirements: 18 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 18
+- Mapped to phases: 18/18
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-29*
+*Traceability updated: 2026-03-29*
