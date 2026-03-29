@@ -20,8 +20,8 @@ Requirements for Container Runtime Abstraction. Each maps to roadmap phases.
 
 - [x] **TXPT-01**: AgentTransport protocol exists with setup/teardown/exec/is_alive/read_file/write_file methods that abstract the execution environment boundary
 - [x] **TXPT-02**: LocalTransport implements AgentTransport using TmuxManager for interactive sessions and subprocess for piped invocations
-- [ ] **TXPT-03**: AgentContainer uses injected AgentTransport instead of direct TmuxManager calls
-- [ ] **TXPT-04**: StrategistConversation uses injected AgentTransport.exec() instead of direct asyncio.create_subprocess_exec
+- [x] **TXPT-03**: AgentContainer uses injected AgentTransport instead of direct TmuxManager calls
+- [x] **TXPT-04**: StrategistConversation uses injected AgentTransport.exec() instead of direct asyncio.create_subprocess_exec
 - [x] **TXPT-05**: Agent readiness and idle signaling uses daemon socket (vco signal --ready/--idle) instead of sentinel temp files
 - [x] **TXPT-06**: AgentConfig has a transport field (default "local") that factory uses to inject the correct transport implementation
 
@@ -67,8 +67,8 @@ Deferred to future release.
 | VIS-06 | Phase 24 | Complete |
 | TXPT-01 | Phase 25 | Complete |
 | TXPT-02 | Phase 25 | Complete |
-| TXPT-03 | Phase 25 | Pending |
-| TXPT-04 | Phase 25 | Pending |
+| TXPT-03 | Phase 25 | Complete |
+| TXPT-04 | Phase 25 | Complete |
 | TXPT-05 | Phase 25 | Complete |
 | TXPT-06 | Phase 25 | Complete |
 | DOCK-01 | Phase 26 | Pending |

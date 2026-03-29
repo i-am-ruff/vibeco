@@ -75,7 +75,7 @@ See phase details in `.planning/milestones/v3.0-ROADMAP.md`.
 - Decimal phases (24.1, 24.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 24: Discord Visibility** - Surface all hidden inter-agent communication through Discord channels (completed 2026-03-29)
-- [ ] **Phase 25: Transport Abstraction** - AgentTransport protocol, LocalTransport, and socket-based agent signaling
+- [x] **Phase 25: Transport Abstraction** - AgentTransport protocol, LocalTransport, and socket-based agent signaling (completed 2026-03-29)
 - [ ] **Phase 26: Docker Runtime** - DockerTransport implementation, Dockerfile, and container configuration
 
 ## Phase Details
@@ -114,7 +114,7 @@ Plans:
 Plans:
 - [x] 25-01-PLAN.md -- AgentTransport protocol, NoopTransport, LocalTransport, AgentConfig.transport field
 - [x] 25-02-PLAN.md -- Daemon HTTP signal endpoint, vco signal CLI command, settings.json.j2 hook update
-- [ ] 25-03-PLAN.md -- Container/factory/supervisor rewiring to transport, StrategistConversation through transport
+- [x] 25-03-PLAN.md -- Container/factory/supervisor rewiring to transport, StrategistConversation through transport
 
 ### Phase 26: Docker Runtime
 **Goal**: Agents can run inside Docker containers with full daemon connectivity, persistent session state, and per-agent image configuration
@@ -136,5 +136,5 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 24. Discord Visibility | 5/5 | Complete    | 2026-03-29 |
-| 25. Transport Abstraction | 2/3 | In Progress|  |
+| 25. Transport Abstraction | 3/3 | Complete   | 2026-03-29 |
 | 26. Docker Runtime | 0/? | Not started | - |

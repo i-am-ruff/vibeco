@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
-status: Ready to execute
-stopped_at: Completed 25-02-PLAN.md
-last_updated: "2026-03-29T18:39:50.802Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 25-03-PLAN.md
+last_updated: "2026-03-29T18:52:14.711Z"
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -49,6 +49,7 @@ Recent decisions affecting current work:
 - [Phase 25]: LocalTransport accepts optional TmuxManager via constructor injection for testability
 - [Phase 25]: Unix socket for signal HTTP server (avoids TCP port conflicts)
 - [Phase 25]: Silent failure in vco signal when daemon unreachable (hooks must not block agents)
+- [Phase 25]: ChildSpec gets transport field for factory lookup; factory creates new transport per container from transport_deps
 
 ### Blockers/Concerns
 
@@ -69,6 +70,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T18:39:50.791Z
-Stopped at: Completed 25-02-PLAN.md
+Last session: 2026-03-29T18:52:14.708Z
+Stopped at: Completed 25-03-PLAN.md
 Resume file: None
