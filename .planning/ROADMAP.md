@@ -74,7 +74,7 @@ See phase details in `.planning/milestones/v3.0-ROADMAP.md`.
 - Integer phases (24, 25, 26): Planned milestone work
 - Decimal phases (24.1, 24.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 24: Discord Visibility** - Surface all hidden inter-agent communication through Discord channels
+- [x] **Phase 24: Discord Visibility** - Surface all hidden inter-agent communication through Discord channels (completed 2026-03-29)
 - [ ] **Phase 25: Transport Abstraction** - AgentTransport protocol, LocalTransport, and socket-based agent signaling
 - [ ] **Phase 26: Docker Runtime** - DockerTransport implementation, Dockerfile, and container configuration
 
@@ -96,7 +96,7 @@ Plans:
 - [x] 24-01-PLAN.md -- MentionRouterCog, MessageContext model, channel setup, AgentContainer.receive_discord_message
 - [x] 24-02-PLAN.md -- BacklogQueue mutation notification callback
 - [x] 24-03-PLAN.md -- Agent Discord message handlers (FulltimeAgent, CompanyAgent, GsdAgent)
-- [ ] 24-04-PLAN.md -- RuntimeAPI cleanup, Supervisor unwiring, PlanReviewCog update
+- [x] 24-04-PLAN.md -- RuntimeAPI cleanup, Supervisor unwiring, PlanReviewCog update
 
 ### Phase 25: Transport Abstraction
 **Goal**: Agent execution environment is abstracted behind an AgentTransport protocol, with a working LocalTransport implementation and socket-based signaling replacing temp files
@@ -129,6 +129,6 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 24. Discord Visibility | 3/4 | In Progress|  |
+| 24. Discord Visibility | 4/4 | Complete   | 2026-03-29 |
 | 25. Transport Abstraction | 0/? | Not started | - |
 | 26. Docker Runtime | 0/? | Not started | - |
