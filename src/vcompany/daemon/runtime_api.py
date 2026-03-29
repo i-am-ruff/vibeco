@@ -600,10 +600,18 @@ class RuntimeAPI:
                     content=f"Plan **approved** for `{agent_id}`: `{Path(plan_path).name}`",
                 )
             )
-        # Trigger execution via GSD agent resume (if applicable)
+        # Resolve pending review gate via Discord message routing
         container = await self._root._find_container(agent_id)
         if container is not None and isinstance(container, GsdAgent):
-            await container.post_event({"type": "plan_approved", "plan_path": plan_path})
+            from vcompany.models.messages import MessageContext
+
+            await container.receive_discord_message(
+                MessageContext(
+                    sender="PM",
+                    channel="plan-review",
+                    content="[Review Decision] approve",
+                )
+            )
 
     async def handle_plan_rejection(
         self, agent_id: str, plan_path: str, feedback: str
@@ -623,15 +631,17 @@ class RuntimeAPI:
                     content=f"Plan **rejected** for `{agent_id}`: `{Path(plan_path).name}`\nFeedback: {feedback}",
                 )
             )
-        # Send feedback to agent via event
+        # Resolve pending review gate via Discord message routing
         container = await self._root._find_container(agent_id)
         if container is not None and isinstance(container, GsdAgent):
-            feedback_cmd = (
-                f"Your plan {Path(plan_path).name} was rejected. "
-                f"Feedback: {feedback}. Please revise the plan."
-            )
-            await container.post_event(
-                {"type": "plan_rejected", "plan_path": plan_path, "feedback": feedback_cmd}
+            from vcompany.models.messages import MessageContext
+
+            await container.receive_discord_message(
+                MessageContext(
+                    sender="PM",
+                    channel="plan-review",
+                    content=f"[Review Decision] reject {feedback}",
+                )
             )
 
     # ── new_project: replaces on_ready project initialization ─────────
