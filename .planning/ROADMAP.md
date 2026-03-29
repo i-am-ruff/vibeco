@@ -63,7 +63,7 @@ See `.planning/milestones/v2.1-ROADMAP.md` for full details.
 - [x] **Phase 19: Communication Abstraction** - CommunicationPort protocol and DiscordCommunicationPort adapter as the boundary between daemon and bot (completed 2026-03-29)
 - [x] **Phase 20: CompanyRoot Extraction** - Move CompanyRoot, supervision tree, Strategist conversation, and PM review into daemon behind RuntimeAPI (completed 2026-03-29)
 - [x] **Phase 21: CLI Commands** - All vco commands as thin socket API clients (completed 2026-03-29)
-- [ ] **Phase 22: Bot Thin Relay** - Refactor bot to pure I/O adapter with zero container imports
+- [x] **Phase 22: Bot Thin Relay** - Refactor bot to pure I/O adapter with zero container imports (completed 2026-03-29)
 - [ ] **Phase 23: Strategist Autonomy** - Strategist calls vco CLI commands via Bash tool, action tags removed
 
 ## Phase Details
@@ -138,11 +138,11 @@ Plans:
   2. Zero imports from `vcompany.container`, `vcompany.supervisor`, or `vcompany.agent` exist in any bot cog module
   3. The bot receives health changes, agent transitions, and escalation events from the daemon and formats them as Discord embeds, threads, and reactions
   4. Message relay (on_message in agent/task channels) converts Discord messages to generic messages and delivers them to the daemon through CommunicationPort
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 22-01-PLAN.md -- RuntimeAPI gateway methods and expanded import boundary tests
 - [x] 22-02-PLAN.md -- Rewrite heavy cogs (commands.py, plan_review.py, workflow_orchestrator_cog.py)
-- [ ] 22-03-PLAN.md -- Clean remaining cogs and finalize import boundary enforcement
+- [x] 22-03-PLAN.md -- Clean remaining cogs and finalize import boundary enforcement
 
 ### Phase 23: Strategist Autonomy
 **Goal**: The Strategist agent manages workforce through vco CLI commands via its Bash tool, with no special action tag parsing in the bot
@@ -165,5 +165,5 @@ Phases execute in numeric order: 18 -> 18.1 -> 18.2 -> 19 -> ... -> 23
 | 19. Communication Abstraction | 2/2 | Complete    | 2026-03-29 |
 | 20. CompanyRoot Extraction | 4/4 | Complete    | 2026-03-29 |
 | 21. CLI Commands | 2/2 | Complete    | 2026-03-29 |
-| 22. Bot Thin Relay | 2/3 | In Progress|  |
+| 22. Bot Thin Relay | 3/3 | Complete   | 2026-03-29 |
 | 23. Strategist Autonomy | 0/? | Not started | - |
