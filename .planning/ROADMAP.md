@@ -124,7 +124,10 @@ Plans:
   3. `vco dismiss agent-name` stops the agent and cleans up its resources
   4. `vco status` and `vco health` display the supervision tree and health states from the running daemon
   5. `vco new-project` initializes a project and hires all agents defined in agents.yaml in one command
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 21-01-PLAN.md -- Connection helper, hire/give-task/dismiss/status/health CLI commands
+- [ ] 21-02-PLAN.md -- new_project daemon handler and composite vco new-project command
 
 ### Phase 22: Bot Thin Relay
 **Goal**: All Discord slash commands delegate to RuntimeAPI with zero container module imports, and the bot acts as a pure I/O adapter between Discord and the daemon
@@ -157,6 +160,6 @@ Phases execute in numeric order: 18 -> 18.1 -> 18.2 -> 19 -> ... -> 23
 | 18. Daemon Foundation | 3/3 | Complete    | 2026-03-29 |
 | 19. Communication Abstraction | 2/2 | Complete    | 2026-03-29 |
 | 20. CompanyRoot Extraction | 4/4 | Complete    | 2026-03-29 |
-| 21. CLI Commands | 0/? | Not started | - |
+| 21. CLI Commands | 0/2 | In progress | - |
 | 22. Bot Thin Relay | 0/? | Not started | - |
 | 23. Strategist Autonomy | 0/? | Not started | - |
