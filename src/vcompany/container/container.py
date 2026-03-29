@@ -25,7 +25,13 @@ from vcompany.container.state_machine import ContainerLifecycle
 if TYPE_CHECKING:
     from vcompany.container.child_spec import ChildSpec
     from vcompany.container.communication import CommunicationPort
+    from vcompany.models.messages import MessageContext
     from vcompany.tmux.session import TmuxManager
+
+
+# Sentinel file directory for Claude Code hook signals.
+_SIGNAL_DIR = Path("/tmp")
+_SIGNAL_PREFIX = "vco-agent-"
 
 
 class AgentContainer:
@@ -69,6 +75,11 @@ class AgentContainer:
         self._project_session_name: str | None = project_session_name
         self._pane_id: str | None = None
         self._blocked_reason: str | None = None  # ARCH-03
+        # Signal-based idle tracking (driven by Claude Code hooks)
+        self._is_idle: bool = False
+        # Task queue: idle-gated command delivery to tmux pane
+        self._task_queue: asyncio.Queue[str] = asyncio.Queue()
+        self._idle_watcher_task: asyncio.Task | None = None
 
     # --- Properties ---
 
@@ -84,62 +95,158 @@ class AgentContainer:
 
     @property
     def _needs_tmux_session(self) -> bool:
-        """True for agent types that run in tmux (gsd, continuous)."""
-        return self.context.agent_type in ("gsd", "continuous")
+        """True when this container should launch a tmux session."""
+        return self.context.uses_tmux
+
+    @property
+    def working_dir(self) -> Path:
+        """Working directory where Claude Code runs.
+
+        Default assumes GSD clone layout: ``project_dir/clones/{agent_id}``.
+        Subclasses override for different layouts (e.g., TaskAgent uses
+        the project_dir directly as the working dir).
+        """
+        return self._project_dir / "clones" / self.context.agent_id
+
+    @property
+    def system_prompt_path(self) -> Path | None:
+        """Path to system prompt file appended via --append-system-prompt-file.
+
+        Returns None to skip (agent uses CLAUDE.md auto-discovery instead).
+        Default assumes GSD layout: ``project_dir/context/agents/{agent_id}.md``.
+        """
+        return self._project_dir / "context" / "agents" / f"{self.context.agent_id}.md"
+
+    @property
+    def is_idle(self) -> bool:
+        """Whether Claude Code is idle and ready for input (signal-based)."""
+        return self._is_idle
+
+    @property
+    def _signal_path(self) -> Path:
+        """Path to this agent's sentinel file written by Claude Code hooks."""
+        return _SIGNAL_DIR / f"{_SIGNAL_PREFIX}{self.context.agent_id}.state"
+
+    # --- Signal-Based Readiness ---
+
+    def _read_signal(self) -> str | None:
+        """Read the current signal from the sentinel file, or None if absent."""
+        try:
+            return self._signal_path.read_text().strip()
+        except FileNotFoundError:
+            return None
+
+    def _clear_signal(self) -> None:
+        """Remove the sentinel file (cleanup on start/stop)."""
+        try:
+            self._signal_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    async def _wait_for_signal(
+        self,
+        expected: str | tuple[str, ...],
+        timeout: float = 120.0,
+        poll_interval: float = 0.5,
+    ) -> bool:
+        """Wait until the sentinel file contains one of the expected values.
+
+        Returns True when signal detected, False on timeout.
+        """
+        if isinstance(expected, str):
+            expected = (expected,)
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            value = await asyncio.to_thread(self._read_signal)
+            if value in expected:
+                self._is_idle = value == "idle"
+                return True
+            await asyncio.sleep(poll_interval)
+        return False
+
+    # --- Task Queue (idle-gated command delivery) ---
+
+    async def give_task(self, task: str) -> None:
+        """Queue a task for delivery to the tmux pane when agent is idle.
+
+        If the agent is currently idle, sends immediately. Otherwise queues
+        for delivery when the next ``Stop`` hook signal arrives.
+        """
+        await self._task_queue.put(task)
+        logger.info("Queued task for %s: %s", self.context.agent_id, task[:80])
+        if self._is_idle:
+            await self._drain_task_queue()
+
+    async def _drain_task_queue(self) -> None:
+        """Send the next queued task to the tmux pane."""
+        if self._pane_id is None or self._tmux is None:
+            return
+        try:
+            task = self._task_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return
+        self._is_idle = False
+        self._clear_signal()  # prevent re-reading stale "idle"
+        await asyncio.to_thread(self._tmux.send_command, self._pane_id, task)
+        logger.info("Sent queued task to %s: %s", self.context.agent_id, task[:80])
+
+    async def _watch_idle_signals(self) -> None:
+        """Background task: watch signal file and drain queue when idle."""
+        while True:
+            try:
+                signal = await asyncio.to_thread(self._read_signal)
+                if signal in ("idle", "started"):
+                    self._is_idle = True
+                    self._last_activity = datetime.now(timezone.utc)
+                    if not self._task_queue.empty():
+                        await self._drain_task_queue()
+            except Exception:
+                pass  # resilient — don't crash on signal read errors
+            await asyncio.sleep(1.0)
 
     # --- Tmux Bridge ---
 
     def _build_launch_command(self) -> str:
-        """Build the chained shell command matching dispatch_cmd.py pattern."""
-        clone_dir = self._project_dir / "clones" / self.context.agent_id
-        prompt_path = self._project_dir / "context" / "agents" / f"{self.context.agent_id}.md"
+        """Build the chained shell command to launch Claude Code.
+
+        Uses ``self.working_dir`` and ``self.system_prompt_path`` properties
+        so subclasses can override path layout without rewriting the whole
+        command. If ``context.gsd_command`` is set, it is passed as the
+        positional ``prompt`` argument.
+        """
+        wd = self.working_dir
         chained_cmd = (
-            f"cd {clone_dir} "
+            f"cd {wd} "
             f"&& export DISCORD_BOT_TOKEN='{os.environ.get('DISCORD_BOT_TOKEN', '')}' "
             f"&& export DISCORD_GUILD_ID='{os.environ.get('DISCORD_GUILD_ID', '')}' "
             f"&& export PROJECT_NAME='{self.context.project_id or ''}' "
             f"&& export AGENT_ID='{self.context.agent_id}' "
             f"&& export VCO_AGENT_ID='{self.context.agent_id}' "
             f"&& export AGENT_ROLE='{self.context.agent_type}' "
-            f"&& claude --dangerously-skip-permissions "
-            f"--append-system-prompt-file {prompt_path}"
+            f"&& claude --dangerously-skip-permissions"
         )
+        # Append system prompt file if one is configured
+        prompt_path = self.system_prompt_path
+        if prompt_path is not None:
+            chained_cmd += f" --append-system-prompt-file {prompt_path}"
+        # Append initial command/prompt as positional arg
+        if self.context.gsd_command:
+            escaped = self.context.gsd_command.replace("'", "'\\''")
+            chained_cmd += f" '{escaped}'"
         return chained_cmd
-
-    async def _wait_for_claude_ready(
-        self,
-        pane: object,
-        timeout: float = 60.0,
-        poll_interval: float = 1.0,
-    ) -> bool:
-        """Poll pane output until Claude Code shows its ready prompt.
-
-        Returns True when ready (last non-empty line is ">" or ends with " >"),
-        False if timeout elapsed without detecting readiness.
-        """
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            try:
-                lines = await asyncio.to_thread(self._tmux.get_output, pane)
-            except Exception:
-                lines = []
-            for line in reversed(lines):
-                stripped = line.strip()
-                if stripped:
-                    if stripped == ">" or stripped.endswith(" >"):
-                        return True
-                    break  # last non-empty line is not the ready prompt yet
-            await asyncio.sleep(poll_interval)
-        return False
 
     async def _launch_tmux_session(self) -> None:
         """Create a tmux pane and launch Claude Code in it.
 
-        After launching, waits briefly for the workspace trust prompt then
-        sends Enter to accept it. If gsd_command is configured, polls for
-        Claude Code readiness (the '>' idle prompt) and sends the command once
-        ready.
+        The GSD command (if any) is passed as the positional prompt argument
+        to the ``claude`` CLI, so Claude processes it on startup. Readiness
+        is detected via the ``SessionStart`` hook signal (sentinel file)
+        rather than polling tmux pane output.
         """
+        # Clean up any stale signal from a previous run
+        self._clear_signal()
+
         session = await asyncio.to_thread(
             self._tmux.get_or_create_session, self._project_session_name
         )
@@ -149,27 +256,38 @@ class AgentContainer:
         self._pane_id = pane.pane_id
         cmd = self._build_launch_command()
         await asyncio.to_thread(self._tmux.send_command, pane, cmd)
-        # Auto-accept workspace trust prompt (brief wait, not a blind readiness gate)
-        await asyncio.sleep(2)
+
+        # Wait for the workspace trust prompt and auto-accept it.
+        # With --dangerously-skip-permissions the permissions are bypassed but
+        # the trust dialog still appears. We send Enter to accept it.
+        # The SessionStart hook fires AFTER trust is accepted, so we use
+        # the signal to know when Claude is truly ready rather than a blind sleep.
+        await asyncio.sleep(3)
         await asyncio.to_thread(pane.send_keys, "", enter=True)
-        # If a GSD command is configured, wait for Claude Code readiness then send it
-        if self.context.gsd_command:
-            ready = await self._wait_for_claude_ready(pane)
-            if ready:
-                await asyncio.to_thread(
-                    self._tmux.send_command, pane, self.context.gsd_command
-                )
+
+        # Wait for Claude Code to signal it has started (SessionStart hook).
+        # This replaces the old _wait_for_claude_ready() pane-output polling.
+        started = await self._wait_for_signal(("started", "idle"), timeout=120.0)
+        if started:
+            logger.info(
+                "Claude Code session started for %s (signal-based)",
+                self.context.agent_id,
+            )
+            if self.context.gsd_command:
                 logger.info(
-                    "Sent GSD command to %s: %s",
+                    "GSD command passed as initial prompt to %s: %s",
                     self.context.agent_id,
                     self.context.gsd_command,
                 )
-            else:
-                logger.warning(
-                    "Claude Code did not become ready within timeout for %s"
-                    " -- GSD command not sent",
-                    self.context.agent_id,
-                )
+        else:
+            logger.warning(
+                "Claude Code did not signal startup within timeout for %s"
+                " -- agent may not be running",
+                self.context.agent_id,
+            )
+
+        # Start background idle watcher for queue-based task delivery
+        self._idle_watcher_task = asyncio.create_task(self._watch_idle_signals())
 
     def is_tmux_alive(self) -> bool:
         """Check if the tmux pane process is alive.
@@ -198,6 +316,12 @@ class AgentContainer:
             and not self.is_tmux_alive()
         ):
             actual_state = "errored"
+
+        # Refresh idle state from signal file for tmux agents
+        if self._tmux is not None and self._needs_tmux_session:
+            signal = self._read_signal()
+            self._is_idle = signal == "idle"
+
         return HealthReport(
             agent_id=self.context.agent_id,
             state=actual_state,
@@ -207,6 +331,7 @@ class AgentContainer:
             error_count=self._error_count,
             last_activity=self._last_activity,
             blocked_reason=self._blocked_reason,
+            is_idle=self._is_idle if self._needs_tmux_session else None,
         )
 
     def _on_state_change(self) -> None:
@@ -252,24 +377,53 @@ class AgentContainer:
         self._lifecycle.unblock()
 
     async def stop(self) -> None:
-        """Kill tmux pane (if any), transition through stopping to stopped, and close memory."""
+        """Kill tmux pane (if any), cancel watcher, transition to stopped, and close memory."""
+        # Cancel idle watcher before killing pane
+        if self._idle_watcher_task is not None:
+            self._idle_watcher_task.cancel()
+            try:
+                await self._idle_watcher_task
+            except asyncio.CancelledError:
+                pass
+            self._idle_watcher_task = None
         self._lifecycle.begin_stop()
         if self._tmux is not None and self._pane_id is not None:
             pane = await asyncio.to_thread(self._tmux.get_pane_by_id, self._pane_id)
             if pane is not None:
                 await asyncio.to_thread(self._tmux.kill_pane, pane)
             self._pane_id = None
+        self._clear_signal()
         self._lifecycle.finish_stop()
         await self.memory.close()
 
     async def destroy(self) -> None:
         """Transition to destroyed and close memory store."""
         self._lifecycle.destroy()
+        self._clear_signal()
         await self.memory.close()
 
     async def send_event(self, name: str) -> None:
         """String-based event dispatch for supervisor use."""
         self._lifecycle.send(name)
+
+    # --- Discord Message Delivery ---
+
+    async def receive_discord_message(self, context: MessageContext) -> None:
+        """Receive an inbound Discord message routed to this agent.
+
+        Base implementation is a no-op log. Subclasses (FulltimeAgent,
+        CompanyAgent, GsdAgent) override to process messages.
+
+        Args:
+            context: Message context with sender, channel, content, and
+                optional parent_message for reply context.
+        """
+        logger.info(
+            "Agent %s received Discord message from %s in #%s",
+            self.context.agent_id,
+            context.sender,
+            context.channel,
+        )
 
     # --- Factory ---
 
