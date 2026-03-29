@@ -1,17 +1,15 @@
-"""Tests for StrategistCog: routing framework integration, escalation, and conversation bridge."""
+"""Tests for StrategistCog: routing framework integration, escalation, and RuntimeAPI bridge."""
 
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 from discord.ext import commands
 
 from vcompany.bot.cogs.strategist import StrategistCog
-from vcompany.strategist.decision_log import DecisionLogger
 
 
 def _make_bot() -> MagicMock:
@@ -64,28 +62,29 @@ def _make_message(
     return msg
 
 
-def _make_cog_with_conversation(bot: MagicMock | None = None) -> tuple[StrategistCog, AsyncMock]:
-    """Create a StrategistCog with mocked conversation."""
+def _make_cog_with_runtime_api(bot: MagicMock | None = None) -> tuple[StrategistCog, AsyncMock]:
+    """Create a StrategistCog with mocked RuntimeAPI on daemon."""
     if bot is None:
         bot = _make_bot()
     cog = StrategistCog(bot)
 
-    # Mock the conversation
-    conversation = AsyncMock()
-    conversation.send = AsyncMock(return_value="Hello there friend")
-    cog._conversation = conversation
+    # Mock daemon with RuntimeAPI
+    runtime_api = AsyncMock()
+    runtime_api.relay_strategist_message = AsyncMock()
+    runtime_api.handle_pm_escalation = AsyncMock(return_value="Use approach A.")
+    daemon = MagicMock()
+    daemon.runtime_api = runtime_api
+    bot._daemon = daemon
 
     # Mock channel
     channel = AsyncMock(spec=discord.TextChannel)
     channel.name = "strategist"
-
     guild = MagicMock(spec=discord.Guild)
     guild.roles = []
     channel.guild = guild
-
     cog._strategist_channel = channel
 
-    return cog, conversation
+    return cog, runtime_api
 
 
 # --- Routing framework integration tests ---
@@ -95,7 +94,7 @@ def _make_cog_with_conversation(bot: MagicMock | None = None) -> tuple[Strategis
 async def test_strategist_ignores_pm_prefixed_reply() -> None:
     """Messages that are replies to [PM]-prefixed messages are NOT routed to Strategist."""
     bot = _make_bot()
-    cog, conversation = _make_cog_with_conversation(bot)
+    cog, runtime_api = _make_cog_with_runtime_api(bot)
 
     # Message is a reply
     ref = MagicMock(spec=discord.MessageReference)
@@ -110,15 +109,15 @@ async def test_strategist_ignores_pm_prefixed_reply() -> None:
 
     await cog.on_message(msg)
 
-    # _send_to_channel should NOT have been called (conversation.send not called)
-    conversation.send.assert_not_awaited()
+    # RuntimeAPI should NOT have been called
+    runtime_api.relay_strategist_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_strategist_processes_reply_to_own_message() -> None:
     """Messages replying to Strategist's own (no-prefix) messages ARE routed to Strategist."""
     bot = _make_bot()
-    cog, conversation = _make_cog_with_conversation(bot)
+    cog, runtime_api = _make_cog_with_runtime_api(bot)
 
     ref = MagicMock(spec=discord.MessageReference)
     ref.message_id = 42
@@ -132,15 +131,15 @@ async def test_strategist_processes_reply_to_own_message() -> None:
 
     await cog.on_message(msg)
 
-    # _send_to_channel called means conversation.send was called
-    conversation.send.assert_awaited_once()
+    # RuntimeAPI relay should have been called
+    runtime_api.relay_strategist_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_strategist_processes_unaddressed_in_strategist_channel() -> None:
     """Unaddressed messages in #strategist route to Strategist (channel default)."""
     bot = _make_bot()
-    cog, conversation = _make_cog_with_conversation(bot)
+    cog, runtime_api = _make_cog_with_runtime_api(bot)
 
     msg = _make_message(content="What about the roadmap?")
     msg.channel = cog._strategist_channel
@@ -149,14 +148,14 @@ async def test_strategist_processes_unaddressed_in_strategist_channel() -> None:
 
     await cog.on_message(msg)
 
-    conversation.send.assert_awaited_once()
+    runtime_api.relay_strategist_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_fetch_message_not_found_graceful() -> None:
     """If replied-to message is deleted (NotFound), routing proceeds without crash."""
     bot = _make_bot()
-    cog, conversation = _make_cog_with_conversation(bot)
+    cog, runtime_api = _make_cog_with_runtime_api(bot)
 
     ref = MagicMock(spec=discord.MessageReference)
     ref.message_id = 42
@@ -175,7 +174,7 @@ async def test_fetch_message_not_found_graceful() -> None:
     # With None content and a reply, route_message defaults to STRATEGIST
     await cog.on_message(msg)
 
-    conversation.send.assert_awaited_once()
+    runtime_api.relay_strategist_message.assert_awaited_once()
 
 
 # --- Owner escalation with channel parameter ---
@@ -185,7 +184,7 @@ async def test_fetch_message_not_found_graceful() -> None:
 async def test_post_owner_escalation_uses_channel_param() -> None:
     """post_owner_escalation with channel= sends to that channel, not #strategist."""
     bot = _make_bot()
-    cog, _ = _make_cog_with_conversation(bot)
+    cog, _ = _make_cog_with_runtime_api(bot)
 
     # Create a separate agent channel
     agent_channel = AsyncMock(spec=discord.TextChannel)
@@ -222,7 +221,7 @@ async def test_post_owner_escalation_uses_channel_param() -> None:
 async def test_pending_escalation_resolved_on_reply() -> None:
     """Owner reply to escalation message resolves the pending future."""
     bot = _make_bot()
-    cog, _ = _make_cog_with_conversation(bot)
+    cog, _ = _make_cog_with_runtime_api(bot)
 
     # Set up pending escalation
     future = bot.loop.create_future()
@@ -252,53 +251,53 @@ async def test_pending_escalation_resolved_on_reply() -> None:
 @pytest.mark.asyncio
 async def test_on_message_skips_webhook_messages() -> None:
     """on_message skips webhook messages (via routing IGNORE)."""
-    cog, conversation = _make_cog_with_conversation()
+    cog, runtime_api = _make_cog_with_runtime_api()
     msg = _make_message(webhook_id=12345)
     msg.channel = cog._strategist_channel
 
     await cog.on_message(msg)
-    conversation.send.assert_not_awaited()
+    runtime_api.relay_strategist_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_on_message_skips_bot_messages() -> None:
     """on_message skips bot's own messages (via routing IGNORE)."""
     bot = _make_bot()
-    cog, conversation = _make_cog_with_conversation(bot)
+    cog, runtime_api = _make_cog_with_runtime_api(bot)
     msg = _make_message(author_id=999, is_bot=True)
     msg.channel = cog._strategist_channel
     msg.channel.name = "strategist"
 
     await cog.on_message(msg)
-    conversation.send.assert_not_awaited()
+    runtime_api.relay_strategist_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_on_message_skips_non_owner() -> None:
     """on_message skips messages from users without vco-owner role."""
-    cog, conversation = _make_cog_with_conversation()
+    cog, runtime_api = _make_cog_with_runtime_api()
     msg = _make_message(has_owner_role=False)
     msg.channel = cog._strategist_channel
     msg.channel.name = "strategist"
 
     await cog.on_message(msg)
-    conversation.send.assert_not_awaited()
+    runtime_api.relay_strategist_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_not_initialized_reply() -> None:
-    """If conversation not initialized, reply with error message."""
+    """If RuntimeAPI not available, reply with error message."""
     bot = _make_bot()
+    bot._daemon = None  # No daemon = no RuntimeAPI
     cog = StrategistCog(bot)
     cog._strategist_channel = AsyncMock(spec=discord.TextChannel)
     cog._strategist_channel.name = "strategist"
-    cog._conversation = None
 
     msg = _make_message()
     msg.channel = cog._strategist_channel
     msg.channel.name = "strategist"
     msg.reply = AsyncMock()
-    msg.channel.fetch_message = AsyncMock()  # No reference, won't be called
+    msg.channel.fetch_message = AsyncMock()
 
     await cog.on_message(msg)
     msg.reply.assert_awaited_once()
@@ -310,29 +309,23 @@ async def test_not_initialized_reply() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_pm_escalation_formats_message() -> None:
-    """PM escalation adds formatted message to conversation."""
-    cog, conversation = _make_cog_with_conversation()
-
-    sent_content = []
-
-    async def tracking_send(content: str):
-        sent_content.append(content)
-        return "Use approach A."
-
-    conversation.send = tracking_send
+async def test_handle_pm_escalation_delegates_to_runtime_api() -> None:
+    """PM escalation delegates to RuntimeAPI."""
+    cog, runtime_api = _make_cog_with_runtime_api()
+    runtime_api.handle_pm_escalation = AsyncMock(return_value="Use approach A.")
 
     result = await cog.handle_pm_escalation("agent-alpha", "Which framework?", 0.55)
-    assert "[PM Escalation]" in sent_content[0]
-    assert "agent-alpha" in sent_content[0]
-    assert result is not None
+    runtime_api.handle_pm_escalation.assert_awaited_once_with(
+        "agent-alpha", "Which framework?", 0.55
+    )
+    assert result == "Use approach A."
 
 
 @pytest.mark.asyncio
 async def test_make_sync_callbacks_returns_dict() -> None:
     """StrategistCog provides make_sync_callbacks()."""
     bot = _make_bot()
-    cog, _ = _make_cog_with_conversation(bot)
+    cog, _ = _make_cog_with_runtime_api(bot)
 
     callbacks = cog.make_sync_callbacks()
     assert "on_pm_escalation" in callbacks
@@ -341,12 +334,13 @@ async def test_make_sync_callbacks_returns_dict() -> None:
     assert callable(callbacks["on_owner_escalation"])
 
 
-@pytest.mark.asyncio
-async def test_decision_logger_property() -> None:
-    """StrategistCog exposes decision_logger property."""
-    cog, _ = _make_cog_with_conversation()
-    assert cog.decision_logger is None
+# --- Dead code removal verification ---
 
-    mock_logger = MagicMock(spec=DecisionLogger)
-    cog._decision_logger = mock_logger
-    assert cog.decision_logger is mock_logger
+
+def test_no_cmd_tags_in_cog() -> None:
+    """Verify [CMD:...] action tag code is fully removed from strategist cog."""
+    import inspect
+    source = inspect.getsource(StrategistCog)
+    assert "[CMD:" not in source
+    assert "_execute_actions" not in source
+    assert "_CMD_PATTERN" not in source
