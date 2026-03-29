@@ -1,12 +1,12 @@
-"""WorkflowOrchestratorCog: Bridges Discord events to GsdAgent containers via CompanyRoot.
+"""WorkflowOrchestratorCog: Bridges Discord events to agent containers via RuntimeAPI.
 
 Listens for vco report messages in agent channels, triggers PM artifact reviews
 at gates (CONTEXT.md at discussion gate, VERIFICATION.md at verify gate per D-07),
 and advances the state machine. PlanReviewCog notifies this Cog on plan
 approval/rejection via notify_plan_approved/notify_plan_rejected.
 
-Adapted for MIGR-01: routes through CompanyRoot/GsdAgent containers instead of
-v1 WorkflowOrchestrator.
+All container access goes through RuntimeAPI -- no direct CompanyRoot or
+container references. This cog is a pure Discord I/O adapter.
 """
 
 from __future__ import annotations
@@ -27,26 +27,33 @@ from vcompany.shared.workflow_types import (
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
-    from vcompany.strategist.pm import PMTier
 
 logger = logging.getLogger("vcompany.bot.cogs.workflow_orchestrator_cog")
+
+
+def _get_runtime_api(bot: VcoBot):
+    """Get RuntimeAPI from daemon, or None if not available."""
+    daemon = getattr(bot, "_daemon", None)
+    if daemon is not None:
+        return getattr(daemon, "runtime_api", None)
+    return None
 
 
 class WorkflowOrchestratorCog(commands.Cog):
     """Discord Cog that listens for vco report signals and drives gate reviews.
 
     Bridges Discord events (vco report messages in agent channels) to
-    GsdAgent containers via CompanyRoot. PM reviews artifacts at each gate:
+    agent containers via RuntimeAPI. PM reviews artifacts at each gate:
     - CONTEXT.md at discussion gate
     - PLAN.md at plan gate (via existing PlanReviewCog)
     - VERIFICATION.md at verify gate (D-07)
 
-    Adapted for MIGR-01: uses self.bot.company_root instead of v1 WorkflowOrchestrator.
+    All container access goes through RuntimeAPI -- no direct CompanyRoot access.
     """
 
     def __init__(self, bot: VcoBot) -> None:
         self.bot = bot
-        self._pm: PMTier | None = None
+        self._pm = None  # Set via set_runtime_context
         self._project_dir: Path | None = None
 
     def _get_project_category_name(self) -> str | None:
@@ -81,32 +88,29 @@ class WorkflowOrchestratorCog(commands.Cog):
             except Exception:
                 logger.exception("Failed to send system event to #agent-%s", agent_id)
 
-    def set_company_root(
+    def set_runtime_context(
         self,
-        pm: PMTier | None,
+        pm,
         project_dir: Path,
     ) -> None:
         """Store PM and project directory references.
 
-        CompanyRoot is accessed via self.bot.company_root directly.
+        RuntimeAPI is accessed via _get_runtime_api(self.bot).
         Called from bot on_ready after all components are initialized.
         """
         self._pm = pm
         self._project_dir = project_dir
-        logger.info("WorkflowOrchestratorCog wired with CompanyRoot and PM")
+        logger.info("WorkflowOrchestratorCog wired with PM and project_dir")
+
 
     @property
     def _initialized(self) -> bool:
         """Check if the cog is ready to process signals."""
-        return self.bot.company_root is not None
+        return _get_runtime_api(self.bot) is not None
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
-        """Detect vco report stage completion signals in agent channels.
-
-        When a signal is detected, finds the GsdAgent container via CompanyRoot
-        and interacts with its FSM.
-        """
+        """Detect vco report stage completion signals in agent channels."""
         if not self._initialized:
             return
 
@@ -116,9 +120,7 @@ class WorkflowOrchestratorCog(commands.Cog):
         if not message.channel.name.startswith("agent-"):
             return
 
-        # vco report posts as the bot (via REST API with bot token), so we
-        # MUST check bot messages for stage signals. Skip [system] messages
-        # (our own event posts) to avoid infinite loops.
+        # Skip [system] messages to avoid infinite loops
         if message.content.startswith("[system]"):
             return
 
@@ -140,15 +142,17 @@ class WorkflowOrchestratorCog(commands.Cog):
             )
             return
 
-        # Find the GsdAgent container via CompanyRoot
-        container = await self.bot.company_root._find_container(agent_id)
-        if container is None:
+        # Verify container exists via RuntimeAPI
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is None:
+            return
+
+        container_info = await runtime_api.get_container_info(agent_id)
+        if container_info is None:
             logger.warning("No container found for agent %s, ignoring signal", agent_id)
             return
 
-        # Determine new stage based on signal
-        # The container FSM handles transitions; for now map stage signals
-        # to WorkflowStage enum for gate review dispatch
+        # Map stage signals to WorkflowStage enum for gate review dispatch
         stage_map = {
             "discuss": WorkflowStage.DISCUSSION_GATE,
             "plan": WorkflowStage.PM_PLAN_REVIEW_GATE,
@@ -180,12 +184,7 @@ class WorkflowOrchestratorCog(commands.Cog):
             await self._handle_phase_complete(agent_id)
 
     async def _review_discussion_gate(self, agent_id: str) -> None:
-        """Review CONTEXT.md at the discussion gate via PM evaluation.
-
-        Reads the agent's CONTEXT.md from their clone directory and asks
-        the PM to evaluate completeness and alignment. HIGH/MEDIUM confidence
-        advances the gate; LOW confidence blocks for owner review.
-        """
+        """Review CONTEXT.md at the discussion gate via PM evaluation."""
         if self._project_dir is None:
             return
 
@@ -207,7 +206,6 @@ class WorkflowOrchestratorCog(commands.Cog):
                     )
 
         if not context_content:
-            # No CONTEXT.md found -- auto-advance (agent may not produce one)
             logger.warning(
                 "No CONTEXT.md found for %s, auto-advancing discussion gate",
                 agent_id,
@@ -239,7 +237,6 @@ class WorkflowOrchestratorCog(commands.Cog):
                         f"DISCUSSION GATE passed (PM confidence: {decision.confidence.level}) -> advancing to PLAN stage",
                     )
                 else:
-                    # LOW confidence -- block and notify
                     logger.warning(
                         "PM LOW confidence for %s discussion gate, blocking",
                         agent_id,
@@ -264,18 +261,13 @@ class WorkflowOrchestratorCog(commands.Cog):
         )
 
     async def _review_plan_gate(self, agent_id: str) -> None:
-        """Review plans at the PM plan review gate.
-
-        Reads PLAN.md files from the agent's clone and asks PM to evaluate.
-        HIGH/MEDIUM confidence auto-approves; LOW blocks for owner.
-        """
+        """Review plans at the PM plan review gate."""
         if self._project_dir is None:
             return
 
         clone_dir = self._project_dir / "clones" / agent_id
         phases_dir = clone_dir / ".planning" / "phases"
 
-        # Find plan files
         plan_content = ""
         plan_count = 0
         if phases_dir.exists():
@@ -328,16 +320,10 @@ class WorkflowOrchestratorCog(commands.Cog):
         )
 
     async def _review_verify_gate(self, agent_id: str) -> None:
-        """Review VERIFICATION.md at the verify gate (D-07).
-
-        PM reviews VERIFICATION.md before advancing to PHASE_COMPLETE.
-        If all checks pass, advances. If failures found, PM evaluates
-        whether to re-execute or block.
-        """
+        """Review VERIFICATION.md at the verify gate (D-07)."""
         if self._project_dir is None:
             return
 
-        # Find VERIFICATION.md in agent's clone
         clone_dir = self._project_dir / "clones" / agent_id
         phases_dir = clone_dir / ".planning" / "phases"
 
@@ -355,7 +341,6 @@ class WorkflowOrchestratorCog(commands.Cog):
                     )
 
         if not verification_content:
-            # No VERIFICATION.md -- auto-advance (verifier likely disabled)
             logger.warning(
                 "No VERIFICATION.md found for %s, auto-advancing verify gate",
                 agent_id,
@@ -367,13 +352,11 @@ class WorkflowOrchestratorCog(commands.Cog):
             await self._handle_phase_complete(agent_id)
             return
 
-        # Check for pass/fail patterns
         content_upper = verification_content.upper()
         has_fail = "FAIL" in content_upper
         has_pass = "PASS" in content_upper
 
         if has_pass and not has_fail:
-            # All checks passed -- advance to PHASE_COMPLETE
             logger.info(
                 "VERIFICATION.md for %s shows all PASS, advancing to PHASE_COMPLETE",
                 agent_id,
@@ -397,7 +380,6 @@ class WorkflowOrchestratorCog(commands.Cog):
                 decision = await self._pm.evaluate_question(review_prompt, agent_id)
 
                 if decision.confidence.level in ("HIGH", "MEDIUM"):
-                    # PM suggests re-execute
                     logger.info(
                         "PM recommends re-execute for %s (confidence=%s)",
                         agent_id,
@@ -408,7 +390,6 @@ class WorkflowOrchestratorCog(commands.Cog):
                         f"VERIFY GATE -- failures found, PM recommends re-execute (confidence: {decision.confidence.level})",
                     )
                 else:
-                    # LOW confidence -- block for owner
                     logger.warning(
                         "PM LOW confidence on verify gate for %s, blocking",
                         agent_id,
@@ -430,11 +411,7 @@ class WorkflowOrchestratorCog(commands.Cog):
         )
 
     async def _handle_phase_complete(self, agent_id: str) -> None:
-        """Handle phase completion for an agent.
-
-        Logs completion, posts to Discord, and routes completion event
-        to PM container if available (AUTO-05).
-        """
+        """Handle phase completion for an agent via RuntimeAPI."""
         logger.info("Agent %s completed current phase", agent_id)
 
         await self._send_system_event(
@@ -442,22 +419,15 @@ class WorkflowOrchestratorCog(commands.Cog):
             "PHASE COMPLETE -- all stages passed",
         )
 
-        # Route completion event to PM (AUTO-05)
-        pm = getattr(self.bot, "_pm_container", None)
-        if pm is not None and self.bot.company_root is not None:
-            container = await self.bot.company_root._find_container(agent_id)
-            if container is not None and hasattr(container, "make_completion_event"):
-                assignment = await container.get_assignment()
-                item_id = assignment.get("item_id", agent_id) if assignment else agent_id
-                event = container.make_completion_event(item_id)
-                await pm.post_event(event)
-                logger.info("Routed completion event for %s to PM (item_id=%s)", agent_id, item_id)
+        # Route completion event to PM via RuntimeAPI (AUTO-05)
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is not None:
+            routed = await runtime_api.route_completion_to_pm(agent_id)
+            if routed:
+                logger.info("Routed completion event for %s to PM via RuntimeAPI", agent_id)
 
     async def notify_plan_approved(self, agent_id: str) -> None:
-        """Called by PlanReviewCog after plan approval.
-
-        Posts approval event to agent channel.
-        """
+        """Called by PlanReviewCog after plan approval."""
         if not self._initialized:
             return
 
@@ -471,10 +441,7 @@ class WorkflowOrchestratorCog(commands.Cog):
         )
 
     async def notify_plan_rejected(self, agent_id: str) -> None:
-        """Called by PlanReviewCog after plan rejection.
-
-        Posts rejection event to agent channel.
-        """
+        """Called by PlanReviewCog after plan rejection."""
         if not self._initialized:
             return
 
@@ -487,24 +454,17 @@ class WorkflowOrchestratorCog(commands.Cog):
         )
 
     async def start_workflow(self, agent_id: str, phase: int) -> bool:
-        """Kick off an agent's workflow for a phase.
-
-        Posts workflow start event to agent channel. The GsdAgent container
-        FSM handles the actual state transitions.
-
-        Args:
-            agent_id: Agent to start.
-            phase: Phase number.
-
-        Returns:
-            True if the container exists and event was posted.
-        """
+        """Kick off an agent's workflow for a phase via RuntimeAPI."""
         if not self._initialized:
-            logger.error("Cannot start workflow: CompanyRoot not initialized")
+            logger.error("Cannot start workflow: RuntimeAPI not initialized")
             return False
 
-        container = await self.bot.company_root._find_container(agent_id)
-        if container is None:
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is None:
+            return False
+
+        container_info = await runtime_api.get_container_info(agent_id)
+        if container_info is None:
             logger.error("Cannot start workflow: container %s not found", agent_id)
             return False
 
@@ -515,6 +475,6 @@ class WorkflowOrchestratorCog(commands.Cog):
         return True
 
 
-async def setup(bot: VcoBot) -> None:
+async def setup(bot) -> None:
     """Load WorkflowOrchestratorCog into the bot."""
     await bot.add_cog(WorkflowOrchestratorCog(bot))

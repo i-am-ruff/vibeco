@@ -5,8 +5,10 @@ When a new PLAN.md is detected, this Cog:
 2. Posts rich embed summary to #plan-review with Approve/Reject buttons (D-07/D-08)
 3. Attaches full PLAN.md as a file (D-07)
 4. Waits for reviewer response (GATE-03)
-5. On approve: notifies WorkflowOrchestratorCog, triggers execution via TmuxManager (D-11/D-12)
-6. On reject: sends feedback to agent tmux pane for replanning (D-09/GATE-04)
+5. On approve: notifies WorkflowOrchestratorCog, triggers execution via RuntimeAPI (D-11/D-12)
+6. On reject: sends feedback to agent via RuntimeAPI (D-09/GATE-04)
+
+All business logic delegated to RuntimeAPI -- this cog is a pure Discord I/O adapter.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from discord.ext import commands
 
 from vcompany.bot.embeds import build_plan_review_embed
 from vcompany.bot.views.plan_review import PlanReviewView
-from vcompany.monitor.safety_validator import validate_safety_table
+from vcompany.shared.safety_validator import validate_safety_table
 
 logger = logging.getLogger("vcompany.bot.cogs.plan_review")
 
@@ -35,7 +37,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
     from vcompany.bot.cogs.workflow_orchestrator_cog import WorkflowOrchestratorCog
-    from vcompany.strategist.plan_reviewer import PlanReviewer
+
+
+def _get_runtime_api(bot: VcoBot):
+    """Get RuntimeAPI from daemon, or None if not available."""
+    daemon = getattr(bot, "_daemon", None)
+    if daemon is not None:
+        return getattr(daemon, "runtime_api", None)
+    return None
 
 
 class PlanReviewCog(commands.Cog):
@@ -45,12 +54,12 @@ class PlanReviewCog(commands.Cog):
         self.bot = bot
         self._plan_review_channel: discord.TextChannel | None = None
         self._alerts_channel: discord.TextChannel | None = None
-        self._plan_reviewer: PlanReviewer | None = None
+        self._plan_reviewer = None  # Set via set_plan_reviewer
         self._workflow_cog: WorkflowOrchestratorCog | None = None
         # GATE-05: Per-agent throttle tracker (agent_id -> last post monotonic time)
         self._last_review_time: dict[str, float] = {}
 
-    def set_plan_reviewer(self, reviewer: PlanReviewer) -> None:
+    def set_plan_reviewer(self, reviewer) -> None:
         """Inject PlanReviewer for PM review. Called from bot startup."""
         self._plan_reviewer = reviewer
 
@@ -74,11 +83,10 @@ class PlanReviewCog(commands.Cog):
         """Watch agent channels for @PM mentions and PM review responses.
 
         When an agent posts "@PM plan ready" in #agent-{id}, this triggers
-        the PM review flow. Discord is the bus — no file watching needed.
+        the PM review flow. Discord is the bus -- no file watching needed.
 
         Also handles PM review responses (bot-posted [PM] ... messages) to
-        resolve GsdAgent gate Futures. Bot-authored [PM] messages are handled
-        before the bot-author guard so they are not skipped.
+        resolve GsdAgent gate Futures via RuntimeAPI.
         """
         # Only respond to messages in agent-* channels
         if not message.channel.name.startswith("agent-"):
@@ -128,12 +136,7 @@ class PlanReviewCog(commands.Cog):
             f.write(f"\n{entry}\n")
 
     async def _review_agent_plans(self, agent_id: str, channel: discord.TextChannel) -> None:
-        """PM reviews agent's plan using accumulated knowledge doc.
-
-        PM reads its own condensed notes (not raw plan files from other agents),
-        reviews the new plan, checks for conflicts, then appends what matters
-        to its knowledge doc. Like a real PM keeping running notes.
-        """
+        """PM reviews agent's plan using accumulated knowledge doc."""
         if not self.bot.project_dir or not self.bot.project_config:
             await channel.send("[PM] No project loaded, cannot review.")
             return
@@ -162,10 +165,9 @@ class PlanReviewCog(commands.Cog):
         # Use PlanReviewer (PM) if available
         if self._plan_reviewer:
             try:
-                # Build PM review prompt with knowledge doc, not raw plans
                 review_prompt = (
                     f"You are reviewing a plan from agent '{agent_id}'.\n\n"
-                    f"## Your accumulated project knowledge\n{pm_knowledge or '(first review — no prior knowledge)'}\n\n"
+                    f"## Your accumulated project knowledge\n{pm_knowledge or '(first review -- no prior knowledge)'}\n\n"
                     f"## Project roadmap\n{roadmap[:1500]}\n\n"
                     f"## New plan to review\n{plan_content}\n\n"
                     f"Review this plan for:\n"
@@ -183,11 +185,10 @@ class PlanReviewCog(commands.Cog):
                 )
 
                 # Save condensed knowledge from this review
-                from datetime import datetime, timezone
                 ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
                 knowledge_entry = (
                     f"---\n"
-                    f"## {agent_id} — {latest_plan.name} (reviewed {ts})\n"
+                    f"## {agent_id} -- {latest_plan.name} (reviewed {ts})\n"
                     f"Decision: {'APPROVED' if review.confidence.level == 'HIGH' else 'NEEDS REVISION'}\n"
                     f"Note: {review.note}\n"
                 )
@@ -198,7 +199,10 @@ class PlanReviewCog(commands.Cog):
                         f"[PM] Plan approved for {agent_id}. {review.note}\n"
                         f"Sending execute command."
                     )
-                    await self._send_tmux_command(agent_id, "/gsd:execute-phase 1")
+                    # Route through RuntimeAPI
+                    runtime_api = _get_runtime_api(self.bot)
+                    if runtime_api is not None:
+                        await runtime_api.relay_channel_message(agent_id, "/gsd:execute-phase 1")
                 else:
                     await channel.send(
                         f"[PM] Plan needs revision for {agent_id}: {review.note}"
@@ -211,36 +215,32 @@ class PlanReviewCog(commands.Cog):
         await channel.send(
             f"[PM] Auto-approving plan for {agent_id} (no PM tier configured). Sending execute command."
         )
-        # Save basic knowledge even without PM
-        from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         knowledge_entry = (
             f"---\n"
-            f"## {agent_id} — {latest_plan.name} (auto-approved {ts})\n"
+            f"## {agent_id} -- {latest_plan.name} (auto-approved {ts})\n"
             f"Plan file: {latest_plan}\n"
         )
         await asyncio.to_thread(self._append_pm_context, knowledge_entry)
 
-        await self._send_tmux_command(agent_id, "/gsd:execute-phase 1")
+        # Route through RuntimeAPI
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is not None:
+            await runtime_api.relay_channel_message(agent_id, "/gsd:execute-phase 1")
 
     async def _verify_agent_execution(self, agent_id: str, channel: discord.TextChannel) -> None:
-        """PM verifies that execution completed successfully."""
-        if not self.bot.project_dir:
-            await channel.send("[PM] No project loaded.")
+        """PM verifies that execution completed successfully via RuntimeAPI."""
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is None:
+            await channel.send("[PM] Daemon not available for verification.")
             return
 
-        clone_dir = self.bot.project_dir / "clones" / agent_id
+        result = await runtime_api.verify_agent_execution(agent_id)
 
-        # Check git log for recent commits
-        from vcompany.git import ops as git_ops
-        result = await asyncio.to_thread(
-            git_ops.log, clone_dir, args=["--oneline", "-5"]
-        )
-
-        if result.success and result.stdout.strip():
+        if result["success"] and result["stdout"]:
             await channel.send(
                 f"[PM] Execution verified for {agent_id}. Recent commits:\n"
-                f"```\n{result.stdout.strip()}\n```"
+                f"```\n{result['stdout']}\n```"
             )
         else:
             await channel.send(f"[PM] Warning: No commits found for {agent_id} after execution.")
@@ -273,7 +273,7 @@ class PlanReviewCog(commands.Cog):
         task_count = len(re.findall(r'<task\s+type=', plan_content))
         goal = _extract_objective(plan_content)
 
-        # Validate safety table (SAFE-01/D-16)
+        # Validate safety table (SAFE-01/D-16) -- pure utility, no container deps
         safety_valid, safety_message = validate_safety_table(plan_content)
 
         # Build embed (D-07)
@@ -306,10 +306,12 @@ class PlanReviewCog(commands.Cog):
                         await self._plan_review_channel.send(embed=embed)
                     except Exception:
                         logger.exception("Failed to post auto-approval notice for %s", agent_id)
-                    # Log decision
-                    await self._log_plan_decision(
-                        agent_id, str(plan_path), "Plan approved by PM", "HIGH"
-                    )
+                    # Log decision via RuntimeAPI
+                    runtime_api = _get_runtime_api(self.bot)
+                    if runtime_api is not None:
+                        await runtime_api.log_plan_decision(
+                            agent_id, str(plan_path), "Plan approved by PM", "HIGH"
+                        )
                     return
                 else:
                     # LOW confidence or check failures -- add PM notes to embed, let human review
@@ -351,16 +353,11 @@ class PlanReviewCog(commands.Cog):
             await self._handle_rejection(agent_id, str(plan_path), view.feedback)
 
     async def _handle_approval(self, agent_id: str, plan_path: str) -> None:
-        """Process plan approval -- route through RuntimeAPI (COMM-05 receive path).
-
-        Updates state, routes through RuntimeAPI for daemon-side processing,
-        and notifies WorkflowOrchestratorCog (Discord UI concern).
-        """
+        """Process plan approval -- route through RuntimeAPI (COMM-05 receive path)."""
         self._update_gate_state(agent_id, plan_path, status="approved")
 
         # Route through RuntimeAPI (COMM-05 receive path, EXTRACT-04)
-        daemon = getattr(self.bot, "_daemon", None)
-        runtime_api = getattr(daemon, "runtime_api", None) if daemon is not None else None
+        runtime_api = _get_runtime_api(self.bot)
         if runtime_api is not None:
             await runtime_api.handle_plan_approval(agent_id, plan_path)
 
@@ -380,16 +377,11 @@ class PlanReviewCog(commands.Cog):
             )
 
     async def _handle_rejection(self, agent_id: str, plan_path: str, feedback: str) -> None:
-        """Process plan rejection -- route through RuntimeAPI (COMM-05 receive path).
-
-        Routes through RuntimeAPI for daemon-side processing, notifies
-        WorkflowOrchestratorCog (Discord UI concern).
-        """
+        """Process plan rejection -- route through RuntimeAPI (COMM-05 receive path)."""
         self._update_gate_state(agent_id, plan_path, status="rejected")
 
         # Route through RuntimeAPI (COMM-05 receive path, EXTRACT-04)
-        daemon = getattr(self.bot, "_daemon", None)
-        runtime_api = getattr(daemon, "runtime_api", None) if daemon is not None else None
+        runtime_api = _get_runtime_api(self.bot)
         if runtime_api is not None:
             await runtime_api.handle_plan_rejection(agent_id, plan_path, feedback)
 
@@ -397,13 +389,14 @@ class PlanReviewCog(commands.Cog):
         if self._workflow_cog is not None:
             await self._workflow_cog.notify_plan_rejected(agent_id)
 
-        # Send rejection feedback to agent tmux pane (D-09) -- fallback if RuntimeAPI not available
+        # Send rejection feedback to agent via RuntimeAPI (D-09)
         if runtime_api is None:
+            # Fallback only if RuntimeAPI unavailable
             feedback_cmd = (
                 f"Your plan {Path(plan_path).name} was rejected. "
                 f"Feedback: {feedback}. Please revise the plan."
             )
-            await self._send_tmux_command(agent_id, feedback_cmd)
+            logger.warning("RuntimeAPI unavailable, cannot send rejection feedback to %s", agent_id)
 
         if self._plan_review_channel:
             await self._plan_review_channel.send(
@@ -412,13 +405,13 @@ class PlanReviewCog(commands.Cog):
             )
 
     async def _trigger_execution(self, agent_id: str, state: object) -> None:
-        """Send /gsd:execute-phase command to agent tmux pane per D-11/D-12.
-
-        Only called when ALL plans for a phase are approved.
-        """
+        """Send /gsd:execute-phase command to agent via RuntimeAPI per D-11/D-12."""
         phase = getattr(state, "current_phase", "unknown")
         execute_cmd = f"/gsd:execute-phase {phase}"
-        await self._send_tmux_command(agent_id, execute_cmd)
+
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is not None:
+            await runtime_api.relay_channel_message(agent_id, execute_cmd)
 
         # Reset gate state to idle after triggering
         if hasattr(state, "plan_gate_status"):
@@ -431,11 +424,7 @@ class PlanReviewCog(commands.Cog):
             )
 
     def _get_agent_state(self, agent_id: str):
-        """Get AgentMonitorState if available via bot attribute.
-
-        Returns None if no monitor state tracking is active (supervision tree
-        handles health monitoring via event-driven callbacks instead).
-        """
+        """Get AgentMonitorState if available via bot attribute."""
         monitor = getattr(self.bot, "monitor_loop", None)
         if monitor is not None:
             return getattr(monitor, "_agent_states", {}).get(agent_id)
@@ -464,63 +453,6 @@ class PlanReviewCog(commands.Cog):
             if plan_path in state.pending_plans:
                 state.pending_plans.remove(plan_path)
 
-    async def _send_tmux_command(self, agent_id: str, command: str) -> bool:
-        """Send a command to an agent's tmux pane via TmuxManager.
-
-        Looks up the agent's pane_id from agents.json registry, then uses
-        TmuxManager to send the command. Returns True on success.
-        """
-        if not self.bot.project_dir:
-            logger.error("Cannot send tmux command: no project_dir")
-            return False
-
-        try:
-            from vcompany.models.agent_state import AgentsRegistry
-            from vcompany.tmux.session import TmuxManager
-
-            registry_path = self.bot.project_dir / "state" / "agents.json"
-            if not registry_path.exists():
-                logger.warning("agents.json not found, cannot send command to %s", agent_id)
-                return False
-
-            registry = AgentsRegistry.model_validate_json(
-                await asyncio.to_thread(registry_path.read_text)
-            )
-            entry = registry.agents.get(agent_id)
-            if not entry or not entry.pane_id:
-                logger.warning("No pane_id for agent %s in registry", agent_id)
-                return False
-
-            tmux = TmuxManager()
-            sent = await asyncio.to_thread(tmux.send_command, entry.pane_id, command)
-            if sent:
-                logger.info("Sent command to %s (pane %s): %s", agent_id, entry.pane_id, command[:80])
-            else:
-                logger.error("Failed to send command to %s (pane %s)", agent_id, entry.pane_id)
-            return sent
-        except Exception:
-            logger.exception("Failed to send tmux command to %s", agent_id)
-            return False
-
-    async def _log_plan_decision(
-        self, agent_id: str, plan_path: str, decision: str, confidence_level: str
-    ) -> None:
-        """Log a plan review decision via StrategistCog's DecisionLogger if available."""
-        strategist_cog = self.bot.get_cog("StrategistCog")
-        if strategist_cog and strategist_cog.decision_logger:
-            from vcompany.strategist.models import DecisionLogEntry
-
-            await strategist_cog.decision_logger.log_decision(
-                DecisionLogEntry(
-                    timestamp=datetime.now(timezone.utc),
-                    question_or_plan=f"Plan review: {plan_path}",
-                    decision=decision,
-                    confidence_level=confidence_level,
-                    decided_by="PM",
-                    agent_id=agent_id,
-                )
-            )
-
     # --- Review Request Infrastructure (GATE-01, GATE-05) ---
 
     async def _post_throttled(
@@ -530,17 +462,7 @@ class PlanReviewCog(commands.Cog):
         content: str,
         files: list[discord.File] | None = None,
     ) -> None:
-        """Post review message respecting 1-per-30s throttle per agent (GATE-05).
-
-        If the agent posted a review request less than _REVIEW_THROTTLE_SECS ago,
-        this method waits until the throttle window has elapsed before posting.
-
-        Args:
-            agent_id: Agent identifier for throttle tracking.
-            channel: Discord channel to post to.
-            content: Message content string.
-            files: Optional list of file attachments.
-        """
+        """Post review message respecting 1-per-30s throttle per agent (GATE-05)."""
         now = time.monotonic()
         last = self._last_review_time.get(agent_id, 0.0)
         wait = _REVIEW_THROTTLE_SECS - (now - last)
@@ -555,18 +477,7 @@ class PlanReviewCog(commands.Cog):
     async def _build_review_attachments(
         self, agent_id: str, stage: str
     ) -> list[discord.File]:
-        """Collect relevant files for a stage review request (GATE-01).
-
-        Looks up the agent's clone directory and finds the latest file matching
-        the stage's glob pattern. Files larger than 1MB are skipped.
-
-        Args:
-            agent_id: Agent identifier to locate clone directory.
-            stage: GSD stage name (discuss, plan, execute, uat, ship).
-
-        Returns:
-            List of discord.File objects ready to attach to a message.
-        """
+        """Collect relevant files for a stage review request (GATE-01)."""
         if not self.bot.project_dir:
             return []
         clone_dir = self.bot.project_dir / "clones" / agent_id
@@ -591,16 +502,7 @@ class PlanReviewCog(commands.Cog):
         return files
 
     async def post_review_request(self, agent_id: str, stage: str) -> None:
-        """Post a review request to the agent's Discord channel with file attachments.
-
-        Main entry point called from VcoBot wiring after a GSD stage transition.
-        Finds the agent-{id} channel, collects relevant attachments, and posts
-        a throttled message mentioning @PM.
-
-        Args:
-            agent_id: Agent identifier -- posted to #agent-{agent_id} channel.
-            stage: GSD stage name (discuss, plan, execute, uat, ship).
-        """
+        """Post a review request to the agent's Discord channel with file attachments."""
         guild = self.bot.get_guild(self.bot._guild_id)
         if not guild:
             return
@@ -613,16 +515,7 @@ class PlanReviewCog(commands.Cog):
         await self._post_throttled(agent_id, channel, content, attachments or None)
 
     async def _handle_review_response(self, agent_id: str, content: str) -> None:
-        """Parse a [PM] review response and resolve the agent's gate Future.
-
-        Called from on_message when the bot posts a [PM]-prefixed message in
-        an agent channel. Parses the decision keyword and calls resolve_review()
-        on the matching GsdAgent.
-
-        Args:
-            agent_id: Agent ID extracted from the channel name.
-            content: Full message content starting with "[PM]".
-        """
+        """Parse a [PM] review response and resolve the agent's gate Future via RuntimeAPI."""
         content_lower = content.lower()
         if "approved" in content_lower or "approve" in content_lower:
             decision = "approve"
@@ -633,38 +526,22 @@ class PlanReviewCog(commands.Cog):
         else:
             decision = "clarify"  # safe fallback
 
-        if self.bot.company_root is None:
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is None:
             return
-        container = await self.bot.company_root._find_container(agent_id)
-        if container is None:
-            return
-        from vcompany.agent.gsd_agent import GsdAgent
-        if not isinstance(container, GsdAgent):
-            return
-        resolved = container.resolve_review(decision)
+
+        resolved = await runtime_api.resolve_review(agent_id, decision)
         if resolved:
             logger.info("Resolved review gate for %s: %s", agent_id, decision)
             if decision == "modify":
-                # Extract feedback after the first colon (e.g., "[PM] NEEDS CHANGES: ...")
+                # Extract feedback after the first colon
                 feedback = content.split(":", 1)[1].strip() if ":" in content else content
-                await self._send_tmux_command(agent_id, f"PM feedback: {feedback}")
+                await runtime_api.relay_channel_message(agent_id, f"PM feedback: {feedback}")
         else:
             logger.warning("No pending review to resolve for %s", agent_id)
 
     async def dispatch_pm_review(self, agent_id: str, stage: str) -> None:
-        """Have PM evaluate the agent's stage artifacts and post a review response.
-
-        Called when a gsd_transition event triggers PM evaluation (GATE-02).
-        Uses PlanReviewer for all stage artifacts. Falls back to auto-approve
-        if no reviewer configured or no artifacts found.
-        Posts a [PM] APPROVED or [PM] NEEDS CHANGES message to the agent channel,
-        which is then picked up by on_message -> _handle_review_response to
-        resolve the gate Future.
-
-        Args:
-            agent_id: Agent identifier -- reads from #agent-{agent_id}.
-            stage: GSD stage name (discuss, plan, execute, uat, ship).
-        """
+        """Have PM evaluate the agent's stage artifacts and post a review response."""
         guild = self.bot.get_guild(self.bot._guild_id)
         if not guild:
             return
@@ -722,11 +599,7 @@ class PlanReviewCog(commands.Cog):
         await self._post_throttled(agent_id, channel, response)
 
     def make_sync_callback(self) -> dict:
-        """Create sync callback for on_plan_detected routing.
-
-        Returns dict with on_plan_detected key that schedules
-        handle_new_plan via run_coroutine_threadsafe.
-        """
+        """Create sync callback for on_plan_detected routing."""
         loop = self.bot.loop
 
         def on_plan_detected(agent_id: str, plan_path: Path) -> None:

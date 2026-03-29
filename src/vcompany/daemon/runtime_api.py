@@ -607,6 +607,126 @@ class RuntimeAPI:
         )
         return await pipeline.run()
 
+    async def resolve_review(self, agent_id: str, decision: str) -> bool:
+        """Resolve a GsdAgent's review gate with the given decision.
+
+        Returns True if a pending review was resolved, False otherwise.
+        """
+        from vcompany.agent.gsd_agent import GsdAgent
+
+        container = await self._root._find_container(agent_id)
+        if container is None:
+            return False
+        if not isinstance(container, GsdAgent):
+            return False
+        return container.resolve_review(decision)
+
+    async def verify_agent_execution(self, agent_id: str) -> dict:
+        """Check git log for recent commits in an agent's clone directory.
+
+        Returns dict with 'success', 'stdout' keys.
+        """
+        from vcompany.git import ops as git_ops
+
+        if self._project_dir is None:
+            return {"success": False, "stdout": ""}
+        clone_dir = self._project_dir / "clones" / agent_id
+        result = await asyncio.to_thread(
+            git_ops.log, clone_dir, args=["--oneline", "-5"]
+        )
+        return {"success": result.success, "stdout": result.stdout.strip() if result.stdout else ""}
+
+    async def log_plan_decision(
+        self, agent_id: str, plan_path: str, decision: str, confidence_level: str
+    ) -> None:
+        """Log a plan review decision to the strategist's decision logger if available."""
+        from vcompany.strategist.models import DecisionLogEntry
+        from datetime import datetime, timezone
+
+        # Access strategist container's decision logger
+        if self._strategist_container is not None:
+            decision_logger = getattr(self._strategist_container, "decision_logger", None)
+            if decision_logger:
+                await decision_logger.log_decision(
+                    DecisionLogEntry(
+                        timestamp=datetime.now(timezone.utc),
+                        question_or_plan=f"Plan review: {plan_path}",
+                        decision=decision,
+                        confidence_level=confidence_level,
+                        decided_by="PM",
+                        agent_id=agent_id,
+                    )
+                )
+
+    async def signal_workflow_stage(
+        self, agent_id: str, stage: str, data: dict | None = None
+    ) -> bool:
+        """Signal a workflow stage event for an agent container.
+
+        Used by WorkflowOrchestratorCog to interact with agent FSM
+        without direct container access.
+
+        Returns True if the container was found and event posted.
+        """
+        container = await self._root._find_container(agent_id)
+        if container is None:
+            return False
+        event = {"type": "workflow_stage", "stage": stage}
+        if data:
+            event.update(data)
+        if hasattr(container, "post_event"):
+            await container.post_event(event)
+        return True
+
+    async def get_container_info(self, agent_id: str) -> dict | None:
+        """Get container info dict (state, type, has completion event support).
+
+        Returns None if container not found.
+        """
+        container = await self._root._find_container(agent_id)
+        if container is None:
+            return None
+        info = {
+            "agent_id": agent_id,
+            "state": container.state,
+            "agent_type": getattr(container.context, "agent_type", "unknown"),
+            "has_make_completion_event": hasattr(container, "make_completion_event"),
+        }
+        return info
+
+    async def route_completion_to_pm(self, agent_id: str) -> bool:
+        """Route a phase completion event from an agent to the PM container.
+
+        Finds the agent container, creates completion event, posts to PM.
+        Returns True if event was routed, False otherwise.
+        """
+        from vcompany.agent.fulltime_agent import FulltimeAgent
+
+        container = await self._root._find_container(agent_id)
+        if container is None:
+            return False
+        if not hasattr(container, "make_completion_event"):
+            return False
+
+        # Find PM container
+        pm_container = None
+        for _pid, ps in self._root._projects.items():
+            for child in ps.children.values():
+                if isinstance(child, FulltimeAgent):
+                    pm_container = child
+                    break
+            if pm_container:
+                break
+
+        if pm_container is None:
+            return False
+
+        assignment = await container.get_assignment() if hasattr(container, "get_assignment") else None
+        item_id = assignment.get("item_id", agent_id) if assignment else agent_id
+        event = container.make_completion_event(item_id)
+        await pm_container.post_event(event)
+        return True
+
     # ── Category D: Review gate callbacks ─────────────────────────
 
     async def handle_plan_approval(self, agent_id: str, plan_path: str) -> None:
