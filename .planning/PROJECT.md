@@ -24,10 +24,11 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ## Current State
 
-**v3.0 shipped 2026-03-29.** CLI-first architecture complete. Daemon owns CompanyRoot, RuntimeAPI gateway, socket API. Bot is a thin Discord relay. Strategist manages workforce via vco CLI.
+**v3.1 Phase 27 complete (2026-03-30).** Docker Integration Wiring done — agent-types.yaml as single source of truth, factory resolves per-transport deps, auto-build on first use, parametric DockerTransport setup (tweakcc/settings), all hardcoded type checks eliminated, config-derived capabilities throughout.
 
 ## Previously Shipped
 
+**v3.1 Phase 27 Docker Integration Wiring (2026-03-30):** Agent-types config system, factory per-transport dep resolution, Docker auto-build, parametric setup (tweakcc profiles, custom settings), hardcoded type-check elimination, config-derived capabilities, vco build CLI — 4 plans, 7 requirements (WIRE-01–07)
 **v3.0 CLI-First Architecture Rewrite (2026-03-29):** Runtime daemon, Unix socket API (NDJSON), CommunicationPort abstraction, RuntimeAPI gateway (600+ lines), CompanyRoot extraction, 6 CLI commands, bot cogs as pure I/O adapters, Strategist CLI autonomy — 6 phases, 15 plans, 36 requirements
 **v2.1 Behavioral Integration (2026-03-28):** Work initiation, PM review gates, auto work distribution, PM event routing, stuck-agent detection, health tree rendering
 **v2.0 Agent Container Architecture (2026-03-28):** 8-state lifecycle FSM, supervision tree, 4 agent types, health tree, resilience, PM autonomy
@@ -169,4 +170,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after v3.1 milestone start*
+*Last updated: 2026-03-30 after Phase 27 completion*
