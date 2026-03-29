@@ -64,7 +64,7 @@ See `.planning/milestones/v2.1-ROADMAP.md` for full details.
 - [x] **Phase 20: CompanyRoot Extraction** - Move CompanyRoot, supervision tree, Strategist conversation, and PM review into daemon behind RuntimeAPI (completed 2026-03-29)
 - [x] **Phase 21: CLI Commands** - All vco commands as thin socket API clients (completed 2026-03-29)
 - [x] **Phase 22: Bot Thin Relay** - Refactor bot to pure I/O adapter with zero container imports (completed 2026-03-29)
-- [ ] **Phase 23: Strategist Autonomy** - Strategist calls vco CLI commands via Bash tool, action tags removed
+- [x] **Phase 23: Strategist Autonomy** - Strategist calls vco CLI commands via Bash tool, action tags removed (completed 2026-03-29)
 
 ## Phase Details
 
@@ -152,9 +152,9 @@ Plans:
   1. The Strategist can run `vco hire`, `vco give-task`, and `vco dismiss` from its Claude session's Bash tool and the commands succeed
   2. The `[CMD:...]` action tag parsing code is removed from StrategistCog
   3. The Strategist persona/system prompt references `vco` CLI commands for workforce management instead of action tags
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 23-01-PLAN.md -- Remove action tag dead code, update personas for vco CLI, fix stale tests
+- [x] 23-01-PLAN.md -- Remove action tag dead code, update personas for vco CLI, fix stale tests
 
 ## Progress
 
@@ -168,4 +168,4 @@ Phases execute in numeric order: 18 -> 18.1 -> 18.2 -> 19 -> ... -> 23
 | 20. CompanyRoot Extraction | 4/4 | Complete    | 2026-03-29 |
 | 21. CLI Commands | 2/2 | Complete    | 2026-03-29 |
 | 22. Bot Thin Relay | 3/3 | Complete    | 2026-03-29 |
-| 23. Strategist Autonomy | 0/1 | Not started | - |
+| 23. Strategist Autonomy | 1/1 | Complete   | 2026-03-29 |

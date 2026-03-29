@@ -60,9 +60,9 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 
 ### Strategist Autonomy
 
-- [ ] **STRAT-01**: Strategist calls `vco hire`, `vco give-task`, `vco dismiss` via Bash tool
-- [ ] **STRAT-02**: `[CMD:...]` action tag parsing removed from StrategistCog
-- [ ] **STRAT-03**: Strategist persona updated to reference `vco` CLI commands instead of action tags
+- [x] **STRAT-01**: Strategist calls `vco hire`, `vco give-task`, `vco dismiss` via Bash tool
+- [x] **STRAT-02**: `[CMD:...]` action tag parsing removed from StrategistCog
+- [x] **STRAT-03**: Strategist persona updated to reference `vco` CLI commands instead of action tags
 
 ## v3.1 Requirements
 
@@ -125,9 +125,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BOT-03 | Phase 22 | Complete |
 | BOT-04 | Phase 22 | Complete |
 | BOT-05 | Phase 22 | Complete |
-| STRAT-01 | Phase 23 | Pending |
-| STRAT-02 | Phase 23 | Pending |
-| STRAT-03 | Phase 23 | Pending |
+| STRAT-01 | Phase 23 | Complete |
+| STRAT-02 | Phase 23 | Complete |
+| STRAT-03 | Phase 23 | Complete |
 
 **Coverage:**
 - v3.0 requirements: 36 total

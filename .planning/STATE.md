@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: CLI-First Architecture Rewrite
-status: Ready to plan
-stopped_at: Completed 22-03-PLAN.md
-last_updated: "2026-03-29T13:39:30.417Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 23-01-PLAN.md
+last_updated: "2026-03-29T13:50:23.986Z"
 progress:
   total_phases: 6
-  completed_phases: 5
-  total_plans: 14
-  completed_plans: 14
+  completed_phases: 6
+  total_plans: 15
+  completed_plans: 15
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 22 — Bot Thin Relay
+**Current focus:** Phase 23 — Strategist Autonomy
 
 ## Current Position
 
-Phase: 23
-Plan: Not started
+Phase: 23 (Strategist Autonomy) — EXECUTING
+Plan: 1 of 1
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Plan: Not started
 | Phase 22 P01 | 235 | 2 tasks | 2 files |
 | Phase 22 P02 | 545 | 2 tasks | 6 files |
 | Phase 22 P03 | 386 | 2 tasks | 8 files |
+| Phase 23 P01 | 130 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Recent decisions affecting current work:
 - [Phase 22]: RuntimeAPI.new_project_from_name handles full project init pipeline previously inline in bot cog
 - [Phase 22]: StrategistCog fully decoupled from StrategistConversation -- all routing through RuntimeAPI
 - [Phase 22]: All 10 bot files (9 cogs + client.py) have zero prohibited imports -- pure I/O adapters
+- [Phase 23]: Removed [CMD:] action tag system -- Strategist uses vco CLI via Bash tool
+- [Phase 23]: Session version bumped v10->v11 to force new sessions with updated persona
 
 ### Pending Todos
 
@@ -120,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T12:55:18.303Z
-Stopped at: Completed 22-03-PLAN.md
+Last session: 2026-03-29T13:50:23.966Z
+Stopped at: Completed 23-01-PLAN.md
 Resume file: None
