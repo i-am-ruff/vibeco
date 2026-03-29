@@ -97,6 +97,9 @@ class Daemon:
             await self._server.start()
             logger.info("Socket server listening on %s", self._socket_path)
 
+            # Inject daemon reference into bot so on_ready can register CommunicationPort
+            self._bot._daemon = self
+
             # Start Discord bot (DAEMON-06: bot.start() not bot.run())
             self._bot_task = asyncio.create_task(self._bot.start(self._bot_token))
             logger.info("Bot starting...")
@@ -251,14 +254,8 @@ class Daemon:
         # Wire StrategistCog to CompanyAgent via RuntimeAPI
         await runtime_api.new_project(project_config, project_dir, persona_path)
 
-        # Wire StrategistCog to CompanyAgent after new_project creates it
-        strategist_cog = self._bot.get_cog("StrategistCog") if hasattr(self._bot, 'get_cog') else None
-        if strategist_cog and runtime_api._strategist_container:
-            strategist_cog.set_company_agent(runtime_api._strategist_container)
-
-        # NOTE: PlanReviewer and PMTier are NOT injected into cogs here.
-        # Phase 22 (BOT-01..05) will complete cog rewiring to use RuntimeAPI exclusively.
-        # For now, PlanReviewCog button callbacks should call:
+        # NOTE: StrategistCog and PlanReviewCog access RuntimeAPI exclusively.
+        # No direct container injection needed — cogs use _get_runtime_api(self.bot).
         #   daemon.runtime_api.handle_plan_approval(agent_id, plan_path)
         #   daemon.runtime_api.handle_plan_rejection(agent_id, plan_path, feedback)
         # This is wired in Plan 20-04 when cogs are updated.
@@ -315,11 +312,6 @@ class Daemon:
         self._project_config = config
 
         await self._runtime_api.new_project(config, project_dir, persona_path)
-
-        # Wire StrategistCog (same as _init_project)
-        strategist_cog = self._bot.get_cog("StrategistCog") if hasattr(self._bot, 'get_cog') else None
-        if strategist_cog and self._runtime_api._strategist_container:
-            strategist_cog.set_company_agent(self._runtime_api._strategist_container)
 
         return {"status": "ok", "project": config.project}
 
