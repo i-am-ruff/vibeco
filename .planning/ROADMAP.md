@@ -107,7 +107,12 @@ Plans:
   3. StrategistConversation runs in the daemon and sends/receives messages through CommunicationPort, not through StrategistCog directly
   4. PM review flow state machine runs in the daemon, sending review requests and receiving responses through CommunicationPort
   5. Channel creation (project categories, agent channels) is requested by the daemon through CommunicationPort, not by calling Discord APIs directly
-**Plans**: TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 20-01-PLAN.md -- RuntimeAPI gateway, CommunicationPort extensions (create_channel, edit_message)
+- [ ] 20-02-PLAN.md -- Callback replacement methods in RuntimeAPI, CompanyRoot.hire() guild removal
+- [ ] 20-03-PLAN.md -- Gut VcoBot.on_ready(), move CompanyRoot lifecycle to Daemon
+- [ ] 20-04-PLAN.md -- Rewire CommandsCog, import boundary tests, RuntimeAPI tests
 
 ### Phase 21: CLI Commands
 **Goal**: Users can manage agents entirely from the terminal using vco CLI commands that talk to the daemon via socket API
@@ -151,7 +156,7 @@ Phases execute in numeric order: 18 -> 18.1 -> 18.2 -> 19 -> ... -> 23
 |-------|----------------|--------|-----------|
 | 18. Daemon Foundation | 3/3 | Complete    | 2026-03-29 |
 | 19. Communication Abstraction | 2/2 | Complete    | 2026-03-29 |
-| 20. CompanyRoot Extraction | 0/? | Not started | - |
+| 20. CompanyRoot Extraction | 0/4 | Not started | - |
 | 21. CLI Commands | 0/? | Not started | - |
 | 22. Bot Thin Relay | 0/? | Not started | - |
 | 23. Strategist Autonomy | 0/? | Not started | - |
