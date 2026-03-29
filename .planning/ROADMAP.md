@@ -59,7 +59,7 @@ See `.planning/milestones/v2.1-ROADMAP.md` for full details.
 - Integer phases (18, 19, 20...): Planned milestone work
 - Decimal phases (18.1, 18.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 18: Daemon Foundation** - Runtime daemon with PID file, signal handling, Unix socket server, and NDJSON protocol
+- [x] **Phase 18: Daemon Foundation** - Runtime daemon with PID file, signal handling, Unix socket server, and NDJSON protocol (completed 2026-03-29)
 - [ ] **Phase 19: Communication Abstraction** - CommunicationPort protocol and DiscordCommunicationPort adapter as the boundary between daemon and bot
 - [ ] **Phase 20: CompanyRoot Extraction** - Move CompanyRoot, supervision tree, Strategist conversation, and PM review into daemon behind RuntimeAPI
 - [ ] **Phase 21: CLI Commands** - All vco commands as thin socket API clients
@@ -78,11 +78,11 @@ See `.planning/milestones/v2.1-ROADMAP.md` for full details.
   3. The daemon survives a SIGTERM/SIGINT and shuts down cleanly; after a SIGKILL, the next `vco up` detects and cleans up the stale socket
   4. A client can connect to the Unix socket, send a JSON request, and receive a JSON response (verifiable with `socat`)
   5. The Discord bot starts alongside the daemon and is reachable on Discord
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 18-01-PLAN.md -- NDJSON protocol models and shared path constants
 - [x] 18-02-PLAN.md -- Daemon class and Unix socket server
-- [ ] 18-03-PLAN.md -- CLI wiring (vco up refactor, vco down, sync client)
+- [x] 18-03-PLAN.md -- CLI wiring (vco up refactor, vco down, sync client)
 
 ### Phase 19: Communication Abstraction
 **Goal**: A formal CommunicationPort protocol exists that the daemon uses for all platform communication, with a Discord adapter implementing it in the bot layer
@@ -146,7 +146,7 @@ Phases execute in numeric order: 18 -> 18.1 -> 18.2 -> 19 -> ... -> 23
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 18. Daemon Foundation | 2/3 | In Progress|  |
+| 18. Daemon Foundation | 3/3 | Complete   | 2026-03-29 |
 | 19. Communication Abstraction | 0/? | Not started | - |
 | 20. CompanyRoot Extraction | 0/? | Not started | - |
 | 21. CLI Commands | 0/? | Not started | - |

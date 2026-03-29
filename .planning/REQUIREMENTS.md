@@ -13,7 +13,7 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 - [x] **DAEMON-02**: Runtime daemon creates PID file on start and removes on clean exit
 - [x] **DAEMON-03**: Runtime daemon handles SIGTERM/SIGINT for graceful shutdown (stops containers, closes socket)
 - [x] **DAEMON-04**: Runtime daemon cleans up stale socket file on start (PID probe before unlink)
-- [ ] **DAEMON-05**: `vco down` sends graceful shutdown signal to running daemon
+- [x] **DAEMON-05**: `vco down` sends graceful shutdown signal to running daemon
 - [x] **DAEMON-06**: `vco up` starts Discord bot alongside daemon in same event loop (`bot.start()`)
 
 ### Socket API
@@ -96,7 +96,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DAEMON-02 | Phase 18 | Complete |
 | DAEMON-03 | Phase 18 | Complete |
 | DAEMON-04 | Phase 18 | Complete |
-| DAEMON-05 | Phase 18 | Pending |
+| DAEMON-05 | Phase 18 | Complete |
 | DAEMON-06 | Phase 18 | Complete |
 | SOCK-01 | Phase 18 | Complete |
 | SOCK-02 | Phase 18 | Complete |
