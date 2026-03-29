@@ -29,7 +29,7 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 
 - [x] **COMM-01**: CommunicationPort protocol formalized with methods for send_message, send_embed, create_thread, subscribe_to_channel
 - [x] **COMM-02**: Daemon never imports discord.py -- all platform communication goes through CommunicationPort
-- [ ] **COMM-03**: DiscordCommunicationPort adapter implements CommunicationPort protocol in the bot layer
+- [x] **COMM-03**: DiscordCommunicationPort adapter implements CommunicationPort protocol in the bot layer
 - [ ] **COMM-04**: StrategistConversation runs in daemon, sends/receives through CommunicationPort (not StrategistCog)
 - [ ] **COMM-05**: PM review flow state machine runs in daemon, sends review requests and receives responses through CommunicationPort
 - [ ] **COMM-06**: Channel creation (project categories, agent channels) requested by daemon through CommunicationPort
@@ -106,7 +106,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SOCK-06 | Phase 18 | Complete |
 | COMM-01 | Phase 19 | Complete |
 | COMM-02 | Phase 19 | Complete |
-| COMM-03 | Phase 19 | Pending |
+| COMM-03 | Phase 19 | Complete |
 | COMM-04 | Phase 20 | Pending |
 | COMM-05 | Phase 20 | Pending |
 | COMM-06 | Phase 20 | Pending |
