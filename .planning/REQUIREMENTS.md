@@ -1,7 +1,7 @@
 # Requirements: vCompany
 
 **Defined:** 2026-03-29
-**Core Value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly — all operable from Discord.
+**Core Value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
 
 ## v3.0 Requirements
 
@@ -22,8 +22,17 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 - [ ] **SOCK-02**: NDJSON protocol for request-response communication (one JSON object per line)
 - [ ] **SOCK-03**: Request framing includes method, params, and request ID
 - [ ] **SOCK-04**: Error responses include error code, message, and request ID
-- [ ] **SOCK-05**: Event subscription — connected clients can subscribe to daemon events (health changes, agent transitions)
+- [ ] **SOCK-05**: Event subscription -- connected clients can subscribe to daemon events (health changes, agent transitions)
 - [ ] **SOCK-06**: Protocol version field in handshake for forward compatibility
+
+### Communication Abstraction
+
+- [ ] **COMM-01**: CommunicationPort protocol formalized with methods for send_message, send_embed, create_thread, subscribe_to_channel
+- [ ] **COMM-02**: Daemon never imports discord.py -- all platform communication goes through CommunicationPort
+- [ ] **COMM-03**: DiscordCommunicationPort adapter implements CommunicationPort protocol in the bot layer
+- [ ] **COMM-04**: StrategistConversation runs in daemon, sends/receives through CommunicationPort (not StrategistCog)
+- [ ] **COMM-05**: PM review flow state machine runs in daemon, sends review requests and receives responses through CommunicationPort
+- [ ] **COMM-06**: Channel creation (project categories, agent channels) requested by daemon through CommunicationPort
 
 ### CLI Commands
 
@@ -32,7 +41,7 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 - [ ] **CLI-03**: `vco dismiss <agent>` stops and cleans up agent via socket API
 - [ ] **CLI-04**: `vco status` shows supervision tree and agent states via socket API
 - [ ] **CLI-05**: `vco health` shows health tree with per-agent status via socket API
-- [ ] **CLI-06**: `vco new-project` is composite command: init + clone + hire per agent (uses CLI-01 internally)
+- [ ] **CLI-06**: `vco new-project` is composite command: init + clone + add_project via socket API (hires all agents from agents.yaml)
 
 ### CompanyRoot Extraction
 
@@ -45,8 +54,9 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 
 - [ ] **BOT-01**: All slash commands (/new-project, /dispatch, /kill, /relaunch, /health) call RuntimeAPI
 - [ ] **BOT-02**: No container module imports in bot cogs
-- [ ] **BOT-03**: Bot receives daemon events via RuntimeAPI for Discord notifications (health, transitions, escalations)
-- [ ] **BOT-04**: Message relay handlers (on_message for agent/task channels) call RuntimeAPI for task delivery
+- [ ] **BOT-03**: Bot implements DiscordCommunicationPort and registers with daemon on startup
+- [ ] **BOT-04**: Bot cogs are pure I/O adapters: Discord events -> daemon, daemon events -> Discord formatting (embeds, threads, reactions)
+- [ ] **BOT-05**: Message relay handlers (on_message for agent/task channels) convert to generic messages and send to daemon
 
 ### Strategist Autonomy
 
@@ -69,12 +79,12 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Feature | Reason |
 |---------|--------|
-| State persistence / crash recovery | Deferred to v3.1 — daemon restart loses state for now |
-| Multi-machine distributed agents | v4 scope — single machine only |
-| Alternative UIs (Slack, web) | v4 scope — Discord is the interface |
+| State persistence / crash recovery | Deferred to v3.1 -- daemon restart loses state for now |
+| Multi-machine distributed agents | v4 scope -- single machine only |
+| Non-Discord CommunicationPort adapters (Slack, web) | v4 scope -- only DiscordCommunicationPort in v3.0, but abstraction is ready |
 | HTTP/gRPC protocol | NDJSON over Unix socket is sufficient for single-machine |
 | Database for state | Filesystem + aiosqlite is correct for v3.0 |
-| Agent-to-agent direct messaging | v4 scope — agents communicate through supervision tree and Discord |
+| Agent-to-agent direct messaging | v4 scope -- agents communicate through supervision tree and CommunicationPort |
 
 ## Traceability
 
@@ -85,10 +95,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | — | — | — |
 
 **Coverage:**
-- v3.0 requirements: 25 total
+- v3.0 requirements: 31 total
 - Mapped to phases: 0
-- Unmapped: 25 ⚠️
+- Unmapped: 31 ⚠️
 
 ---
 *Requirements defined: 2026-03-29*
-*Last updated: 2026-03-29 after initial definition*
+*Last updated: 2026-03-29 after communication abstraction added*
