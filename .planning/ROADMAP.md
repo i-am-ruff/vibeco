@@ -129,7 +129,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 26-01-PLAN.md -- Dockerfile, settings.json, AgentConfig.docker_image field, docker-py dependency
+- [x] 26-01-PLAN.md -- Dockerfile, settings.json, AgentConfig.docker_image field, docker-py dependency
 - [ ] 26-02-PLAN.md -- DockerTransport implementation and factory registry wiring
 
 ## Progress
@@ -141,4 +141,4 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 |-------|----------------|--------|-----------|
 | 24. Discord Visibility | 5/5 | Complete    | 2026-03-29 |
 | 25. Transport Abstraction | 3/3 | Complete    | 2026-03-29 |
-| 26. Docker Runtime | 0/2 | Not started | - |
+| 26. Docker Runtime | 1/2 | In Progress|  |
