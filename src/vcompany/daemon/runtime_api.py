@@ -338,10 +338,8 @@ class RuntimeAPI:
         if self._mention_router:
             project_sup = self._root.projects.get(project_name)
             if project_sup is not None:
-                from vcompany.agent.fulltime_agent import FulltimeAgent
-
                 for child_id, child in project_sup.children.items():
-                    if isinstance(child, FulltimeAgent):
+                    if hasattr(child, 'backlog'):
                         self._mention_router.unregister_agent(f"PM{project_name}")
                     else:
                         self._mention_router.unregister_agent(f"agent-{child_id}")
@@ -441,12 +439,10 @@ class RuntimeAPI:
 
         Returns True if a pending review was resolved, False otherwise.
         """
-        from vcompany.agent.gsd_agent import GsdAgent
-
         container = await self._root._find_container(agent_id)
         if container is None:
             return False
-        if not isinstance(container, GsdAgent):
+        if not hasattr(container, 'resolve_review'):
             return False
         return container.resolve_review(decision)
 
@@ -589,8 +585,6 @@ class RuntimeAPI:
         Called by PlanReviewCog._handle_approval instead of calling plan_reviewer directly.
         Routes through daemon so review state machine stays in daemon context.
         """
-        from vcompany.agent.gsd_agent import GsdAgent
-
         # Notify plan-review channel
         review_ch_id = self.get_channel_id("plan-review")
         if review_ch_id:
@@ -602,7 +596,7 @@ class RuntimeAPI:
             )
         # Resolve pending review gate via Discord message routing
         container = await self._root._find_container(agent_id)
-        if container is not None and isinstance(container, GsdAgent):
+        if container is not None:
             from vcompany.models.messages import MessageContext
 
             await container.receive_discord_message(
@@ -621,8 +615,6 @@ class RuntimeAPI:
         Called by PlanReviewCog._handle_rejection instead of calling plan_reviewer directly.
         Routes through daemon so review state machine stays in daemon context.
         """
-        from vcompany.agent.gsd_agent import GsdAgent
-
         review_ch_id = self.get_channel_id("plan-review")
         if review_ch_id:
             await self._get_comm().send_message(
@@ -633,7 +625,7 @@ class RuntimeAPI:
             )
         # Resolve pending review gate via Discord message routing
         container = await self._root._find_container(agent_id)
-        if container is not None and isinstance(container, GsdAgent):
+        if container is not None:
             from vcompany.models.messages import MessageContext
 
             await container.receive_discord_message(
@@ -661,8 +653,6 @@ class RuntimeAPI:
         All inter-agent communication flows through Discord -- no internal
         event sinks or callback wiring needed (D-10, D-11).
         """
-        from vcompany.agent.company_agent import CompanyAgent
-        from vcompany.agent.fulltime_agent import FulltimeAgent
         from vcompany.autonomy.backlog import BacklogQueue
         from vcompany.autonomy.project_state import ProjectStateManager
         from vcompany.container.child_spec import ChildSpec
@@ -685,8 +675,8 @@ class RuntimeAPI:
         )
         strategist_container = await self._root.add_company_agent(strategist_spec)
 
-        # Wire Strategist conversation
-        if isinstance(strategist_container, CompanyAgent):
+        # Wire Strategist conversation (duck-typed: only CompanyAgent has initialize_conversation)
+        if hasattr(strategist_container, 'initialize_conversation'):
             strategist_container.initialize_conversation(persona_path)
             # Register Strategist handle with MentionRouterCog
             if self._mention_router:
@@ -697,8 +687,14 @@ class RuntimeAPI:
                 )
 
         # 2. Build child specs from agents.yaml
+        from vcompany.container.factory import get_agent_types_config
+
+        agent_types = get_agent_types_config()
         specs = []
         for agent_cfg in project_config.agents:
+            # D-11: Look up type config from agent-types for capability-driven fields
+            type_config = agent_types.get_type(agent_cfg.type) if agent_types else None
+
             ctx = ContainerContext(
                 agent_id=agent_cfg.id,
                 agent_type=agent_cfg.type,
@@ -707,12 +703,16 @@ class RuntimeAPI:
                 owned_dirs=agent_cfg.owns,
                 gsd_mode=agent_cfg.gsd_mode,
                 system_prompt=agent_cfg.system_prompt,
-                gsd_command="/gsd:discuss-phase 1" if agent_cfg.type == "gsd" else None,
-                uses_tmux=agent_cfg.type in ("gsd", "continuous"),
+                gsd_command=type_config.gsd_command if type_config else None,
+                uses_tmux="uses_tmux" in type_config.capabilities if type_config else False,
             )
-            specs.append(
-                ChildSpec(child_id=agent_cfg.id, agent_type=ctx.agent_type, context=ctx)
+            spec = ChildSpec(
+                child_id=agent_cfg.id,
+                agent_type=ctx.agent_type,
+                context=ctx,
+                transport=type_config.transport if type_config else "local",
             )
+            specs.append(spec)
 
         project_sup = await self._root.add_project(
             project_id=project_config.project,
@@ -720,9 +720,9 @@ class RuntimeAPI:
         )
 
         # 3. Wire PM backlog with on_mutation callback to #backlog channel
-        pm_container: FulltimeAgent | None = None
+        pm_container = None
         for child in project_sup.children.values():
-            if isinstance(child, FulltimeAgent):
+            if hasattr(child, 'backlog'):
                 pm_container = child
                 break
 
@@ -753,7 +753,7 @@ class RuntimeAPI:
         # 4. Register all agent handles with MentionRouterCog
         if self._mention_router:
             for child_id, child in project_sup.children.items():
-                if isinstance(child, FulltimeAgent):
+                if hasattr(child, 'backlog'):
                     continue  # PM already registered above
                 self._mention_router.register_agent(
                     f"agent-{child_id}",
