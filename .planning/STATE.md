@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
-status: Milestone complete
-stopped_at: Phase 27 context gathered
-last_updated: "2026-03-29T22:52:17.746Z"
+status: Ready to execute
+stopped_at: Completed 27-02-PLAN.md
+last_updated: "2026-03-29T23:14:04.272Z"
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 14
+  completed_plans: 11
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 26 — docker-runtime
+**Current focus:** Phase 27 — docker-integration-wiring
 
 ## Current Position
 
-Phase: 26
-Plan: Not started
+Phase: 27 (docker-integration-wiring) — EXECUTING
+Plan: 2 of 4
 
 ## Accumulated Context
 
@@ -53,6 +53,7 @@ Recent decisions affecting current work:
 - [Phase 26]: docker_image is a plain optional string with no validator -- factory validates at runtime
 - [Phase 26]: Container naming uses vco-{project}-{agent_id} for deterministic reuse
 - [Phase 26]: Volume-based file I/O for DockerTransport read_file/write_file (not docker cp)
+- [Phase 27]: Separate async/sync Docker build interfaces: ensure_docker_image for hire-flow, build_image_sync for CLI
 
 ### Roadmap Evolution
 
@@ -77,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T22:52:17.743Z
-Stopped at: Phase 27 context gathered
-Resume file: .planning/phases/27-docker-integration-wiring/27-CONTEXT.md
+Last session: 2026-03-29T23:14:04.270Z
+Stopped at: Completed 27-02-PLAN.md
+Resume file: None

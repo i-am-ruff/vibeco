@@ -38,7 +38,7 @@ Requirements for Container Runtime Abstraction. Each maps to roadmap phases.
 
 - [ ] **WIRE-01**: Factory resolves transport_deps per transport type — LocalTransport receives tmux_manager, DockerTransport receives docker_image and project_name — daemon passes transport-agnostic context, factory maps to constructor args
 - [ ] **WIRE-02**: docker_image flows from AgentConfig through ChildSpec (or transport_deps) to DockerTransport constructor without manual intervention
-- [ ] **WIRE-03**: Docker image auto-builds on first use when agent with transport "docker" is hired and image is missing, OR a `vco build` command exists for explicit builds
+- [x] **WIRE-03**: Docker image auto-builds on first use when agent with transport "docker" is hired and image is missing, OR a `vco build` command exists for explicit builds
 - [ ] **WIRE-04**: DockerTransport.setup() accepts parametric kwargs (tweakcc profile name, custom settings.json content/path) enabling per-agent customization from a single universal image
 - [ ] **WIRE-05**: No hardcoded agent-type string checks (if/in on type literals) remain in runtime_api.py or supervisor.py — agent capabilities (uses_tmux, gsd_command, etc.) derived from AgentConfig fields or container class capabilities
 - [ ] **WIRE-06**: Full e2e: Discord hire command → Docker container created → agent executes task → signals readiness via mounted daemon socket → appears in health tree
