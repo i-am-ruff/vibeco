@@ -1,5 +1,29 @@
 # Milestones
 
+## v3.0 CLI-First Architecture Rewrite (Shipped: 2026-03-29)
+
+**Phases completed:** 6 phases, 15 plans, 29 tasks
+
+**Key accomplishments:**
+
+- NDJSON protocol Pydantic models with JSON-RPC 2.0 structure, ErrorCode enum, and daemon socket/PID path constants
+- Runtime daemon with PID lifecycle management and NDJSON Unix socket server supporting hello handshake, ping, subscribe, and event broadcast
+- Sync socket client, vco down with SIGTERM/PID polling, and vco up refactored to start Daemon lifecycle
+- Runtime-checkable CommunicationPort protocol with 6 Pydantic payload models, NoopCommunicationPort adapter, and Daemon injection point -- zero discord imports in daemon tree
+- DiscordCommunicationPort adapter translating CommunicationPort protocol to discord.py API calls with reconnect-safe daemon registration in VcoBot.on_ready
+- RuntimeAPI gateway with typed async methods for CompanyRoot ops, CommunicationPort extended to 6 methods with create_channel and edit_message
+- 22 on_ready closure replacements as typed RuntimeAPI methods using CommunicationPort, plus inbound relay methods for bidirectional COMM-04/COMM-05 paths
+- VcoBot.on_ready() gutted to thin Discord adapter (510 lines removed), CompanyRoot lifecycle moved to Daemon._run() with socket API endpoints
+- Bot cogs rewired to use RuntimeAPI exclusively for /new-project, COMM-04 inbound relay, COMM-05 approval/rejection, with import boundary and RuntimeAPI unit tests
+- Five thin CLI commands (hire, give-task, dismiss, status, health) wrapping DaemonClient socket calls with Rich output formatting
+- Composite vco new-project command and daemon socket handler -- bootstraps full project from CLI with init, clone, and supervision startup
+- 9 new RuntimeAPI gateway methods (dispatch, kill, relaunch, remove_project, relay_channel_message, get_agent_states, checkin, standup, run_integration) and comprehensive import boundary test covering all 10 bot files with 20+ prohibited prefixes
+- Three heaviest-violation cog files (commands.py, plan_review.py, workflow_orchestrator_cog.py) rewritten as pure RuntimeAPI delegates with zero prohibited imports and zero _find_container calls
+- 5 remaining cog files (strategist, health, task_relay, workflow_master, question_handler) rewritten as pure I/O adapters with zero prohibited imports; alerts.py BOT-03 verified; all xfail markers removed from import boundary tests
+- Removed [CMD:] action tag parsing from StrategistCog, replaced with vco CLI instructions in personas, bumped session to v11
+
+---
+
 ## v2.0 Agent Container Architecture (Shipped: 2026-03-28)
 
 **Phases completed:** 12 phases, 29 plans, 52 tasks

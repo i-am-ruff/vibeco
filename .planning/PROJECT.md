@@ -12,22 +12,13 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ## Current State
 
-## Current Milestone: v3.0 CLI-First Architecture Rewrite
+## Current State
 
-**Goal:** Extract all core logic from the Discord bot into a runtime daemon with Unix socket API, making the CLI the primary interface and the bot a thin Discord skin.
-
-**Target features:**
-- Runtime daemon with CompanyRoot, supervision tree, containers, health monitoring
-- Unix socket API (JSON protocol) for all operations
-- `vco up` starts runtime daemon + bot
-- CLI commands as thin API clients: `vco hire`, `vco give-task`, `vco dismiss`, `vco status`, `vco health`, `vco new-project`
-- `vco new-project` as composite command (`init` + `clone` + `hire` per agent) — unified code path
-- Bot becomes thin relay — slash commands call CLI/API, no container references in bot
-- State persistence — container state, pane IDs, task queues survive restarts
-- Strategist autonomy — Strategist calls `vco hire/give-task/dismiss` via Bash
+**v3.0 shipped 2026-03-29.** CLI-first architecture complete. Daemon owns CompanyRoot, RuntimeAPI gateway, socket API. Bot is a thin Discord relay. Strategist manages workforce via vco CLI.
 
 ## Previously Shipped
 
+**v3.0 CLI-First Architecture Rewrite (2026-03-29):** Runtime daemon, Unix socket API (NDJSON), CommunicationPort abstraction, RuntimeAPI gateway (600+ lines), CompanyRoot extraction, 6 CLI commands, bot cogs as pure I/O adapters, Strategist CLI autonomy — 6 phases, 15 plans, 36 requirements
 **v2.1 Behavioral Integration (2026-03-28):** Work initiation, PM review gates, auto work distribution, PM event routing, stuck-agent detection, health tree rendering
 **v2.0 Agent Container Architecture (2026-03-28):** 8-state lifecycle FSM, supervision tree, 4 agent types, health tree, resilience, PM autonomy
 **v1.0 MVP (2026-03-27):** CLI orchestration, Discord bot, plan review, AI decision system, integration pipeline
@@ -86,16 +77,17 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - ✓ PM event dispatch — GsdAgent completion events routed to PM — v2.0
 - ✓ v1 module removal — MonitorLoop, CrashTracker, WorkflowOrchestrator, AgentManager deleted — v2.0
 
+- ✓ Runtime daemon with Unix socket API — v3.0
+- ✓ CommunicationPort protocol + DiscordCommunicationPort adapter — v3.0
+- ✓ CompanyRoot extracted to daemon with RuntimeAPI gateway — v3.0
+- ✓ CLI commands as API clients (hire, give-task, dismiss, status, health, new-project) — v3.0
+- ✓ `vco new-project` composite command using hire internally — v3.0
+- ✓ Bot refactored to thin relay (slash commands → RuntimeAPI) — v3.0
+- ✓ Strategist Bash-based autonomy (vco hire/give-task/dismiss) — v3.0
+
 ### Active
 
-- [x] Runtime daemon with Unix socket API — Phase 18
-- [x] CLI commands as API clients (hire, give-task, dismiss, status, health, new-project) — Phase 21
-- [x] `vco new-project` composite command using hire internally — Phase 21
-- [x] CommunicationPort protocol + DiscordCommunicationPort adapter — Phase 19
-- [x] CompanyRoot extracted to daemon with RuntimeAPI gateway — Phase 20
-- [ ] Bot refactored to thin relay (slash commands → CLI/API)
-- [ ] State persistence for container state, pane IDs, task queues
-- [ ] Strategist Bash-based autonomy (vco hire/give-task/dismiss)
+- [ ] State persistence for container state, pane IDs, task queues (deferred to v3.1)
 
 ### Out of Scope
 
@@ -112,17 +104,14 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - Python 3.12 for all tooling (vco CLI, Discord bot, hooks)
 - Depends on: Claude Code, GSD (globally installed), Node.js 22 LTS, tmux, Git, GitHub CLI
 - Discord server configured with bot, webhooks, channel structure
-- v2.0 container architecture fully operational with 740 passing tests
-- v3.0 Phase 18 complete — daemon with Unix socket, NDJSON protocol, PID lifecycle, signal handling, vco up/down
-- v3.0 Phase 19 complete — CommunicationPort protocol abstraction with Discord adapter
-- v3.0 Phase 20 complete — CompanyRoot extraction, RuntimeAPI gateway (597 lines), bot gutted (714→252 lines)
-- v3.0 Phase 21 complete — 6 CLI commands (hire, give-task, dismiss, status, health, new-project) as daemon socket clients
+- v3.0 shipped: daemon architecture, RuntimeAPI (600+ lines), 6 CLI commands, bot as thin relay, 17k LOC Python
+- Known tech debt: test suite needs cleanup (asyncio patterns, Click 8.3 compat, missing Phase 23 verification)
 
 ## Constraints
 
 - **Project-agnostic**: No hardcoded assumptions about what agents build — everything comes from blueprint + agents.yaml
 - **Agent isolation**: Agents never share working directories, never write outside owned paths
-- **Discord-first**: All human interaction happens through Discord, not terminal
+- **CLI-first, Discord-second**: CLI is primary interface, Discord is a relay adapter
 - **GSD compatibility**: Agents run standard GSD pipelines — vCompany orchestrates, not replaces, GSD
 - **Single machine**: All agents, monitor, and bot run on one machine (v2)
 
@@ -139,6 +128,12 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 | Priority message queue for notifications | Rate-limit backoff, escalation priority over health updates | ✓ Good |
 | Real tmux bridge in containers | AgentContainer.start() creates actual tmux sessions, 30s liveness monitoring | ✓ Good |
 | Config-driven agent types | AgentConfig.type field routes to factory — clean, extensible | ✓ Good |
+| Daemon owns event loop | bot.start() as coroutine within daemon's asyncio.run() | ✓ Good |
+| NDJSON over Unix socket | Simpler than JSON-RPC, debuggable with socat, zero new deps | ✓ Good |
+| CommunicationPort as Protocol | typing.Protocol for structural subtyping, not ABC | ✓ Good |
+| RuntimeAPI gateway pattern | Single typed class wrapping all CompanyRoot operations | ✓ Good |
+| Bot as thin I/O adapter | Zero container/supervisor/agent imports in cog modules | ✓ Good |
+| Strategist uses vco CLI | Bash tool runs vco commands instead of [CMD:] action tags | ✓ Good |
 
 ## Evolution
 
@@ -158,4 +153,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after Phase 21 completion*
+*Last updated: 2026-03-29 after v3.0 milestone completion*
