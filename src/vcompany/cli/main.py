@@ -12,6 +12,7 @@ from vcompany.cli.report_cmd import report
 from vcompany.cli.restart_cmd import restart
 from vcompany.cli.sync_context_cmd import sync_context
 from vcompany.cli.dismiss_cmd import dismiss
+from vcompany.cli.new_project_cmd import new_project
 from vcompany.cli.down_cmd import down
 from vcompany.cli.give_task_cmd import give_task
 from vcompany.cli.health_cmd import health
@@ -43,3 +44,4 @@ cli.add_command(give_task)
 cli.add_command(dismiss)
 cli.add_command(status)
 cli.add_command(health)
+cli.add_command(new_project)

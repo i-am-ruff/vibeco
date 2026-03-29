@@ -287,3 +287,125 @@ def test_handle_new_project_no_config(tmp_path):
         asyncio.get_event_loop().run_until_complete(
             daemon._handle_new_project({"project_dir": str(tmp_path)})
         )
+
+
+# ── new-project CLI command tests ────────────────────────────────
+
+def test_new_project_registered():
+    """new-project command is registered in CLI group."""
+    from vcompany.cli.main import cli
+    assert "new-project" in [c.name for c in cli.commands.values()]
+
+
+def test_new_project_composite(tmp_path, monkeypatch):
+    """vco new-project runs init logic, clone logic, then calls daemon new_project."""
+    from vcompany.cli.new_project_cmd import new_project
+
+    # Create a config file
+    config_file = tmp_path / "agents.yaml"
+    config_file.write_text(
+        "project: test-proj\n"
+        "repo: https://github.com/test/repo\n"
+        "agents:\n"
+        "  - id: dev1\n"
+        "    role: developer\n"
+        "    owns: [src/]\n"
+        "    consumes: all\n"
+        "    gsd_mode: full\n"
+        "    system_prompt: Build\n"
+        "    type: gsd\n"
+    )
+
+    project_base = tmp_path / "projects"
+    project_base.mkdir()
+    monkeypatch.setattr("vcompany.cli.new_project_cmd.PROJECTS_BASE", project_base)
+
+    # Mock git clone to create the dir and return success
+    def fake_clone(repo, dest):
+        dest.mkdir(parents=True, exist_ok=True)
+        return MagicMock(success=True)
+
+    monkeypatch.setattr("vcompany.cli.new_project_cmd.git.clone", fake_clone)
+
+    mock_git_branch = MagicMock()
+    mock_git_branch.return_value = MagicMock(success=True)
+    monkeypatch.setattr("vcompany.cli.new_project_cmd.git.checkout_new_branch", mock_git_branch)
+
+    # Mock _deploy_artifacts since it needs real git repo structure
+    monkeypatch.setattr("vcompany.cli.new_project_cmd._deploy_artifacts", lambda *a, **kw: None)
+
+    # Mock daemon client
+    mock_client = MagicMock()
+    mock_client.call.return_value = {"status": "ok", "project": "test-proj"}
+
+    with patch("vcompany.cli.new_project_cmd.daemon_client", _make_daemon_ctx(mock_client)):
+        result = CliRunner().invoke(new_project, ["test-proj", "--config", str(config_file)])
+
+    assert result.exit_code == 0, result.output + (result.stderr or "")
+    # Verify daemon was called with new_project
+    mock_client.call.assert_called_once()
+    call_args = mock_client.call.call_args
+    assert call_args[0][0] == "new_project"
+    assert "project_dir" in call_args[0][1]
+
+
+def test_new_project_existing_project(tmp_path, monkeypatch):
+    """Command exits 1 if project directory already exists."""
+    from vcompany.cli.new_project_cmd import new_project
+
+    config_file = tmp_path / "agents.yaml"
+    config_file.write_text(
+        "project: test-proj\nrepo: https://github.com/t/t\nagents:\n"
+        "  - id: d\n    role: dev\n    owns: [s/]\n    consumes: all\n"
+        "    gsd_mode: full\n    system_prompt: x\n    type: gsd\n"
+    )
+
+    project_base = tmp_path / "projects"
+    project_base.mkdir()
+    # Pre-create project dir
+    (project_base / "existing").mkdir()
+    monkeypatch.setattr("vcompany.cli.new_project_cmd.PROJECTS_BASE", project_base)
+
+    result = CliRunner().invoke(new_project, ["existing", "--config", str(config_file)])
+    assert result.exit_code != 0
+
+
+def test_new_project_daemon_not_running(tmp_path, monkeypatch):
+    """Command runs init and clone, fails at daemon call with warning."""
+    from vcompany.cli.new_project_cmd import new_project
+
+    config_file = tmp_path / "agents.yaml"
+    config_file.write_text(
+        "project: test-proj\nrepo: https://github.com/t/t\nagents:\n"
+        "  - id: d\n    role: dev\n    owns: [s/]\n    consumes: all\n"
+        "    gsd_mode: full\n    system_prompt: x\n    type: gsd\n"
+    )
+
+    project_base = tmp_path / "projects"
+    project_base.mkdir()
+    monkeypatch.setattr("vcompany.cli.new_project_cmd.PROJECTS_BASE", project_base)
+
+    def fake_clone(repo, dest):
+        dest.mkdir(parents=True, exist_ok=True)
+        return MagicMock(success=True)
+
+    monkeypatch.setattr("vcompany.cli.new_project_cmd.git.clone", fake_clone)
+
+    mock_git_branch = MagicMock()
+    mock_git_branch.return_value = MagicMock(success=True)
+    monkeypatch.setattr("vcompany.cli.new_project_cmd.git.checkout_new_branch", mock_git_branch)
+
+    monkeypatch.setattr("vcompany.cli.new_project_cmd._deploy_artifacts", lambda *a, **kw: None)
+
+    # Daemon client raises SystemExit(1) like the real daemon_client helper does
+    @contextlib.contextmanager
+    def _fail_client():
+        raise SystemExit(1)
+        yield  # noqa: unreachable
+
+    with patch("vcompany.cli.new_project_cmd.daemon_client", _fail_client):
+        result = CliRunner().invoke(new_project, ["test-proj", "--config", str(config_file)])
+
+    # Should succeed (init+clone done) but warn about daemon
+    assert result.exit_code == 0
+    assert "daemon" in result.output.lower() or "vco up" in result.output.lower()
