@@ -1,9 +1,11 @@
-"""Tests for CLI commands: hire, give-task, dismiss, status, health."""
+"""Tests for CLI commands: hire, give-task, dismiss, status, health, new-project."""
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from click.testing import CliRunner
 
@@ -210,3 +212,78 @@ def test_health_shows_agent_states():
     assert result.exit_code == 0, result.output + (result.stderr or "")
     assert "agent-a" in result.output
     assert "strategist" in result.output
+
+
+# ── Daemon new_project handler tests ─────────────────────────────
+
+def test_handle_new_project_calls_runtime_api(tmp_path):
+    """Handler loads config from project_dir/agents.yaml, calls RuntimeAPI.new_project, wires strategist cog."""
+    from vcompany.daemon.daemon import Daemon
+
+    # Create agents.yaml in tmp project dir
+    agents_yaml = tmp_path / "agents.yaml"
+    agents_yaml.write_text(
+        "project: test-proj\n"
+        "repo: https://github.com/test/test\n"
+        "agents:\n"
+        "  - id: dev1\n"
+        "    role: developer\n"
+        "    owns: [src/]\n"
+        "    consumes: all\n"
+        "    gsd_mode: full\n"
+        "    system_prompt: Build stuff\n"
+        "    type: gsd\n"
+    )
+
+    mock_bot = MagicMock()
+    mock_runtime_api = AsyncMock()
+    mock_runtime_api.new_project = AsyncMock()
+    mock_runtime_api._strategist_container = MagicMock()
+
+    mock_strategist_cog = MagicMock()
+    mock_bot.get_cog.return_value = mock_strategist_cog
+
+    daemon = Daemon(bot=mock_bot, bot_token="fake")
+    daemon._runtime_api = mock_runtime_api
+
+    result = asyncio.get_event_loop().run_until_complete(
+        daemon._handle_new_project({"project_dir": str(tmp_path)})
+    )
+
+    assert result["status"] == "ok"
+    assert result["project"] == "test-proj"
+    mock_runtime_api.new_project.assert_awaited_once()
+    # Verify strategist cog wiring
+    mock_bot.get_cog.assert_called_with("StrategistCog")
+    mock_strategist_cog.set_company_agent.assert_called_once_with(
+        mock_runtime_api._strategist_container
+    )
+
+
+def test_handle_new_project_no_runtime_api():
+    """Handler raises RuntimeError if RuntimeAPI not initialized."""
+    from vcompany.daemon.daemon import Daemon
+
+    mock_bot = MagicMock()
+    daemon = Daemon(bot=mock_bot, bot_token="fake")
+    daemon._runtime_api = None
+
+    with __import__("pytest").raises(RuntimeError, match="RuntimeAPI not initialized"):
+        asyncio.get_event_loop().run_until_complete(
+            daemon._handle_new_project({"project_dir": "/some/path"})
+        )
+
+
+def test_handle_new_project_no_config(tmp_path):
+    """Handler raises FileNotFoundError if agents.yaml not found at project_dir."""
+    from vcompany.daemon.daemon import Daemon
+
+    mock_bot = MagicMock()
+    mock_runtime_api = AsyncMock()
+    daemon = Daemon(bot=mock_bot, bot_token="fake")
+    daemon._runtime_api = mock_runtime_api
+
+    with __import__("pytest").raises(FileNotFoundError):
+        asyncio.get_event_loop().run_until_complete(
+            daemon._handle_new_project({"project_dir": str(tmp_path)})
+        )

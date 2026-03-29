@@ -228,6 +228,7 @@ class Daemon:
             self._server.register_method("dismiss", self._handle_dismiss)
             self._server.register_method("status", self._handle_status)
             self._server.register_method("health_tree", self._handle_health_tree)
+            self._server.register_method("new_project", self._handle_new_project)
 
     async def _init_project(self, runtime_api: RuntimeAPI) -> None:
         """Initialize project if config available. Wire cogs through RuntimeAPI only.
@@ -293,6 +294,34 @@ class Daemon:
         if not self._runtime_api:
             raise RuntimeError("RuntimeAPI not initialized")
         return await self._runtime_api.health_tree()
+
+    async def _handle_new_project(self, params: dict) -> dict:
+        """Socket handler for new_project: loads config server-side, calls RuntimeAPI."""
+        if not self._runtime_api:
+            raise RuntimeError("RuntimeAPI not initialized")
+
+        project_dir = Path(params["project_dir"])
+        config_path = project_dir / "agents.yaml"
+        if not config_path.exists():
+            raise FileNotFoundError(f"agents.yaml not found at {config_path}")
+
+        from vcompany.models.config import load_config
+
+        config = load_config(config_path)
+        persona_path_str = params.get("persona_path")
+        persona_path = Path(persona_path_str) if persona_path_str else None
+
+        self._project_dir = project_dir
+        self._project_config = config
+
+        await self._runtime_api.new_project(config, project_dir, persona_path)
+
+        # Wire StrategistCog (same as _init_project)
+        strategist_cog = self._bot.get_cog("StrategistCog") if hasattr(self._bot, 'get_cog') else None
+        if strategist_cog and self._runtime_api._strategist_container:
+            strategist_cog.set_company_agent(self._runtime_api._strategist_container)
+
+        return {"status": "ok", "project": config.project}
 
     # ── Boot notifications ────────────────────────────────────────────
 
