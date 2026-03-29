@@ -1,17 +1,15 @@
-"""CompanyAgent -- event-driven container for Strategist role (TYPE-05).
+"""CompanyAgent -- Discord-message-driven container for Strategist role (TYPE-05).
 
 Company-scoped (no project_id), survives project restarts, holds cross-project
-state in memory_store. Same event-driven pattern as FulltimeAgent but with
-company-level scope and cross-project state helpers.
+state in memory_store. Receives Discord messages via receive_discord_message()
+and forwards to StrategistConversation for processing.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Callable
 
 from statemachine.orderedset import OrderedSet
 
@@ -19,20 +17,21 @@ from vcompany.agent.event_driven_lifecycle import EventDrivenLifecycle
 from vcompany.container.container import AgentContainer
 from vcompany.container.context import ContainerContext
 from vcompany.container.health import HealthReport
+from vcompany.models.messages import MessageContext
 from vcompany.strategist.conversation import StrategistConversation
 
 if TYPE_CHECKING:
-    from vcompany.container.communication import CommunicationPort
+    from vcompany.container.communication import CommunicationPort, SendMessagePayload
 
 logger = logging.getLogger("vcompany.agent.company_agent")
 
 
 class CompanyAgent(AgentContainer):
-    """Event-driven agent for Strategist role (TYPE-05).
+    """Discord-message-driven agent for Strategist role (TYPE-05).
 
     Company-scoped (context.project_id should be None), survives project
-    restarts, holds cross-project state in memory_store. Same event-driven
-    pattern as FulltimeAgent but at company level.
+    restarts, holds cross-project state in memory_store. Receives Discord
+    messages and forwards to StrategistConversation.
 
     Args:
         context: Immutable agent metadata (project_id should be None).
@@ -53,16 +52,8 @@ class CompanyAgent(AgentContainer):
         super().__init__(context, data_dir, comm_port, on_state_change, **kwargs)
         # Override parent's ContainerLifecycle with EventDrivenLifecycle
         self._lifecycle = EventDrivenLifecycle(model=self, state_field="_fsm_state")
-        self._event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        self._events_processed: int = 0
-        self._checkpoint_lock = asyncio.Lock()
         # Strategist conversation (wired via initialize_conversation())
         self._conversation: StrategistConversation | None = None
-        # Response callback: invoked with (response_text, channel_id) after
-        # a strategist_message event is processed. Wired by VcoBot.on_ready.
-        self._on_response: Callable[[str, int], Awaitable[None]] | None = None
-        # Background drain task
-        self._drain_task: asyncio.Task[None] | None = None
 
     # --- Properties (override parent for compound state handling) ---
 
@@ -84,27 +75,7 @@ class CompanyAgent(AgentContainer):
                 return str(items[1])
         return None
 
-    # --- Event Processing ---
-
-    async def post_event(self, event: dict[str, Any]) -> None:
-        """Add an event to the queue for processing."""
-        await self._event_queue.put(event)
-
-    async def process_next_event(self) -> bool:
-        """Process one event from queue. Returns False if queue empty."""
-        try:
-            event = self._event_queue.get_nowait()
-        except asyncio.QueueEmpty:
-            return False
-
-        self._lifecycle.start_processing()
-        try:
-            await self._handle_event(event)
-            self._events_processed += 1
-            await self.memory.set("events_processed", str(self._events_processed))
-        finally:
-            self._lifecycle.done_processing()
-        return True
+    # --- Conversation ---
 
     def initialize_conversation(self, persona_path: Path | None = None) -> None:
         """Create the StrategistConversation owned by this container.
@@ -115,75 +86,54 @@ class CompanyAgent(AgentContainer):
         self._conversation = StrategistConversation(persona_path=persona_path)
         logger.info("StrategistConversation initialized (persona=%s)", persona_path)
 
-    async def _handle_event(self, event: dict[str, Any]) -> None:
-        """Dispatch event to Strategist conversation logic.
+    # --- Discord Message Handling ---
 
-        Supported event types:
-        - strategist_message: forward to conversation, invoke _on_response callback
-        - pm_escalation: format as PM escalation, resolve _response_future if present
-        Unknown types are logged as warnings.
+    async def receive_discord_message(self, context: MessageContext) -> None:
+        """Process an inbound Discord message routed to the Strategist.
+
+        Forwards the message content to the StrategistConversation and posts
+        the response back to Discord via _send_discord().
+
+        Args:
+            context: Message context with sender, channel, content.
         """
-        event_type = event.get("type", "")
-
-        if event_type == "strategist_message":
+        self._lifecycle.start_processing()
+        try:
             if self._conversation is None:
-                logger.warning("strategist_message received but conversation not initialized")
-                future: asyncio.Future | None = event.get("_response_future")
-                if future is not None and not future.done():
-                    future.set_result("Strategist not initialized.")
+                logger.warning(
+                    "Strategist received message but conversation not initialized"
+                )
                 return
-            content = event.get("content", "")
-            channel_id: int = event.get("channel_id", 0)
-            response = await self._conversation.send(content)
-            # Resolve embedded future if present (used by StrategistCog._send_to_channel)
-            resp_future: asyncio.Future | None = event.get("_response_future")
-            if resp_future is not None and not resp_future.done():
-                resp_future.set_result(response)
-            # Also invoke _on_response callback if wired (for direct channel posting)
-            if self._on_response is not None:
-                await self._on_response(response, channel_id)
 
-        elif event_type == "pm_escalation":
-            if self._conversation is None:
-                logger.warning("pm_escalation received but conversation not initialized")
-                future: asyncio.Future | None = event.get("_response_future")
-                if future is not None and not future.done():
-                    future.set_result(None)
-                return
-            agent_id = event.get("agent_id", "")
-            question = event.get("question", "")
-            confidence = event.get("confidence", 0.0)
-            formatted = (
-                f"[PM Escalation] Agent {agent_id} asks: {question}\n"
-                f"PM confidence: {confidence:.0%}. Please provide your assessment."
+            response = await self._conversation.send(context.content)
+            await self._send_discord(context.channel, response)
+            logger.info(
+                "Strategist responded to message from %s (len=%d)",
+                context.sender, len(response),
             )
-            full_response = await self._conversation.send(formatted)
+        finally:
+            self._lifecycle.done_processing()
 
-            # Check low-confidence signals -- same list as legacy StrategistCog
-            low_confidence_signals = [
-                "i'm not sure",
-                "escalate to owner",
-                "owner should decide",
-                "not confident",
-                "cannot determine",
-            ]
-            result: str | None = full_response
-            if any(signal in full_response.lower() for signal in low_confidence_signals):
-                result = None
+    # --- Discord Output ---
 
-            future = event.get("_response_future")
-            if future is not None and not future.done():
-                future.set_result(result)
+    async def _send_discord(self, channel_name: str, content: str) -> None:
+        """Send a message to a Discord channel via the CommunicationPort.
 
-        else:
-            logger.warning("Unhandled event type: %s", event_type)
+        Uses self.comm_port (from parent AgentContainer) if available.
+        Channel name is used as a logical identifier; the CommunicationPort
+        adapter handles name-to-id resolution.
 
-    async def _drain_events(self) -> None:
-        """Background loop that drains the event queue continuously."""
-        while True:
-            processed = await self.process_next_event()
-            if not processed:
-                await asyncio.sleep(0.1)
+        Args:
+            channel_name: Logical channel name (e.g. "strategist").
+            content: Message text to send.
+        """
+        if self.comm_port is None:
+            logger.warning("Cannot send Discord message -- no comm_port wired")
+            return
+        from vcompany.container.communication import SendMessagePayload
+
+        payload = SendMessagePayload(channel_id=channel_name, content=content)
+        await self.comm_port.send_message(payload)
 
     # --- Cross-Project State ---
 
@@ -206,29 +156,17 @@ class CompanyAgent(AgentContainer):
     # --- Lifecycle Overrides ---
 
     async def start(self) -> None:
-        """Transition to running, open memory, restore event count, and start drain loop."""
+        """Transition to running and open memory."""
         await super().start()
-        count_str = await self.memory.get("events_processed")
-        if count_str is not None:
-            self._events_processed = int(count_str)
-        self._drain_task = asyncio.create_task(self._drain_events())
 
     async def stop(self) -> None:
-        """Cancel drain task then delegate to parent stop."""
-        if self._drain_task is not None:
-            self._drain_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._drain_task
+        """Delegate to parent stop."""
         await super().stop()
 
     async def sleep(self) -> None:
-        """Checkpoint event count then transition to sleeping."""
-        async with self._checkpoint_lock:
-            await self.memory.set("events_processed", str(self._events_processed))
+        """Transition to sleeping."""
         await super().sleep()
 
     async def error(self) -> None:
-        """Checkpoint event count then transition to errored."""
-        async with self._checkpoint_lock:
-            await self.memory.set("events_processed", str(self._events_processed))
+        """Transition to errored."""
         await super().error()
