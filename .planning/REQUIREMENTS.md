@@ -92,13 +92,48 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| — | — | — |
+| DAEMON-01 | Phase 18 | Pending |
+| DAEMON-02 | Phase 18 | Pending |
+| DAEMON-03 | Phase 18 | Pending |
+| DAEMON-04 | Phase 18 | Pending |
+| DAEMON-05 | Phase 18 | Pending |
+| DAEMON-06 | Phase 18 | Pending |
+| SOCK-01 | Phase 18 | Pending |
+| SOCK-02 | Phase 18 | Pending |
+| SOCK-03 | Phase 18 | Pending |
+| SOCK-04 | Phase 18 | Pending |
+| SOCK-05 | Phase 18 | Pending |
+| SOCK-06 | Phase 18 | Pending |
+| COMM-01 | Phase 19 | Pending |
+| COMM-02 | Phase 19 | Pending |
+| COMM-03 | Phase 19 | Pending |
+| COMM-04 | Phase 20 | Pending |
+| COMM-05 | Phase 20 | Pending |
+| COMM-06 | Phase 20 | Pending |
+| EXTRACT-01 | Phase 20 | Pending |
+| EXTRACT-02 | Phase 20 | Pending |
+| EXTRACT-03 | Phase 20 | Pending |
+| EXTRACT-04 | Phase 20 | Pending |
+| CLI-01 | Phase 21 | Pending |
+| CLI-02 | Phase 21 | Pending |
+| CLI-03 | Phase 21 | Pending |
+| CLI-04 | Phase 21 | Pending |
+| CLI-05 | Phase 21 | Pending |
+| CLI-06 | Phase 21 | Pending |
+| BOT-01 | Phase 22 | Pending |
+| BOT-02 | Phase 22 | Pending |
+| BOT-03 | Phase 22 | Pending |
+| BOT-04 | Phase 22 | Pending |
+| BOT-05 | Phase 22 | Pending |
+| STRAT-01 | Phase 23 | Pending |
+| STRAT-02 | Phase 23 | Pending |
+| STRAT-03 | Phase 23 | Pending |
 
 **Coverage:**
-- v3.0 requirements: 31 total
-- Mapped to phases: 0
-- Unmapped: 31 ⚠️
+- v3.0 requirements: 36 total
+- Mapped to phases: 36
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-29*
-*Last updated: 2026-03-29 after communication abstraction added*
+*Last updated: 2026-03-29 after roadmap traceability mapping*
