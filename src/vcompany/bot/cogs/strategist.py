@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from pathlib import Path
 
 import discord
@@ -340,56 +339,6 @@ class StrategistCog(commands.Cog):
             "on_owner_escalation": on_owner_escalation,
         }
 
-    # --- Action Tag Execution ---
-
-    _CMD_PATTERN = re.compile(
-        r"\[CMD:(hire|give-task|dismiss)\s+(.*?)\]", re.IGNORECASE
-    )
-
-    async def _execute_actions(
-        self, response: str, channel: discord.TextChannel
-    ) -> None:
-        """Parse and execute [CMD:...] action tags from Strategist responses.
-
-        Supported actions:
-          [CMD:hire <template> <agent-id>]
-          [CMD:give-task <agent-id> <task description>]
-          [CMD:dismiss <agent-id>]
-        """
-        runtime_api = _get_runtime_api(self.bot)
-        if runtime_api is None:
-            return
-
-        for match in self._CMD_PATTERN.finditer(response):
-            action = match.group(1).lower()
-            args = match.group(2).strip()
-
-            try:
-                if action == "hire":
-                    parts = args.split(None, 1)
-                    if len(parts) == 2:
-                        template, agent_id = parts
-                    else:
-                        template, agent_id = "generic", parts[0]
-                    await runtime_api.hire(agent_id, template=template)
-                    await channel.send(f"Hired agent **{agent_id}** (template: {template})")
-
-                elif action == "give-task":
-                    parts = args.split(None, 1)
-                    if len(parts) < 2:
-                        await channel.send(f"give-task needs: agent-id task-description")
-                        continue
-                    agent_id, task = parts
-                    await runtime_api.give_task(agent_id, task)
-                    await channel.send(f"Tasked **{agent_id}**: {task[:100]}")
-
-                elif action == "dismiss":
-                    await runtime_api.dismiss(args)
-                    await channel.send(f"Dismissed agent **{args}**")
-
-            except Exception as e:
-                logger.exception("Failed to execute action [CMD:%s %s]", action, args)
-                await channel.send(f"Action failed: {e}")
 
 
 async def setup(bot: commands.Bot) -> None:
