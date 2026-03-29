@@ -109,7 +109,12 @@ Plans:
   3. StrategistConversation uses AgentTransport.exec() instead of direct asyncio.create_subprocess_exec calls
   4. Agent readiness and idle signals use `vco signal --ready/--idle` over the daemon socket instead of sentinel temp files
   5. AgentConfig.transport field (default "local") controls which transport implementation the factory injects
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 25-01-PLAN.md -- AgentTransport protocol, NoopTransport, LocalTransport, AgentConfig.transport field
+- [ ] 25-02-PLAN.md -- Daemon HTTP signal endpoint, vco signal CLI command, settings.json.j2 hook update
+- [ ] 25-03-PLAN.md -- Container/factory/supervisor rewiring to transport, StrategistConversation through transport
 
 ### Phase 26: Docker Runtime
 **Goal**: Agents can run inside Docker containers with full daemon connectivity, persistent session state, and per-agent image configuration
@@ -131,5 +136,5 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 24. Discord Visibility | 5/5 | Complete    | 2026-03-29 |
-| 25. Transport Abstraction | 0/? | Not started | - |
+| 25. Transport Abstraction | 0/3 | Not started | - |
 | 26. Docker Runtime | 0/? | Not started | - |
