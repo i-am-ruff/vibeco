@@ -32,7 +32,7 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 - [x] **COMM-03**: DiscordCommunicationPort adapter implements CommunicationPort protocol in the bot layer
 - [ ] **COMM-04**: StrategistConversation runs in daemon, sends/receives through CommunicationPort (not StrategistCog)
 - [ ] **COMM-05**: PM review flow state machine runs in daemon, sends review requests and receives responses through CommunicationPort
-- [ ] **COMM-06**: Channel creation (project categories, agent channels) requested by daemon through CommunicationPort
+- [x] **COMM-06**: Channel creation (project categories, agent channels) requested by daemon through CommunicationPort
 
 ### CLI Commands
 
@@ -45,8 +45,8 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 
 ### CompanyRoot Extraction
 
-- [ ] **EXTRACT-01**: CompanyRoot and supervision tree run inside daemon process, not bot
-- [ ] **EXTRACT-02**: RuntimeAPI gateway class provides typed methods for all CompanyRoot operations
+- [x] **EXTRACT-01**: CompanyRoot and supervision tree run inside daemon process, not bot
+- [x] **EXTRACT-02**: RuntimeAPI gateway class provides typed methods for all CompanyRoot operations
 - [ ] **EXTRACT-03**: All callback closures from on_ready() replaced with RuntimeAPI calls or event subscriptions
 - [ ] **EXTRACT-04**: Bot accesses CompanyRoot exclusively through RuntimeAPI (no direct imports)
 
@@ -109,9 +109,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COMM-03 | Phase 19 | Complete |
 | COMM-04 | Phase 20 | Pending |
 | COMM-05 | Phase 20 | Pending |
-| COMM-06 | Phase 20 | Pending |
-| EXTRACT-01 | Phase 20 | Pending |
-| EXTRACT-02 | Phase 20 | Pending |
+| COMM-06 | Phase 20 | Complete |
+| EXTRACT-01 | Phase 20 | Complete |
+| EXTRACT-02 | Phase 20 | Complete |
 | EXTRACT-03 | Phase 20 | Pending |
 | EXTRACT-04 | Phase 20 | Pending |
 | CLI-01 | Phase 21 | Pending |
