@@ -18,6 +18,7 @@ from vcompany.cli.give_task_cmd import give_task
 from vcompany.cli.health_cmd import health
 from vcompany.cli.hire_cmd import hire
 from vcompany.cli.status_cmd import status
+from vcompany.cli.signal_cmd import signal
 from vcompany.cli.up_cmd import up
 
 
@@ -45,3 +46,4 @@ cli.add_command(dismiss)
 cli.add_command(status)
 cli.add_command(health)
 cli.add_command(new_project)
+cli.add_command(signal)

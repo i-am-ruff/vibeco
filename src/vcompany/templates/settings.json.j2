@@ -11,6 +11,28 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "vco signal --ready --agent-id ${VCO_AGENT_ID}"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "vco signal --idle --agent-id ${VCO_AGENT_ID}"
+          }
+        ]
+      }
     ]
   }
 }
