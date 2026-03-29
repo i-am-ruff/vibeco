@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
-milestone_name: CLI-First Architecture Rewrite
-status: v3.0 milestone complete
-stopped_at: Completed 23-01-PLAN.md
-last_updated: "2026-03-29T14:01:41.109Z"
+milestone: v3.1
+milestone_name: Container Runtime Abstraction
+status: Ready to plan
+stopped_at: "Milestone v3.1 started, ready to define requirements"
+last_updated: "2026-03-29"
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 15
-  completed_plans: 15
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -19,48 +19,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 23 — Strategist Autonomy
+**Current focus:** v3.1 — Container Runtime Abstraction
 
 ## Current Position
 
-Phase: 23
-Plan: Not started
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-29 — Milestone v3.1 started
 
-## Performance Metrics
-
-**Velocity:**
-
-- Total plans completed: 0 (v3.0)
-- Average duration: -
-- Total execution time: 0 hours
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
-
-**Recent Trend:**
-
-- Last 5 plans (v2.1): 15s, 12s, 3s, 4s, 525603s
-- Trend: Variable
-
-*Updated after each plan completion*
-| Phase 18 P01 | 77s | 1 tasks | 4 files |
-| Phase 18 P02 | 194s | 2 tasks | 4 files |
-| Phase 18 P03 | 167 | 2 tasks | 5 files |
-| Phase 19 P01 | 140 | 2 tasks | 3 files |
-| Phase 19 P02 | 137 | 2 tasks | 3 files |
-| Phase 20 P01 | 150 | 2 tasks | 4 files |
-| Phase 20 P02 | 177 | 2 tasks | 2 files |
-| Phase 20 P03 | 329 | 2 tasks | 2 files |
-| Phase 20 P04 | 288 | 2 tasks | 5 files |
-| Phase 21 P01 | 236 | 2 tasks | 8 files |
-| Phase 21 P02 | 236 | 2 tasks | 4 files |
-| Phase 22 P01 | 235 | 2 tasks | 2 files |
-| Phase 22 P02 | 545 | 2 tasks | 6 files |
-| Phase 22 P03 | 386 | 2 tasks | 8 files |
-| Phase 23 P01 | 130 | 2 tasks | 4 files |
+Progress: [░░░░░░░░░░] 0%
 
 ## Accumulated Context
 
@@ -69,51 +37,23 @@ Plan: Not started
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [v3.0 start]: Daemon runs bot in-process via `bot.start()` not `bot.run()` -- avoids two-event-loop conflict
-- [v3.0 start]: Zero new runtime deps -- stdlib asyncio for socket, existing aiosqlite/pydantic/click/discord.py
-- [v3.0 start]: State persistence deferred to v3.1 -- daemon restart loses state for now
-- [v3.0 start]: NDJSON over Unix socket -- simpler than JSON-RPC, debuggable with socat
-- [v3.0 roadmap]: COMM requirements split -- protocol definition (Phase 19) before extraction (Phase 20) uses it
-- [v3.0 roadmap]: COMM-04/05/06 grouped with EXTRACT phase since they move logic into daemon using the protocol
-- [Phase 18]: JSON-RPC 2.0 message structure for daemon NDJSON protocol
-- [Phase 18]: Signal handlers set asyncio.Event only -- no async work in signal context
-- [Phase 18]: Bot typed as object in Daemon to avoid discord.py import coupling
-- [Phase 18]: DaemonClient uses stdlib sync socket -- CLI commands are blocking, no async needed
-- [Phase 18]: vco down uses PID polling not socket shutdown -- works even if socket is broken
-- [Phase 19]: NoopCommunicationPort lives in comm.py alongside protocol for single-import convenience
-- [Phase 19]: CommunicationPort uses runtime_checkable for isinstance validation in set_comm_port
-- [Phase 19]: Daemon setter/property injection: set_comm_port raises TypeError, comm_port raises RuntimeError
-- [Phase 19]: DiscordCommunicationPort uses _resolve_channel helper with TextChannel isinstance check
-- [Phase 19]: _comm_registered flag prevents double registration on Discord reconnects
-- [Phase 20]: RuntimeAPI uses lazy comm_port_getter callable for late-bound CommunicationPort
-- [Phase 20]: RuntimeAPI.hire() creates channel via CommunicationPort before CompanyRoot.hire() -- no guild param needed
-- [Phase 20]: Callback methods use CommunicationPort send_message for all notifications -- consistent platform-agnostic messaging
-- [Phase 20]: Inbound relay methods decouple bot cogs from container internals -- bot calls RuntimeAPI not containers
-- [Phase 20]: Bot is now a pure Discord I/O adapter -- all CompanyRoot/container/agent imports removed from client.py
-- [Phase 20]: Daemon waits for _bot_ready_event before initializing CompanyRoot with crash-before-ready detection
-- [Phase 20]: PlanReviewer/PMTier NOT injected into cogs -- deferred to Phase 22 via RuntimeAPI
-- [Phase 20]: CommandsCog uses getattr-based RuntimeAPI access helpers for clean daemon integration
-- [Phase 20]: Import boundary test checks module-level imports only -- function-scoped lazy imports are acceptable
-- [Phase 21]: daemon_client() catches ConnectionRefusedError/FileNotFoundError/ConnectionError uniformly as Daemon not running
-- [Phase 21]: Config loaded server-side in daemon handler (not serialized over socket)
-- [Phase 21]: new-project catches daemon connection failure gracefully -- init+clone still succeed
-- [Phase 22]: RuntimeAPI methods use lazy imports for modules outside vcompany.daemon
-- [Phase 22]: Import boundary tests xfail-marked during incremental cog rewrite
-- [Phase 22]: validate_safety_table moved to vcompany.shared -- pure stateless utility
-- [Phase 22]: RuntimeAPI.new_project_from_name handles full project init pipeline previously inline in bot cog
-- [Phase 22]: StrategistCog fully decoupled from StrategistConversation -- all routing through RuntimeAPI
-- [Phase 22]: All 10 bot files (9 cogs + client.py) have zero prohibited imports -- pure I/O adapters
-- [Phase 23]: Removed [CMD:] action tag system -- Strategist uses vco CLI via Bash tool
-- [Phase 23]: Session version bumped v10->v11 to force new sessions with updated persona
+- [v3.1 scope]: Phase 24 first — surface all hidden inter-agent communication to Discord before transport abstraction
+- [v3.1 scope]: No agent-specific hardcoding in RuntimeAPI — PM is just an agent with rules, not special Python
+- [v3.1 scope]: AgentTransport protocol for local/Docker/network execution environments
+- [v3.1 scope]: Socket-based agent signaling replaces sentinel temp files
+- [v3.1 scope]: State persistence deferred to v3.2+
+- [v3.1 scope]: Nyquist validation disabled — focus on implementation quality over test ceremony
+
+### Blockers/Concerns
+
+- [Architecture]: PM currently receives events via internal post_event() asyncio.Queue — invisible on Discord
+- [Architecture]: RuntimeAPI has PM-specific methods (_on_phase_complete, pm_event_sink) — hardcoded agent routing
+- [Architecture]: BacklogQueue operations are silent internal state changes — not visible on Discord
+- [Architecture]: Plan review decisions (approve/reject) routed internally, not through Discord channels
 
 ### Pending Todos
 
 None yet.
-
-### Blockers/Concerns
-
-- [Phase 20]: on_ready() has 15+ callback closures needing audit before extraction -- plan first task of Phase 20 as audit
-- [Phase 20]: Wiring order constraints in on_ready() (PM event sink must be last) -- respect during RuntimeAPI design
 
 ### Quick Tasks Completed
 
@@ -123,6 +63,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T13:50:23.966Z
-Stopped at: Completed 23-01-PLAN.md
+Last session: 2026-03-29
+Stopped at: Milestone v3.1 started, ready to define requirements
 Resume file: None

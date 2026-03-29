@@ -10,7 +10,17 @@ Every agent runs inside an Erlang-style supervision tree with lifecycle state ma
 
 Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly — all operable from Discord.
 
-## Current State
+## Current Milestone: v3.1 Container Runtime Abstraction
+
+**Goal:** Remove hidden inter-agent communication, surface all agent interactions through Discord, then abstract the execution environment so agents can run in Docker containers with isolated Claude Code configurations.
+
+**Target features:**
+- All inter-agent events routed through Discord (no hidden post_event() bypasses)
+- PM actions (task assignment, plan review, escalation) visible on Discord before taking effect
+- No agent-specific hardcoding in RuntimeAPI — channel subscriptions replace Python method wiring
+- AgentTransport protocol abstracting execution environment (local tmux vs Docker)
+- Socket-based agent signaling (replaces sentinel temp files)
+- DockerTransport for isolated agent runtimes (enables per-agent tweakcc)
 
 ## Current State
 
@@ -87,7 +97,11 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ### Active
 
-- [ ] State persistence for container state, pane IDs, task queues (deferred to v3.1)
+- [ ] All inter-agent communication surfaced through Discord (no hidden event routing)
+- [ ] AgentTransport protocol abstracting execution environment
+- [ ] DockerTransport for isolated agent runtimes
+- [ ] Socket-based agent signaling (replaces sentinel temp files)
+- [ ] State persistence for container state, pane IDs, task queues (deferred to v3.2+)
 
 ### Out of Scope
 
@@ -153,4 +167,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after v3.0 milestone completion*
+*Last updated: 2026-03-29 after v3.1 milestone start*
