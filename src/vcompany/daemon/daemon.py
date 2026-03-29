@@ -12,9 +12,12 @@ import os
 import signal
 from pathlib import Path
 
+from aiohttp import web
+
 from vcompany.daemon.comm import CommunicationPort, NoopCommunicationPort, SendMessagePayload
 from vcompany.daemon.runtime_api import RuntimeAPI
 from vcompany.daemon.server import SocketServer
+from vcompany.daemon.signal_handler import SignalRouter, create_signal_app
 from vcompany.shared.paths import VCO_PID_PATH, VCO_SOCKET_PATH
 
 logger = logging.getLogger("vcompany.daemon")
@@ -49,6 +52,8 @@ class Daemon:
         self._project_config = project_config
         self._bot_ready_event = asyncio.Event()
         self._company_root: object | None = None  # CompanyRoot, typed as object to avoid import at module level
+        self._signal_router = SignalRouter()
+        self._signal_runner: web.AppRunner | None = None
 
     def set_comm_port(self, port: CommunicationPort) -> None:
         """Register a CommunicationPort adapter (called by bot on_ready)."""
@@ -73,6 +78,11 @@ class Daemon:
         """RuntimeAPI gateway. Available after CompanyRoot initialization."""
         return self._runtime_api
 
+    @property
+    def signal_router(self) -> SignalRouter:
+        """SignalRouter for registering agent signal handlers."""
+        return self._signal_router
+
     def set_runtime_api(self, api: RuntimeAPI) -> None:
         """Register the RuntimeAPI (called during CompanyRoot setup)."""
         self._runtime_api = api
@@ -96,6 +106,9 @@ class Daemon:
             self._server.register_method("shutdown", self._handle_shutdown)
             await self._server.start()
             logger.info("Socket server listening on %s", self._socket_path)
+
+            # Start signal HTTP server (push-based agent signaling)
+            await self._start_signal_server()
 
             # Inject daemon reference into bot so on_ready can register CommunicationPort
             self._bot._daemon = self
@@ -345,6 +358,21 @@ class Daemon:
             )
             await self._comm_port.send_message(SendMessagePayload(channel_id=strategist_id, content=msg))
 
+    # ── Signal HTTP server ─────────────────────────────────────────────
+
+    async def _start_signal_server(self) -> None:
+        """Start aiohttp HTTP server for agent signal delivery on Unix socket."""
+        app = create_signal_app(self._signal_router)
+        self._signal_runner = web.AppRunner(app)
+        await self._signal_runner.setup()
+        # Use Unix socket to avoid port conflicts
+        signal_socket_path = self._socket_path.parent / "vco-signal.sock"
+        signal_socket_path.unlink(missing_ok=True)
+        site = web.UnixSite(self._signal_runner, str(signal_socket_path))
+        await site.start()
+        os.chmod(str(signal_socket_path), 0o600)
+        logger.info("Signal HTTP server listening on %s", signal_socket_path)
+
     # ── Signal and lifecycle ──────────────────────────────────────────
 
     def _signal_shutdown(self) -> None:
@@ -386,11 +414,18 @@ class Daemon:
         self._pid_path.unlink(missing_ok=True)
 
     def _cleanup_socket(self) -> None:
-        """Remove socket file."""
+        """Remove socket file and signal socket file."""
         self._socket_path.unlink(missing_ok=True)
+        signal_socket_path = self._socket_path.parent / "vco-signal.sock"
+        signal_socket_path.unlink(missing_ok=True)
 
     async def _shutdown(self) -> None:
         """Ordered shutdown: CompanyRoot -> socket server -> bot -> files."""
+        if self._signal_runner:
+            await self._signal_runner.cleanup()
+            signal_socket_path = self._socket_path.parent / "vco-signal.sock"
+            signal_socket_path.unlink(missing_ok=True)
+            logger.info("Signal HTTP server stopped")
         if self._company_root is not None:
             await self._company_root.stop()
             logger.info("CompanyRoot stopped")
