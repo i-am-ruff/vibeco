@@ -26,6 +26,10 @@ class HealthReport(BaseModel):
     error_count: int = 0
     last_activity: datetime
     blocked_reason: str | None = None  # ARCH-03: populated when state == "blocked"
+    is_idle: bool | None = None  # True when Claude Code is waiting for input (signal-based)
+    transport_type: str | None = None  # "local" or "docker"
+    docker_container_id: str | None = None  # Short container ID for Docker agents
+    docker_image: str | None = None  # Image name for Docker agents
 
 
 class HealthNode(BaseModel):

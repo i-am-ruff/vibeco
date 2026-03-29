@@ -14,5 +14,5 @@ from vcompany.cli.helpers import daemon_client
 def hire(type_: str, name: str) -> None:
     """Hire an agent. Usage: vco hire TYPE NAME"""
     with daemon_client() as client:
-        result = client.call("hire", {"agent_id": name, "template": type_})
+        result = client.call("hire", {"agent_id": name, "template": type_, "agent_type": type_})
         Console().print(f"[green]Hired agent: {result['agent_id']}[/green]")

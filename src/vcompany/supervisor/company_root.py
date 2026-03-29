@@ -138,6 +138,7 @@ class CompanyRoot(Supervisor):
         self,
         agent_id: str,
         template: str = "generic",
+        agent_type: str | None = None,
     ) -> AgentContainer:
         """Hire a company-level agent. Creates scratch dir, deploys artifacts,
         starts container in tmux. Agent starts idle -- use ``give_task()`` to
@@ -148,15 +149,35 @@ class CompanyRoot(Supervisor):
         Args:
             agent_id: Unique identifier for the agent.
             template: Agent template key (see AGENT_TEMPLATES).
+            agent_type: If provided, look up from agent-types config for
+                transport, capabilities, gsd_command, etc.
 
         Returns:
-            The started TaskAgent container (idle, ready for tasks).
+            The started AgentContainer (or subclass, idle, ready for tasks).
         """
         from vcompany.agent.task_agent import TASKS_DIR
         from vcompany.container.child_spec import RestartPolicy
+        from vcompany.container.factory import get_agent_types_config
+        from vcompany.models.agent_types import AgentTypeConfig
         from vcompany.shared.file_ops import write_atomic
         from vcompany.shared.templates import render_template
         import shutil
+
+        # Look up agent type config
+        agent_types = get_agent_types_config()
+        type_config: AgentTypeConfig | None = None
+        effective_type = agent_type or "task"
+
+        if agent_types:
+            try:
+                type_config = agent_types.get_type(effective_type)
+            except KeyError:
+                logger.warning("Unknown agent type %s, using defaults", effective_type)
+
+        # D-03: Auto-build Docker image on first hire
+        if type_config and type_config.transport == "docker" and type_config.docker_image:
+            from vcompany.docker.build import ensure_docker_image
+            await ensure_docker_image(type_config.docker_image)
 
         tmpl = self.AGENT_TEMPLATES.get(template, self.AGENT_TEMPLATES["generic"])
         repo_root = Path(__file__).parent.parent.parent.parent
@@ -203,14 +224,16 @@ class CompanyRoot(Supervisor):
         # 3. Create and start container (no initial command -- starts idle)
         ctx = ContainerContext(
             agent_id=agent_id,
-            agent_type="task",
-            uses_tmux=True,
+            agent_type=effective_type,
+            uses_tmux="uses_tmux" in type_config.capabilities if type_config else True,
+            gsd_command=type_config.gsd_command if type_config else None,
         )
         spec = ChildSpec(
             child_id=agent_id,
-            agent_type="task",
+            agent_type=effective_type,
             context=ctx,
             restart_policy=RestartPolicy.TEMPORARY,
+            transport=type_config.transport if type_config else "local",
         )
         container = create_container(
             spec,
@@ -222,7 +245,7 @@ class CompanyRoot(Supervisor):
         )
         await container.start()
         self._company_agents[agent_id] = container
-        logger.info("Hired agent %s (template=%s)", agent_id, template)
+        logger.info("Hired agent %s (template=%s, type=%s)", agent_id, template, effective_type)
         return container
 
     async def dismiss(self, agent_id: str) -> None:

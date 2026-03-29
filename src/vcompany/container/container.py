@@ -259,6 +259,24 @@ class AgentContainer:
 
         # _is_idle is now set by push-based _handle_signal(), no polling needed
 
+        # Transport-specific health info
+        transport_type = None
+        docker_container_id = None
+        docker_image = None
+        if self._transport is not None:
+            if hasattr(self._transport, "_image"):
+                transport_type = "docker"
+                docker_image = self._transport._image
+                # Get container ID from active session if available
+                sessions = getattr(self._transport, "_sessions", {})
+                session = sessions.get(self.context.agent_id)
+                if session is not None:
+                    cid = getattr(session, "container_id", None)
+                    if cid:
+                        docker_container_id = cid[:12]
+            else:
+                transport_type = "local"
+
         return HealthReport(
             agent_id=self.context.agent_id,
             state=actual_state,
@@ -269,6 +287,9 @@ class AgentContainer:
             last_activity=self._last_activity,
             blocked_reason=self._blocked_reason,
             is_idle=self._is_idle if self._needs_transport else None,
+            transport_type=transport_type,
+            docker_container_id=docker_container_id,
+            docker_image=docker_image,
         )
 
     def _on_state_change(self) -> None:

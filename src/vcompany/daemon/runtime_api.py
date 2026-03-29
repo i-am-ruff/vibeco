@@ -56,13 +56,19 @@ class RuntimeAPI:
     # ── Core lifecycle methods ────────────────────────────────────────
 
     async def hire(
-        self, agent_id: str, template: str = "generic"
+        self, agent_id: str, template: str = "generic", agent_type: str | None = None,
     ) -> str:
         """Hire a company-level agent with optional channel creation.
 
         Creates a task channel via CommunicationPort before hiring,
         then delegates to CompanyRoot.hire() (no guild param -- channel
         creation is handled through the communication port).
+
+        Args:
+            agent_id: Unique identifier for the agent.
+            template: Agent template key.
+            agent_type: If provided, look up from agent-types config for
+                transport, capabilities, etc.
 
         Returns:
             The agent_id of the hired container.
@@ -80,7 +86,7 @@ class RuntimeAPI:
                 "Created channel task-%s (id=%s)", agent_id, result.channel_id
             )
 
-        container = await self._root.hire(agent_id, template=template)
+        container = await self._root.hire(agent_id, template=template, agent_type=agent_type)
         return container.context.agent_id
 
     async def give_task(self, agent_id: str, task: str) -> None:
