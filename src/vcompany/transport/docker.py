@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator
@@ -113,12 +114,60 @@ class DockerTransport:
         await asyncio.to_thread(container.reload)
         session.container_id = container.id
 
+        # Parametric customization (D-06)
+        tweakcc_profile = kwargs.get("tweakcc_profile")
+        settings_json = kwargs.get("settings_json")
+
+        if tweakcc_profile:
+            await self._apply_tweakcc_profile(container, tweakcc_profile)
+
+        if settings_json:
+            await self._apply_settings(container, settings_json)
+
         # Start tmux session inside container for interactive mode
         if interactive:
             await asyncio.to_thread(
                 container.exec_run,
                 ["tmux", "new-session", "-d", "-s", "main"],
             )
+
+    async def _apply_tweakcc_profile(self, container, profile_name: str) -> None:
+        """Copy tweakcc profile into container's Claude config directory."""
+        host_profile_dir = Path.home() / ".claude" / "tweakcc" / profile_name
+        if not host_profile_dir.exists():
+            logger.warning(
+                "tweakcc profile %s not found at %s, skipping",
+                profile_name,
+                host_profile_dir,
+            )
+            return
+
+        # Use docker cp to copy profile directory into container
+        container_id = container.id
+        dest = f"{container_id}:/root/.claude/tweakcc/{profile_name}"
+        await asyncio.to_thread(
+            subprocess.run,
+            ["docker", "cp", str(host_profile_dir), dest],
+            check=True,
+            capture_output=True,
+        )
+        logger.info(
+            "Applied tweakcc profile %s to container %s",
+            profile_name,
+            container.name,
+        )
+
+    async def _apply_settings(self, container, settings_content: str) -> None:
+        """Write custom settings.json into container's Claude config directory."""
+        await asyncio.to_thread(
+            container.exec_run,
+            [
+                "sh",
+                "-c",
+                f"mkdir -p /root/.claude && cat > /root/.claude/settings.json << 'SETTINGSEOF'\n{settings_content}\nSETTINGSEOF",
+            ],
+        )
+        logger.info("Applied custom settings.json to container %s", container.name)
 
     async def teardown(self, agent_id: str) -> None:
         """Stop container but keep it for restart (D-05).

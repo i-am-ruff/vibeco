@@ -140,12 +140,24 @@ def create_container(
         except KeyError:
             pass
 
+    # Extract setup kwargs from agent type config (D-06)
+    _setup_kwargs: dict = {}
+    if _agent_types_config is not None:
+        try:
+            _type_cfg = _agent_types_config.get_type(spec.agent_type)
+            if _type_cfg.tweakcc_profile:
+                _setup_kwargs["tweakcc_profile"] = _type_cfg.tweakcc_profile
+            if _type_cfg.settings_json:
+                _setup_kwargs["settings_json"] = _type_cfg.settings_json
+        except KeyError:
+            pass
+
     if container_class_name and container_class_name in _REGISTRY:
         cls = _REGISTRY[container_class_name]
     else:
         cls = _REGISTRY.get(spec.agent_type, AgentContainer)
 
-    return cls.from_spec(
+    container_instance = cls.from_spec(
         spec,
         data_dir=data_dir,
         comm_port=comm_port,
@@ -154,6 +166,8 @@ def create_container(
         project_dir=project_dir,
         project_session_name=project_session_name,
     )
+    container_instance._transport_setup_kwargs = _setup_kwargs
+    return container_instance
 
 
 def register_defaults() -> None:

@@ -76,6 +76,8 @@ class AgentContainer:
         # Task queue: idle-gated command delivery via transport
         self._task_queue: asyncio.Queue[str] = asyncio.Queue()
         self._idle_watcher_task: asyncio.Task | None = None
+        # Transport setup kwargs from agent type config (D-06: tweakcc_profile, settings_json)
+        self._transport_setup_kwargs: dict = {}
 
     # --- Properties ---
 
@@ -206,6 +208,7 @@ class AgentContainer:
             interactive=True,
             session_name=self._project_session_name,
             window_name=self.context.agent_id,
+            **self._transport_setup_kwargs,
         )
 
         cmd = self._build_launch_command()
