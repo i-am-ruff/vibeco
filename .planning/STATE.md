@@ -2,16 +2,14 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
-status: planning
-stopped_at: Phase 24 context gathered
-last_updated: "2026-03-29T15:57:47.313Z"
-last_activity: 2026-03-29 — Roadmap created for v3.1
+status: Ready to execute
+stopped_at: Completed 24-01-PLAN.md
+last_updated: "2026-03-29T16:18:11.531Z"
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 4
+  completed_plans: 2
 ---
 
 # Project State
@@ -21,16 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** v3.1 Phase 24 — Discord Visibility
+**Current focus:** Phase 24 — discord-visibility
 
 ## Current Position
 
-Phase: 24 of 26 (Discord Visibility)
-Plan: None yet (ready to plan)
-Status: Ready to plan
-Last activity: 2026-03-29 — Roadmap created for v3.1
-
-Progress: [░░░░░░░░░░] 0%
+Phase: 24 (discord-visibility) — EXECUTING
+Plan: 3 of 4
 
 ## Accumulated Context
 
@@ -45,6 +39,8 @@ Recent decisions affecting current work:
 - [v3.1 scope]: Socket-based agent signaling replaces sentinel temp files
 - [v3.1 scope]: State persistence deferred to v3.2+
 - [v3.1 scope]: Nyquist validation disabled — focus on implementation quality over test ceremony
+- [Phase 24]: Injected async callback pattern for BacklogQueue mutation notifications -- decoupled from Discord/CommunicationPort
+- [Phase 24]: Generic handle-based @mention routing (no agent-type checks) via MentionRouterCog
 
 ### Blockers/Concerns
 
@@ -65,6 +61,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T15:57:47.302Z
-Stopped at: Phase 24 context gathered
-Resume file: .planning/phases/24-discord-visibility/24-CONTEXT.md
+Last session: 2026-03-29T16:18:11.527Z
+Stopped at: Completed 24-01-PLAN.md
+Resume file: None

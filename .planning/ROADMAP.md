@@ -93,8 +93,8 @@ See phase details in `.planning/milestones/v3.0-ROADMAP.md`.
 **Plans**: 4 plans
 
 Plans:
-- [ ] 24-01-PLAN.md -- MentionRouterCog, MessageContext model, channel setup, AgentContainer.receive_discord_message
-- [ ] 24-02-PLAN.md -- BacklogQueue mutation notification callback
+- [x] 24-01-PLAN.md -- MentionRouterCog, MessageContext model, channel setup, AgentContainer.receive_discord_message
+- [x] 24-02-PLAN.md -- BacklogQueue mutation notification callback
 - [ ] 24-03-PLAN.md -- Agent Discord message handlers (FulltimeAgent, CompanyAgent, GsdAgent)
 - [ ] 24-04-PLAN.md -- RuntimeAPI cleanup, Supervisor unwiring, PlanReviewCog update
 
@@ -129,6 +129,6 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 24. Discord Visibility | 0/4 | Planning complete | - |
+| 24. Discord Visibility | 2/4 | In Progress|  |
 | 25. Transport Abstraction | 0/? | Not started | - |
 | 26. Docker Runtime | 0/? | Not started | - |

@@ -9,11 +9,11 @@ Requirements for Container Runtime Abstraction. Each maps to roadmap phases.
 
 ### Discord Visibility
 
-- [ ] **VIS-01**: Every inter-agent event (phase complete, task assigned, plan reviewed, escalation) produces a Discord message in the appropriate channel before the event takes effect
-- [ ] **VIS-02**: PM backlog operations (add, remove, prioritize) are posted to Discord with the change described, not silently mutated
+- [x] **VIS-01**: Every inter-agent event (phase complete, task assigned, plan reviewed, escalation) produces a Discord message in the appropriate channel before the event takes effect
+- [x] **VIS-02**: PM backlog operations (add, remove, prioritize) are posted to Discord with the change described, not silently mutated
 - [ ] **VIS-03**: Plan review decisions (approve/reject with confidence score and reasoning) are posted to Discord before the approval/rejection is processed
-- [ ] **VIS-04**: RuntimeAPI has no agent-type-specific routing methods -- no hardcoded "send this to PM" or "send this to Strategist" wiring
-- [ ] **VIS-05**: Agent-to-agent coordination uses Discord channel subscriptions, not Python post_event() calls -- any agent watching a channel can react to events
+- [x] **VIS-04**: RuntimeAPI has no agent-type-specific routing methods -- no hardcoded "send this to PM" or "send this to Strategist" wiring
+- [x] **VIS-05**: Agent-to-agent coordination uses Discord channel subscriptions, not Python post_event() calls -- any agent watching a channel can react to events
 - [ ] **VIS-06**: Task assignment from PM to GSD agent is a Discord message in the agent's channel, not an internal queue_task() bypass
 
 ### Transport Abstraction
@@ -59,11 +59,11 @@ Deferred to future release.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VIS-01 | Phase 24 | Pending |
-| VIS-02 | Phase 24 | Pending |
+| VIS-01 | Phase 24 | Complete |
+| VIS-02 | Phase 24 | Complete |
 | VIS-03 | Phase 24 | Pending |
-| VIS-04 | Phase 24 | Pending |
-| VIS-05 | Phase 24 | Pending |
+| VIS-04 | Phase 24 | Complete |
+| VIS-05 | Phase 24 | Complete |
 | VIS-06 | Phase 24 | Pending |
 | TXPT-01 | Phase 25 | Pending |
 | TXPT-02 | Phase 25 | Pending |
