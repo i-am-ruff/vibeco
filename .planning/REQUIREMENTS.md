@@ -9,20 +9,20 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 
 ### Daemon Lifecycle
 
-- [ ] **DAEMON-01**: `vco up` starts runtime daemon as foreground process with CompanyRoot and supervision tree
-- [ ] **DAEMON-02**: Runtime daemon creates PID file on start and removes on clean exit
-- [ ] **DAEMON-03**: Runtime daemon handles SIGTERM/SIGINT for graceful shutdown (stops containers, closes socket)
-- [ ] **DAEMON-04**: Runtime daemon cleans up stale socket file on start (PID probe before unlink)
+- [x] **DAEMON-01**: `vco up` starts runtime daemon as foreground process with CompanyRoot and supervision tree
+- [x] **DAEMON-02**: Runtime daemon creates PID file on start and removes on clean exit
+- [x] **DAEMON-03**: Runtime daemon handles SIGTERM/SIGINT for graceful shutdown (stops containers, closes socket)
+- [x] **DAEMON-04**: Runtime daemon cleans up stale socket file on start (PID probe before unlink)
 - [ ] **DAEMON-05**: `vco down` sends graceful shutdown signal to running daemon
-- [ ] **DAEMON-06**: `vco up` starts Discord bot alongside daemon in same event loop (`bot.start()`)
+- [x] **DAEMON-06**: `vco up` starts Discord bot alongside daemon in same event loop (`bot.start()`)
 
 ### Socket API
 
-- [ ] **SOCK-01**: Runtime daemon listens on Unix socket with asyncio.start_unix_server
+- [x] **SOCK-01**: Runtime daemon listens on Unix socket with asyncio.start_unix_server
 - [x] **SOCK-02**: NDJSON protocol for request-response communication (one JSON object per line)
 - [x] **SOCK-03**: Request framing includes method, params, and request ID
 - [x] **SOCK-04**: Error responses include error code, message, and request ID
-- [ ] **SOCK-05**: Event subscription -- connected clients can subscribe to daemon events (health changes, agent transitions)
+- [x] **SOCK-05**: Event subscription -- connected clients can subscribe to daemon events (health changes, agent transitions)
 - [x] **SOCK-06**: Protocol version field in handshake for forward compatibility
 
 ### Communication Abstraction
@@ -92,17 +92,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DAEMON-01 | Phase 18 | Pending |
-| DAEMON-02 | Phase 18 | Pending |
-| DAEMON-03 | Phase 18 | Pending |
-| DAEMON-04 | Phase 18 | Pending |
+| DAEMON-01 | Phase 18 | Complete |
+| DAEMON-02 | Phase 18 | Complete |
+| DAEMON-03 | Phase 18 | Complete |
+| DAEMON-04 | Phase 18 | Complete |
 | DAEMON-05 | Phase 18 | Pending |
-| DAEMON-06 | Phase 18 | Pending |
-| SOCK-01 | Phase 18 | Pending |
+| DAEMON-06 | Phase 18 | Complete |
+| SOCK-01 | Phase 18 | Complete |
 | SOCK-02 | Phase 18 | Complete |
 | SOCK-03 | Phase 18 | Complete |
 | SOCK-04 | Phase 18 | Complete |
-| SOCK-05 | Phase 18 | Pending |
+| SOCK-05 | Phase 18 | Complete |
 | SOCK-06 | Phase 18 | Complete |
 | COMM-01 | Phase 19 | Pending |
 | COMM-02 | Phase 19 | Pending |

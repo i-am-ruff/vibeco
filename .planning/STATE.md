@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: CLI-First Architecture Rewrite
 status: Ready to execute
-stopped_at: Completed 18-01-PLAN.md
-last_updated: "2026-03-29T02:07:42.449Z"
+stopped_at: Completed 18-02-PLAN.md
+last_updated: "2026-03-29T02:12:56.735Z"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 ## Current Position
 
 Phase: 18 (Daemon Foundation) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -47,6 +47,7 @@ Plan: 2 of 3
 
 *Updated after each plan completion*
 | Phase 18 P01 | 77s | 1 tasks | 4 files |
+| Phase 18 P02 | 194s | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -62,6 +63,8 @@ Recent decisions affecting current work:
 - [v3.0 roadmap]: COMM requirements split -- protocol definition (Phase 19) before extraction (Phase 20) uses it
 - [v3.0 roadmap]: COMM-04/05/06 grouped with EXTRACT phase since they move logic into daemon using the protocol
 - [Phase 18]: JSON-RPC 2.0 message structure for daemon NDJSON protocol
+- [Phase 18]: Signal handlers set asyncio.Event only -- no async work in signal context
+- [Phase 18]: Bot typed as object in Daemon to avoid discord.py import coupling
 
 ### Pending Todos
 
@@ -80,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T02:07:42.446Z
-Stopped at: Completed 18-01-PLAN.md
+Last session: 2026-03-29T02:12:56.732Z
+Stopped at: Completed 18-02-PLAN.md
 Resume file: None
