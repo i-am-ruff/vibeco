@@ -169,12 +169,19 @@ class Supervisor:
         if self._child_specs:
             project_id = self._child_specs[0].context.project_id
 
+        # D-11: Look up type config from agent-types for capability-driven fields
+        from vcompany.container.factory import get_agent_types_config
+
+        agent_types = get_agent_types_config()
+        type_config = agent_types.get_type(request.agent_type) if agent_types else None
+
         context = ContainerContext(
             agent_id=agent_id,
             agent_type=request.agent_type,
             parent_id=self.supervisor_id,
             project_id=project_id,
-            uses_tmux=request.agent_type in ("gsd", "continuous", "task"),
+            uses_tmux="uses_tmux" in type_config.capabilities if type_config else True,
+            gsd_command=type_config.gsd_command if type_config else None,
         )
         # Apply context overrides
         for key, value in request.context_overrides.items():
@@ -186,6 +193,7 @@ class Supervisor:
             agent_type=request.agent_type,
             context=context,
             restart_policy=RestartPolicy.TEMPORARY,
+            transport=type_config.transport if type_config else "local",
         )
 
         self._child_specs.append(spec)

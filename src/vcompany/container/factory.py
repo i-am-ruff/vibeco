@@ -131,7 +131,20 @@ def create_container(
             deps = _resolve_transport_deps(transport_name, transport_deps or {}, type_config)
             transport = transport_cls(**deps)
 
-    cls = _REGISTRY.get(spec.agent_type, AgentContainer)
+    # D-13: container_class from agent-types config overrides direct type lookup
+    container_class_name = None
+    if _agent_types_config is not None:
+        try:
+            type_config_lookup = _agent_types_config.get_type(spec.agent_type)
+            container_class_name = type_config_lookup.container_class
+        except KeyError:
+            pass
+
+    if container_class_name and container_class_name in _REGISTRY:
+        cls = _REGISTRY[container_class_name]
+    else:
+        cls = _REGISTRY.get(spec.agent_type, AgentContainer)
+
     return cls.from_spec(
         spec,
         data_dir=data_dir,
@@ -155,11 +168,19 @@ def register_defaults() -> None:
     from vcompany.agent.gsd_agent import GsdAgent
     from vcompany.agent.task_agent import TaskAgent
 
+    # Register by agent_type string (backward compat)
     register_agent_type("gsd", GsdAgent)
     register_agent_type("continuous", ContinuousAgent)
     register_agent_type("fulltime", FulltimeAgent)
     register_agent_type("company", CompanyAgent)
     register_agent_type("task", TaskAgent)
+    # Register by container class name (D-13: container_class from agent-types config)
+    register_agent_type("GsdAgent", GsdAgent)
+    register_agent_type("ContinuousAgent", ContinuousAgent)
+    register_agent_type("FulltimeAgent", FulltimeAgent)
+    register_agent_type("CompanyAgent", CompanyAgent)
+    register_agent_type("TaskAgent", TaskAgent)
+    register_agent_type("AgentContainer", AgentContainer)
 
 
 def get_registry() -> dict[str, type[AgentContainer]]:
