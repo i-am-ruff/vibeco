@@ -9,9 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from enum import Enum
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -64,10 +68,27 @@ class BacklogQueue:
         await queue.mark_completed(item.item_id)
     """
 
-    def __init__(self, memory: MemoryStore) -> None:
+    def __init__(
+        self,
+        memory: MemoryStore,
+        on_mutation: Callable[[str], Awaitable[None]] | None = None,
+    ) -> None:
         self._memory = memory
+        self._on_mutation = on_mutation
         self._lock = asyncio.Lock()
         self._items: list[BacklogItem] = []
+
+    async def _notify(self, message: str) -> None:
+        """Fire mutation callback if registered. Never raises."""
+        if self._on_mutation is not None:
+            try:
+                await self._on_mutation(message)
+            except Exception:
+                logger.warning(
+                    "Backlog mutation callback failed for: %s",
+                    message,
+                    exc_info=True,
+                )
 
     async def load(self) -> None:
         """Load backlog state from MemoryStore."""
@@ -105,12 +126,14 @@ class BacklogQueue:
         async with self._lock:
             self._items.append(item)
             await self._persist()
+        await self._notify(f"[Backlog] Added: '{item.title}' (priority {item.priority})")
 
     async def insert_urgent(self, item: BacklogItem) -> None:
         """Insert item at position 0 (highest priority)."""
         async with self._lock:
             self._items.insert(0, item)
             await self._persist()
+        await self._notify(f"[Backlog] Urgent: '{item.title}' inserted at position 0")
 
     async def insert_after(self, after_id: str, item: BacklogItem) -> None:
         """Insert item after the item with the given ID.
@@ -133,6 +156,7 @@ class BacklogQueue:
             pos = min(new_position, len(self._items))
             self._items.insert(pos, item)
             await self._persist()
+        await self._notify(f"[Backlog] Reordered: '{item_id}' moved to position {new_position}")
 
     async def cancel(self, item_id: str) -> None:
         """Set item status to CANCELLED.
@@ -143,6 +167,7 @@ class BacklogQueue:
             item = self._find_item(item_id)
             item.status = BacklogItemStatus.CANCELLED
             await self._persist()
+        await self._notify(f"[Backlog] Cancelled: '{item_id}'")
 
     async def claim_next(self, agent_id: str) -> BacklogItem | None:
         """Claim the first PENDING item for the given agent.
@@ -156,6 +181,9 @@ class BacklogQueue:
                     item.status = BacklogItemStatus.ASSIGNED
                     item.assigned_to = agent_id
                     await self._persist()
+                    await self._notify(
+                        f"[Backlog] Claimed: '{item.title}' assigned to {agent_id}"
+                    )
                     return item
             return None
 
@@ -168,6 +196,7 @@ class BacklogQueue:
             item = self._find_item(item_id)
             item.status = BacklogItemStatus.COMPLETED
             await self._persist()
+        await self._notify(f"[Backlog] Completed: '{item_id}'")
 
     async def mark_pending(self, item_id: str) -> None:
         """Transition item back to PENDING and clear assigned_to.
@@ -179,6 +208,7 @@ class BacklogQueue:
             item.status = BacklogItemStatus.PENDING
             item.assigned_to = None
             await self._persist()
+        await self._notify(f"[Backlog] Re-queued: '{item_id}' back to pending")
 
     @property
     def pending_items(self) -> list[BacklogItem]:
