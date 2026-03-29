@@ -11,7 +11,12 @@ from vcompany.cli.preflight_cmd import preflight
 from vcompany.cli.report_cmd import report
 from vcompany.cli.restart_cmd import restart
 from vcompany.cli.sync_context_cmd import sync_context
+from vcompany.cli.dismiss_cmd import dismiss
 from vcompany.cli.down_cmd import down
+from vcompany.cli.give_task_cmd import give_task
+from vcompany.cli.health_cmd import health
+from vcompany.cli.hire_cmd import hire
+from vcompany.cli.status_cmd import status
 from vcompany.cli.up_cmd import up
 
 
@@ -33,3 +38,8 @@ cli.add_command(restart)
 cli.add_command(sync_context)
 cli.add_command(up)
 cli.add_command(down)
+cli.add_command(hire)
+cli.add_command(give_task)
+cli.add_command(dismiss)
+cli.add_command(status)
+cli.add_command(health)

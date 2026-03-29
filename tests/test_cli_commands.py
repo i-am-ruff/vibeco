@@ -107,3 +107,106 @@ def test_rpc_error_hire():
 
     assert result.exit_code != 0
     assert "Agent already exists" in result.stderr
+
+
+# ── Status command tests ────────────────────────────────────────────
+
+def test_status_renders():
+    from vcompany.cli.status_cmd import status
+
+    mock_client = MagicMock()
+    mock_client.call.return_value = {
+        "projects": {"my-project": {"agents": 3}},
+        "company_agents": ["strategist"],
+    }
+
+    with patch("vcompany.cli.status_cmd.daemon_client", _make_daemon_ctx(mock_client)):
+        result = CliRunner().invoke(status, [])
+
+    assert result.exit_code == 0, result.output + (result.stderr or "")
+    mock_client.call.assert_called_once_with("status")
+    assert "my-project" in result.output
+    assert "strategist" in result.output
+
+
+def test_status_empty():
+    from vcompany.cli.status_cmd import status
+
+    mock_client = MagicMock()
+    mock_client.call.return_value = {"projects": {}, "company_agents": []}
+
+    with patch("vcompany.cli.status_cmd.daemon_client", _make_daemon_ctx(mock_client)):
+        result = CliRunner().invoke(status, [])
+
+    assert result.exit_code == 0
+    assert "No active projects or agents" in result.output
+
+
+# ── Health command tests ────────────────────────────────────────────
+
+def test_health_renders():
+    from vcompany.cli.health_cmd import health
+
+    mock_client = MagicMock()
+    mock_client.call.return_value = {
+        "supervisor_id": "company-root",
+        "state": "running",
+        "projects": [],
+        "company_agents": [],
+    }
+
+    with patch("vcompany.cli.health_cmd.daemon_client", _make_daemon_ctx(mock_client)):
+        result = CliRunner().invoke(health, [])
+
+    assert result.exit_code == 0, result.output + (result.stderr or "")
+    mock_client.call.assert_called_once_with("health_tree")
+    assert "company-root" in result.output
+
+
+def test_health_shows_agent_states():
+    from vcompany.cli.health_cmd import health
+
+    mock_client = MagicMock()
+    mock_client.call.return_value = {
+        "supervisor_id": "company-root",
+        "state": "running",
+        "projects": [
+            {
+                "supervisor_id": "proj-1",
+                "state": "running",
+                "children": [
+                    {
+                        "report": {
+                            "agent_id": "agent-a",
+                            "state": "running",
+                            "inner_state": "working",
+                            "uptime": 120.5,
+                            "error_count": 0,
+                            "blocked_reason": None,
+                            "is_idle": False,
+                        }
+                    }
+                ],
+            }
+        ],
+        "company_agents": [
+            {
+                "report": {
+                    "agent_id": "strategist",
+                    "state": "idle",
+                    "inner_state": "waiting",
+                    "uptime": 300.0,
+                    "error_count": 0,
+                    "blocked_reason": None,
+                    "is_idle": True,
+                }
+            }
+        ],
+    }
+
+    with patch("vcompany.cli.health_cmd.daemon_client", _make_daemon_ctx(mock_client)):
+        result = CliRunner().invoke(health, [])
+
+    assert result.exit_code == 0, result.output + (result.stderr or "")
+    assert "agent-a" in result.output
+    assert "strategist" in result.output
