@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -26,12 +25,7 @@ if TYPE_CHECKING:
     from vcompany.container.child_spec import ChildSpec
     from vcompany.container.communication import CommunicationPort
     from vcompany.models.messages import MessageContext
-    from vcompany.tmux.session import TmuxManager
-
-
-# Sentinel file directory for Claude Code hook signals.
-_SIGNAL_DIR = Path("/tmp")
-_SIGNAL_PREFIX = "vco-agent-"
+    from vcompany.transport.protocol import AgentTransport
 
 
 class AgentContainer:
@@ -47,6 +41,9 @@ class AgentContainer:
         comm_port: Optional communication channel to other containers.
         on_state_change: Optional callback invoked with a HealthReport after
             every lifecycle transition.
+        transport: Optional AgentTransport for execution environment abstraction.
+        project_dir: Optional project directory for clone/prompt paths.
+        project_session_name: Optional tmux session name for the project.
     """
 
     def __init__(
@@ -55,7 +52,7 @@ class AgentContainer:
         data_dir: Path,
         comm_port: CommunicationPort | None = None,
         on_state_change: Callable[[HealthReport], None] | None = None,
-        tmux_manager: TmuxManager | None = None,
+        transport: AgentTransport | None = None,
         project_dir: Path | None = None,
         project_session_name: str | None = None,
     ) -> None:
@@ -69,15 +66,14 @@ class AgentContainer:
         self._created_at = datetime.now(timezone.utc)
         self._error_count: int = 0
         self._last_activity = self._created_at
-        # Tmux bridge attributes
-        self._tmux: TmuxManager | None = tmux_manager
+        # Transport abstraction (replaces direct TmuxManager usage)
+        self._transport: AgentTransport | None = transport
         self._project_dir: Path | None = project_dir
         self._project_session_name: str | None = project_session_name
-        self._pane_id: str | None = None
         self._blocked_reason: str | None = None  # ARCH-03
-        # Signal-based idle tracking (driven by Claude Code hooks)
+        # Signal-based idle tracking (driven by push-based signals from daemon)
         self._is_idle: bool = False
-        # Task queue: idle-gated command delivery to tmux pane
+        # Task queue: idle-gated command delivery via transport
         self._task_queue: asyncio.Queue[str] = asyncio.Queue()
         self._idle_watcher_task: asyncio.Task | None = None
 
@@ -94,9 +90,14 @@ class AgentContainer:
         return None
 
     @property
-    def _needs_tmux_session(self) -> bool:
-        """True when this container should launch a tmux session."""
+    def _needs_transport(self) -> bool:
+        """True when this container should set up a transport environment."""
         return self.context.uses_tmux
+
+    @property
+    def _needs_tmux_session(self) -> bool:
+        """Deprecated: use _needs_transport. Kept for backward compat."""
+        return self._needs_transport
 
     @property
     def working_dir(self) -> Path:
@@ -122,56 +123,27 @@ class AgentContainer:
         """Whether Claude Code is idle and ready for input (signal-based)."""
         return self._is_idle
 
-    @property
-    def _signal_path(self) -> Path:
-        """Path to this agent's sentinel file written by Claude Code hooks."""
-        return _SIGNAL_DIR / f"{_SIGNAL_PREFIX}{self.context.agent_id}.state"
+    # --- Push-Based Signal Handling (replaces polling) ---
 
-    # --- Signal-Based Readiness ---
+    async def _handle_signal(self, signal_type: str) -> None:
+        """Handle push-based signal from daemon (replaces polling idle watcher).
 
-    def _read_signal(self) -> str | None:
-        """Read the current signal from the sentinel file, or None if absent."""
-        try:
-            return self._signal_path.read_text().strip()
-        except FileNotFoundError:
-            return None
-
-    def _clear_signal(self) -> None:
-        """Remove the sentinel file (cleanup on start/stop)."""
-        try:
-            self._signal_path.unlink()
-        except FileNotFoundError:
-            pass
-
-    async def _wait_for_signal(
-        self,
-        expected: str | tuple[str, ...],
-        timeout: float = 120.0,
-        poll_interval: float = 0.5,
-    ) -> bool:
-        """Wait until the sentinel file contains one of the expected values.
-
-        Returns True when signal detected, False on timeout.
+        Called by the daemon's SignalRouter when a 'vco signal' HTTP request arrives.
         """
-        if isinstance(expected, str):
-            expected = (expected,)
-
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            value = await asyncio.to_thread(self._read_signal)
-            if value in expected:
-                self._is_idle = value == "idle"
-                return True
-            await asyncio.sleep(poll_interval)
-        return False
+        if signal_type in ("ready", "idle"):
+            self._is_idle = signal_type == "idle"
+            self._last_activity = datetime.now(timezone.utc)
+            logger.info("Signal received for %s: %s", self.context.agent_id, signal_type)
+            if self._is_idle and not self._task_queue.empty():
+                await self._drain_task_queue()
 
     # --- Task Queue (idle-gated command delivery) ---
 
     async def give_task(self, task: str) -> None:
-        """Queue a task for delivery to the tmux pane when agent is idle.
+        """Queue a task for delivery to the agent's execution environment when idle.
 
         If the agent is currently idle, sends immediately. Otherwise queues
-        for delivery when the next ``Stop`` hook signal arrives.
+        for delivery when the next signal arrives.
         """
         await self._task_queue.put(task)
         logger.info("Queued task for %s: %s", self.context.agent_id, task[:80])
@@ -179,33 +151,18 @@ class AgentContainer:
             await self._drain_task_queue()
 
     async def _drain_task_queue(self) -> None:
-        """Send the next queued task to the tmux pane."""
-        if self._pane_id is None or self._tmux is None:
+        """Send the next queued task to the agent's execution environment."""
+        if self._transport is None:
             return
         try:
             task = self._task_queue.get_nowait()
         except asyncio.QueueEmpty:
             return
         self._is_idle = False
-        self._clear_signal()  # prevent re-reading stale "idle"
-        await asyncio.to_thread(self._tmux.send_command, self._pane_id, task)
+        await self._transport.exec(self.context.agent_id, task)
         logger.info("Sent queued task to %s: %s", self.context.agent_id, task[:80])
 
-    async def _watch_idle_signals(self) -> None:
-        """Background task: watch signal file and drain queue when idle."""
-        while True:
-            try:
-                signal = await asyncio.to_thread(self._read_signal)
-                if signal in ("idle", "started"):
-                    self._is_idle = True
-                    self._last_activity = datetime.now(timezone.utc)
-                    if not self._task_queue.empty():
-                        await self._drain_task_queue()
-            except Exception:
-                pass  # resilient — don't crash on signal read errors
-            await asyncio.sleep(1.0)
-
-    # --- Tmux Bridge ---
+    # --- Transport Bridge ---
 
     def _build_launch_command(self) -> str:
         """Build the chained shell command to launch Claude Code.
@@ -236,91 +193,68 @@ class AgentContainer:
             chained_cmd += f" '{escaped}'"
         return chained_cmd
 
-    async def _launch_tmux_session(self) -> None:
-        """Create a tmux pane and launch Claude Code in it.
+    async def _launch_agent(self) -> None:
+        """Set up transport environment and launch Claude Code.
 
-        The GSD command (if any) is passed as the positional prompt argument
-        to the ``claude`` CLI, so Claude processes it on startup. Readiness
-        is detected via the ``SessionStart`` hook signal (sentinel file)
-        rather than polling tmux pane output.
+        Delegates environment creation to transport.setup(), sends the launch
+        command via transport.exec(), and handles workspace trust acceptance
+        via transport.send_keys() -- no TmuxManager import needed.
         """
-        # Clean up any stale signal from a previous run
-        self._clear_signal()
+        await self._transport.setup(
+            self.context.agent_id,
+            working_dir=self.working_dir,
+            interactive=True,
+            session_name=self._project_session_name,
+            window_name=self.context.agent_id,
+        )
 
-        session = await asyncio.to_thread(
-            self._tmux.get_or_create_session, self._project_session_name
-        )
-        pane = await asyncio.to_thread(
-            self._tmux.create_pane, session, window_name=self.context.agent_id
-        )
-        self._pane_id = pane.pane_id
         cmd = self._build_launch_command()
-        await asyncio.to_thread(self._tmux.send_command, pane, cmd)
+        await self._transport.exec(self.context.agent_id, cmd)
 
-        # Wait for the workspace trust prompt and auto-accept it.
-        # With --dangerously-skip-permissions the permissions are bypassed but
-        # the trust dialog still appears. We send Enter to accept it.
-        # The SessionStart hook fires AFTER trust is accepted, so we use
-        # the signal to know when Claude is truly ready rather than a blind sleep.
+        # Wait for workspace trust prompt and auto-accept via transport
         await asyncio.sleep(3)
-        await asyncio.to_thread(pane.send_keys, "", enter=True)
+        await self._transport.send_keys(self.context.agent_id, "", enter=True)
 
-        # Wait for Claude Code to signal it has started (SessionStart hook).
-        # This replaces the old _wait_for_claude_ready() pane-output polling.
-        started = await self._wait_for_signal(("started", "idle"), timeout=120.0)
-        if started:
-            logger.info(
-                "Claude Code session started for %s (signal-based)",
-                self.context.agent_id,
-            )
-            if self.context.gsd_command:
-                logger.info(
-                    "GSD command passed as initial prompt to %s: %s",
-                    self.context.agent_id,
-                    self.context.gsd_command,
-                )
-        else:
-            logger.warning(
-                "Claude Code did not signal startup within timeout for %s"
-                " -- agent may not be running",
-                self.context.agent_id,
-            )
+        # Signal-based readiness is now push-based -- no polling here.
+        # The daemon's SignalRouter will call _handle_signal("ready") when
+        # the SessionStart hook fires. We just log that we launched.
+        logger.info(
+            "Claude Code launched for %s via transport (awaiting ready signal)",
+            self.context.agent_id,
+        )
 
-        # Start background idle watcher for queue-based task delivery
-        self._idle_watcher_task = asyncio.create_task(self._watch_idle_signals())
+    def is_alive(self) -> bool:
+        """Check if the agent's execution environment is alive.
+
+        Returns True when no transport is injected (test containers).
+        """
+        if self._transport is None:
+            return True
+        return self._transport.is_alive(self.context.agent_id)
 
     def is_tmux_alive(self) -> bool:
-        """Check if the tmux pane process is alive.
-
-        Returns True when no tmux manager is injected (test containers).
-        """
-        if self._tmux is None or self._pane_id is None:
-            return True
-        pane = self._tmux.get_pane_by_id(self._pane_id)
-        return pane is not None and self._tmux.is_alive(pane)
+        """Deprecated: use is_alive(). Kept for backward compat with supervisor monitor."""
+        return self.is_alive()
 
     # --- Health ---
 
     def health_report(self) -> HealthReport:
         """Generate a health snapshot for this container.
 
-        If the FSM says 'running' but the tmux pane is dead, reports
+        If the FSM says 'running' but the transport is dead, reports
         'errored' to reflect actual liveness.
         """
         now = datetime.now(timezone.utc)
         actual_state = self.state
         if (
             actual_state == "running"
-            and self._tmux is not None
-            and self._needs_tmux_session
-            and not self.is_tmux_alive()
+            and self._transport is not None
+            and self._needs_transport
+            and not self.is_alive()
         ):
             actual_state = "errored"
 
-        # Refresh idle state from signal file for tmux agents
-        if self._tmux is not None and self._needs_tmux_session:
-            signal = self._read_signal()
-            self._is_idle = signal == "idle"
+        # _is_idle is now set by push-based _handle_signal(), no polling needed
 
         return HealthReport(
             agent_id=self.context.agent_id,
@@ -331,7 +265,7 @@ class AgentContainer:
             error_count=self._error_count,
             last_activity=self._last_activity,
             blocked_reason=self._blocked_reason,
-            is_idle=self._is_idle if self._needs_tmux_session else None,
+            is_idle=self._is_idle if self._needs_transport else None,
         )
 
     def _on_state_change(self) -> None:
@@ -343,11 +277,11 @@ class AgentContainer:
     # --- Lifecycle Methods ---
 
     async def start(self) -> None:
-        """Transition to running, open memory store, and launch tmux if needed."""
+        """Transition to running, open memory store, and launch via transport if needed."""
         self._lifecycle.start()
         await self.memory.open()
-        if self._tmux is not None and self._needs_tmux_session:
-            await self._launch_tmux_session()
+        if self._transport is not None and self._needs_transport:
+            await self._launch_agent()
 
     async def sleep(self) -> None:
         """Transition to sleeping."""
@@ -377,8 +311,8 @@ class AgentContainer:
         self._lifecycle.unblock()
 
     async def stop(self) -> None:
-        """Kill tmux pane (if any), cancel watcher, transition to stopped, and close memory."""
-        # Cancel idle watcher before killing pane
+        """Teardown transport, transition to stopped, and close memory."""
+        # Cancel idle watcher if any (shouldn't exist in new code but defensive)
         if self._idle_watcher_task is not None:
             self._idle_watcher_task.cancel()
             try:
@@ -387,19 +321,14 @@ class AgentContainer:
                 pass
             self._idle_watcher_task = None
         self._lifecycle.begin_stop()
-        if self._tmux is not None and self._pane_id is not None:
-            pane = await asyncio.to_thread(self._tmux.get_pane_by_id, self._pane_id)
-            if pane is not None:
-                await asyncio.to_thread(self._tmux.kill_pane, pane)
-            self._pane_id = None
-        self._clear_signal()
+        if self._transport is not None:
+            await self._transport.teardown(self.context.agent_id)
         self._lifecycle.finish_stop()
         await self.memory.close()
 
     async def destroy(self) -> None:
         """Transition to destroyed and close memory store."""
         self._lifecycle.destroy()
-        self._clear_signal()
         await self.memory.close()
 
     async def send_event(self, name: str) -> None:
@@ -434,7 +363,7 @@ class AgentContainer:
         data_dir: Path,
         comm_port: CommunicationPort | None = None,
         on_state_change: Callable[[HealthReport], None] | None = None,
-        tmux_manager: TmuxManager | None = None,
+        transport: AgentTransport | None = None,
         project_dir: Path | None = None,
         project_session_name: str | None = None,
     ) -> AgentContainer:
@@ -444,7 +373,7 @@ class AgentContainer:
             data_dir=data_dir,
             comm_port=comm_port,
             on_state_change=on_state_change,
-            tmux_manager=tmux_manager,
+            transport=transport,
             project_dir=project_dir,
             project_session_name=project_session_name,
         )
