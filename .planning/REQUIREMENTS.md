@@ -19,11 +19,11 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 ### Socket API
 
 - [ ] **SOCK-01**: Runtime daemon listens on Unix socket with asyncio.start_unix_server
-- [ ] **SOCK-02**: NDJSON protocol for request-response communication (one JSON object per line)
-- [ ] **SOCK-03**: Request framing includes method, params, and request ID
-- [ ] **SOCK-04**: Error responses include error code, message, and request ID
+- [x] **SOCK-02**: NDJSON protocol for request-response communication (one JSON object per line)
+- [x] **SOCK-03**: Request framing includes method, params, and request ID
+- [x] **SOCK-04**: Error responses include error code, message, and request ID
 - [ ] **SOCK-05**: Event subscription -- connected clients can subscribe to daemon events (health changes, agent transitions)
-- [ ] **SOCK-06**: Protocol version field in handshake for forward compatibility
+- [x] **SOCK-06**: Protocol version field in handshake for forward compatibility
 
 ### Communication Abstraction
 
@@ -99,11 +99,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DAEMON-05 | Phase 18 | Pending |
 | DAEMON-06 | Phase 18 | Pending |
 | SOCK-01 | Phase 18 | Pending |
-| SOCK-02 | Phase 18 | Pending |
-| SOCK-03 | Phase 18 | Pending |
-| SOCK-04 | Phase 18 | Pending |
+| SOCK-02 | Phase 18 | Complete |
+| SOCK-03 | Phase 18 | Complete |
+| SOCK-04 | Phase 18 | Complete |
 | SOCK-05 | Phase 18 | Pending |
-| SOCK-06 | Phase 18 | Pending |
+| SOCK-06 | Phase 18 | Complete |
 | COMM-01 | Phase 19 | Pending |
 | COMM-02 | Phase 19 | Pending |
 | COMM-03 | Phase 19 | Pending |
