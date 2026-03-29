@@ -126,7 +126,11 @@ Plans:
   3. Docker containers can run vco CLI commands (the daemon Unix socket is mounted as a volume) and agent work directories are accessible via volume mounts
   4. Setting AgentConfig.transport to "docker" with a docker_image field causes the factory to create a DockerTransport-backed agent
   5. Docker containers persist across agent restarts (docker create + start/stop) so ~/.claude session state survives restart cycles
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 26-01-PLAN.md -- Dockerfile, settings.json, AgentConfig.docker_image field, docker-py dependency
+- [ ] 26-02-PLAN.md -- DockerTransport implementation and factory registry wiring
 
 ## Progress
 
@@ -137,4 +141,4 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 |-------|----------------|--------|-----------|
 | 24. Discord Visibility | 5/5 | Complete    | 2026-03-29 |
 | 25. Transport Abstraction | 3/3 | Complete    | 2026-03-29 |
-| 26. Docker Runtime | 0/? | Not started | - |
+| 26. Docker Runtime | 0/2 | Not started | - |
