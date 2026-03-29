@@ -394,6 +394,152 @@ class RuntimeAPI:
             }
         )
 
+    # ── Category G: Bot cog delegation methods (Phase 22) ──────────
+
+    async def dispatch(self, agent_id: str) -> None:
+        """Start or restart an agent container.
+
+        Finds the container by agent_id, then calls start() on it.
+        If the container is already running, calls restart().
+
+        Raises:
+            KeyError: If agent_id is not found.
+        """
+        container = await self._root._find_container(agent_id)
+        if container is None:
+            raise KeyError(f"Agent {agent_id!r} not found")
+        if container.state in ("running", "idle"):
+            await container.restart()
+        else:
+            await container.start()
+
+    async def kill(self, agent_id: str) -> None:
+        """Stop an agent container.
+
+        Finds the container by agent_id, then calls stop().
+
+        Raises:
+            KeyError: If agent_id is not found.
+        """
+        container = await self._root._find_container(agent_id)
+        if container is None:
+            raise KeyError(f"Agent {agent_id!r} not found")
+        await container.stop()
+
+    async def relaunch(self, agent_id: str) -> None:
+        """Relaunch an agent container (stop then let supervisor restart).
+
+        Finds the container by agent_id, calls stop(). The supervisor's
+        restart policy handles bringing it back.
+
+        Raises:
+            KeyError: If agent_id is not found.
+        """
+        container = await self._root._find_container(agent_id)
+        if container is None:
+            raise KeyError(f"Agent {agent_id!r} not found")
+        await container.stop()
+
+    async def remove_project(self, project_name: str) -> None:
+        """Remove a project from CompanyRoot.
+
+        Stops all agents in the project and removes the project supervisor.
+
+        Raises:
+            KeyError: If project_name is not found.
+        """
+        await self._root.remove_project(project_name)
+
+    async def relay_channel_message(self, agent_id: str, content: str) -> bool:
+        """Relay a message to an agent's tmux pane.
+
+        Finds the container, gets the pane_id, and uses TmuxManager
+        to send keys to the pane.
+
+        Returns:
+            True if the message was relayed, False if container/pane not found.
+        """
+        container = await self._root._find_container(agent_id)
+        if container is None:
+            return False
+        # Access pane_id from container's tmux bridge
+        pane_id = getattr(container, "_pane_id", None)
+        if pane_id is None:
+            return False
+        # Lazy import -- TmuxManager is acceptable in daemon layer
+        from vcompany.tmux.session import TmuxManager
+
+        tmux = TmuxManager()
+        try:
+            tmux.send_keys(pane_id, content)
+            return True
+        except Exception:
+            logger.warning("Failed to relay message to %s", agent_id, exc_info=True)
+            return False
+
+    async def get_agent_states(self) -> list[dict]:
+        """Return state info for all agents across company and projects.
+
+        Returns:
+            List of dicts with agent_id, agent_type, state fields.
+        """
+        states: list[dict] = []
+        # Company-level agents
+        for agent_id, container in self._root._company_agents.items():
+            states.append({
+                "agent_id": agent_id,
+                "agent_type": getattr(container.context, "agent_type", "unknown"),
+                "state": container.state,
+            })
+        # Project agents
+        for _pid, ps in self._root._projects.items():
+            for agent_id, container in ps.children.items():
+                states.append({
+                    "agent_id": agent_id,
+                    "agent_type": getattr(container.context, "agent_type", "unknown"),
+                    "state": container.state,
+                })
+        return states
+
+    async def checkin(self) -> dict:
+        """Gather checkin data from all agents.
+
+        Returns:
+            Dict with checkin data.
+        """
+        from vcompany.communication.checkin import gather_checkin_data
+
+        return await gather_checkin_data(self._root)
+
+    async def standup(self) -> dict:
+        """Run a standup session across all agents.
+
+        Returns:
+            Dict with standup data.
+        """
+        from vcompany.communication.standup import StandupSession
+
+        session = StandupSession(self._root)
+        return await session.run()
+
+    async def run_integration(self) -> dict:
+        """Run the integration pipeline for the current project.
+
+        Returns:
+            Dict with integration results.
+        """
+        from vcompany.integration.pipeline import IntegrationPipeline
+
+        if self._project_config is None or self._project_dir is None:
+            return {"error": "No project configured"}
+        pipeline = IntegrationPipeline(
+            project_config=self._project_config,
+            project_dir=self._project_dir,
+        )
+        return await pipeline.run()
+
+    # ── Category D: Review gate callbacks ─────────────────────────
+
     async def handle_plan_approval(self, agent_id: str, plan_path: str) -> None:
         """COMM-05 receive path: handle plan approval from Discord button click.
 
