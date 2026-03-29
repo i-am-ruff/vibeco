@@ -1,7 +1,6 @@
-"""Runtime daemon managing bot and socket API.
+"""Runtime daemon managing bot, socket API, and RuntimeAPI gateway.
 
-Owns: PID file, signal handlers, SocketServer, bot lifecycle.
-Does NOT own CompanyRoot yet -- that comes in Phase 20.
+Owns: PID file, signal handlers, SocketServer, bot lifecycle, RuntimeAPI.
 """
 
 from __future__ import annotations
@@ -13,6 +12,7 @@ import signal
 from pathlib import Path
 
 from vcompany.daemon.comm import CommunicationPort
+from vcompany.daemon.runtime_api import RuntimeAPI
 from vcompany.daemon.server import SocketServer
 from vcompany.shared.paths import VCO_PID_PATH, VCO_SOCKET_PATH
 
@@ -20,10 +20,9 @@ logger = logging.getLogger("vcompany.daemon")
 
 
 class Daemon:
-    """Runtime daemon managing bot and socket API.
+    """Runtime daemon managing bot, socket API, and RuntimeAPI gateway.
 
-    Owns: PID file, signal handlers, SocketServer, bot lifecycle.
-    Does NOT own CompanyRoot yet -- that comes in Phase 20.
+    Owns: PID file, signal handlers, SocketServer, bot lifecycle, RuntimeAPI.
     """
 
     def __init__(
@@ -41,6 +40,7 @@ class Daemon:
         self._shutdown_event = asyncio.Event()
         self._bot_task: asyncio.Task | None = None
         self._comm_port: CommunicationPort | None = None
+        self._runtime_api: RuntimeAPI | None = None
 
     def set_comm_port(self, port: CommunicationPort) -> None:
         """Register a CommunicationPort adapter (called by bot on_ready)."""
@@ -59,6 +59,16 @@ class Daemon:
                 "CommunicationPort not registered -- is the bot connected?"
             )
         return self._comm_port
+
+    @property
+    def runtime_api(self) -> RuntimeAPI | None:
+        """RuntimeAPI gateway. Available after CompanyRoot initialization."""
+        return self._runtime_api
+
+    def set_runtime_api(self, api: RuntimeAPI) -> None:
+        """Register the RuntimeAPI (called during CompanyRoot setup)."""
+        self._runtime_api = api
+        logger.info("RuntimeAPI registered")
 
     def run(self) -> None:
         """Blocking entry point. Calls asyncio.run(self._run())."""
