@@ -374,7 +374,7 @@ class PlanReviewCog(commands.Cog):
 
         if self._plan_review_channel:
             await self._plan_review_channel.send(
-                f"Plan **approved** for `{agent_id}`: `{Path(plan_path).name}`"
+                f"[Review] Plan for {agent_id}: APPROVED (human review)"
             )
 
     async def _handle_rejection(self, agent_id: str, plan_path: str, feedback: str) -> None:
@@ -401,8 +401,7 @@ class PlanReviewCog(commands.Cog):
 
         if self._plan_review_channel:
             await self._plan_review_channel.send(
-                f"Plan **rejected** for `{agent_id}`: `{Path(plan_path).name}`\n"
-                f"Feedback: {feedback}"
+                f"[Review] Plan for {agent_id}: REJECTED. Feedback: {feedback}"
             )
 
     async def _trigger_execution(self, agent_id: str, state: object) -> None:
