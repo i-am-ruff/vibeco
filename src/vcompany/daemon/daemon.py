@@ -12,6 +12,7 @@ import os
 import signal
 from pathlib import Path
 
+from vcompany.daemon.comm import CommunicationPort
 from vcompany.daemon.server import SocketServer
 from vcompany.shared.paths import VCO_PID_PATH, VCO_SOCKET_PATH
 
@@ -39,6 +40,25 @@ class Daemon:
         self._server: SocketServer | None = None
         self._shutdown_event = asyncio.Event()
         self._bot_task: asyncio.Task | None = None
+        self._comm_port: CommunicationPort | None = None
+
+    def set_comm_port(self, port: CommunicationPort) -> None:
+        """Register a CommunicationPort adapter (called by bot on_ready)."""
+        if not isinstance(port, CommunicationPort):
+            raise TypeError(
+                f"{type(port).__name__} does not satisfy CommunicationPort protocol"
+            )
+        self._comm_port = port
+        logger.info("CommunicationPort registered: %s", type(port).__name__)
+
+    @property
+    def comm_port(self) -> CommunicationPort:
+        """Get registered CommunicationPort. Raises if not registered."""
+        if self._comm_port is None:
+            raise RuntimeError(
+                "CommunicationPort not registered -- is the bot connected?"
+            )
+        return self._comm_port
 
     def run(self) -> None:
         """Blocking entry point. Calls asyncio.run(self._run())."""

@@ -133,6 +133,64 @@ def test_noop_create_thread_returns_thread_result():
     assert result.name == "t1"
 
 
+# --- Daemon integration tests ---
+
+
+def test_daemon_set_comm_port_accepts_noop():
+    from vcompany.daemon.comm import NoopCommunicationPort
+    from vcompany.daemon.daemon import Daemon
+
+    daemon = Daemon(
+        bot=object(),
+        bot_token="test-token",
+        socket_path=pathlib.Path("/tmp/test-comm.sock"),
+        pid_path=pathlib.Path("/tmp/test-comm.pid"),
+    )
+    noop = NoopCommunicationPort()
+    daemon.set_comm_port(noop)  # Should not raise
+
+
+def test_daemon_comm_port_returns_registered():
+    from vcompany.daemon.comm import NoopCommunicationPort
+    from vcompany.daemon.daemon import Daemon
+
+    daemon = Daemon(
+        bot=object(),
+        bot_token="test-token",
+        socket_path=pathlib.Path("/tmp/test-comm.sock"),
+        pid_path=pathlib.Path("/tmp/test-comm.pid"),
+    )
+    noop = NoopCommunicationPort()
+    daemon.set_comm_port(noop)
+    assert daemon.comm_port is noop
+
+
+def test_daemon_comm_port_raises_when_not_registered():
+    from vcompany.daemon.daemon import Daemon
+
+    daemon = Daemon(
+        bot=object(),
+        bot_token="test-token",
+        socket_path=pathlib.Path("/tmp/test-comm.sock"),
+        pid_path=pathlib.Path("/tmp/test-comm.pid"),
+    )
+    with pytest.raises(RuntimeError, match="CommunicationPort not registered"):
+        _ = daemon.comm_port
+
+
+def test_daemon_set_comm_port_rejects_invalid():
+    from vcompany.daemon.daemon import Daemon
+
+    daemon = Daemon(
+        bot=object(),
+        bot_token="test-token",
+        socket_path=pathlib.Path("/tmp/test-comm.sock"),
+        pid_path=pathlib.Path("/tmp/test-comm.pid"),
+    )
+    with pytest.raises(TypeError, match="does not satisfy CommunicationPort"):
+        daemon.set_comm_port(object())  # type: ignore[arg-type]
+
+
 # --- COMM-02: No discord imports in daemon module ---
 
 
