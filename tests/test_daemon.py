@@ -22,9 +22,13 @@ class MockBot:
         self.start_called_with: str | None = None
         self.close_called = False
         self._close_order: list[str] | None = None
+        self._daemon: Daemon | None = None  # Set by test to signal bot readiness
 
     async def start(self, token: str) -> None:
         self.start_called_with = token
+        # Simulate on_ready by signalling bot readiness to the daemon
+        if self._daemon is not None:
+            self._daemon._bot_ready_event.set()
         await self._stop_event.wait()
 
     async def close(self) -> None:
@@ -42,6 +46,7 @@ def test_pid_lifecycle(tmp_path):
         sock_path = tmp_path / "test.sock"
         bot = MockBot()
         daemon = Daemon(bot, "test-token", socket_path=sock_path, pid_path=pid_path)
+        bot._daemon = daemon
 
         # Start daemon in background, trigger shutdown after PID is written
         async def _trigger_shutdown():
@@ -106,6 +111,7 @@ def test_signal_shutdown(tmp_path):
         sock_path = tmp_path / "test.sock"
         bot = MockBot()
         daemon = Daemon(bot, "test-token", socket_path=sock_path, pid_path=pid_path)
+        bot._daemon = daemon
 
         async def _send_sigterm():
             # Wait for daemon to be running
@@ -134,6 +140,7 @@ def test_bot_costart(tmp_path):
         sock_path = tmp_path / "test.sock"
         bot = MockBot()
         daemon = Daemon(bot, "my-secret-token", socket_path=sock_path, pid_path=pid_path)
+        bot._daemon = daemon
 
         async def _trigger_shutdown():
             for _ in range(100):
@@ -161,6 +168,7 @@ def test_shutdown_order(tmp_path):
         bot = MockBot()
         bot._close_order = order
         daemon = Daemon(bot, "test-token", socket_path=sock_path, pid_path=pid_path)
+        bot._daemon = daemon
 
         async def _trigger_shutdown():
             for _ in range(100):

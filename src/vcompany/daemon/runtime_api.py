@@ -343,7 +343,7 @@ class RuntimeAPI:
         """Closure #18: route PM escalation to Strategist via CompanyAgent."""
         if self._strategist_container is None:
             return None
-        future: asyncio.Future[str | None] = asyncio.get_event_loop().create_future()
+        future: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
         await self._strategist_container.post_event(
             {
                 "type": "pm_escalation",

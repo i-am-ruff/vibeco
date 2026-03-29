@@ -112,7 +112,7 @@ def test_noop_send_message_returns_true():
     from vcompany.daemon.comm import NoopCommunicationPort, SendMessagePayload
 
     noop = NoopCommunicationPort()
-    result = asyncio.get_event_loop().run_until_complete(
+    result = asyncio.run(
         noop.send_message(SendMessagePayload(channel_id="c", content="x"))
     )
     assert result is True
@@ -126,7 +126,7 @@ def test_noop_create_thread_returns_thread_result():
     )
 
     noop = NoopCommunicationPort()
-    result = asyncio.get_event_loop().run_until_complete(
+    result = asyncio.run(
         noop.create_thread(CreateThreadPayload(channel_id="c", name="t1"))
     )
     assert isinstance(result, ThreadResult)
