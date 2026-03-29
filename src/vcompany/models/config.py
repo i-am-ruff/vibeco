@@ -18,6 +18,7 @@ class AgentConfig(BaseModel):
     system_prompt: str
     type: Literal["gsd", "continuous", "fulltime", "company"] = "gsd"
     transport: str = "local"
+    docker_image: str | None = None
 
     @field_validator("id")
     @classmethod

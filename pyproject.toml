@@ -16,6 +16,7 @@ dependencies = [
     "anthropic>=0.86,<1",
     "python-statemachine>=3.0.0",
     "aiosqlite>=0.22.1",
+    "docker>=7.1,<8",
 ]
 
 [project.scripts]
