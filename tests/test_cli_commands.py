@@ -246,7 +246,7 @@ def test_handle_new_project_calls_runtime_api(tmp_path):
     daemon = Daemon(bot=mock_bot, bot_token="fake")
     daemon._runtime_api = mock_runtime_api
 
-    result = asyncio.get_event_loop().run_until_complete(
+    result = asyncio.run(
         daemon._handle_new_project({"project_dir": str(tmp_path)})
     )
 
@@ -269,7 +269,7 @@ def test_handle_new_project_no_runtime_api():
     daemon._runtime_api = None
 
     with __import__("pytest").raises(RuntimeError, match="RuntimeAPI not initialized"):
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             daemon._handle_new_project({"project_dir": "/some/path"})
         )
 
@@ -284,7 +284,7 @@ def test_handle_new_project_no_config(tmp_path):
     daemon._runtime_api = mock_runtime_api
 
     with __import__("pytest").raises(FileNotFoundError):
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             daemon._handle_new_project({"project_dir": str(tmp_path)})
         )
 
