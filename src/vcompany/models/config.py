@@ -17,6 +17,7 @@ class AgentConfig(BaseModel):
     gsd_mode: Literal["full", "quick"]
     system_prompt: str
     type: Literal["gsd", "continuous", "fulltime", "company"] = "gsd"
+    transport: str = "local"
 
     @field_validator("id")
     @classmethod
