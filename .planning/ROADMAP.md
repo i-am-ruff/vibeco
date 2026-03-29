@@ -138,9 +138,9 @@ Plans:
   2. Zero imports from `vcompany.container`, `vcompany.supervisor`, or `vcompany.agent` exist in any bot cog module
   3. The bot receives health changes, agent transitions, and escalation events from the daemon and formats them as Discord embeds, threads, and reactions
   4. Message relay (on_message in agent/task channels) converts Discord messages to generic messages and delivers them to the daemon through CommunicationPort
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 Plans:
-- [ ] 22-01-PLAN.md -- RuntimeAPI gateway methods and expanded import boundary tests
+- [x] 22-01-PLAN.md -- RuntimeAPI gateway methods and expanded import boundary tests
 - [ ] 22-02-PLAN.md -- Rewrite heavy cogs (commands.py, plan_review.py, workflow_orchestrator_cog.py)
 - [ ] 22-03-PLAN.md -- Clean remaining cogs and finalize import boundary enforcement
 
@@ -165,5 +165,5 @@ Phases execute in numeric order: 18 -> 18.1 -> 18.2 -> 19 -> ... -> 23
 | 19. Communication Abstraction | 2/2 | Complete    | 2026-03-29 |
 | 20. CompanyRoot Extraction | 4/4 | Complete    | 2026-03-29 |
 | 21. CLI Commands | 2/2 | Complete    | 2026-03-29 |
-| 22. Bot Thin Relay | 0/3 | Not started | - |
+| 22. Bot Thin Relay | 1/3 | In Progress|  |
 | 23. Strategist Autonomy | 0/? | Not started | - |

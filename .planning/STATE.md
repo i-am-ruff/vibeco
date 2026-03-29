@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: CLI-First Architecture Rewrite
-status: Ready to plan
-stopped_at: Completed 21-02-PLAN.md
-last_updated: "2026-03-29T12:12:53.257Z"
+status: Ready to execute
+stopped_at: Completed 22-01-PLAN.md
+last_updated: "2026-03-29T12:35:35.177Z"
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
+  total_plans: 14
+  completed_plans: 12
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 21 — CLI Commands
+**Current focus:** Phase 22 — Bot Thin Relay
 
 ## Current Position
 
-Phase: 22
-Plan: Not started
+Phase: 22 (Bot Thin Relay) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Plan: Not started
 | Phase 20 P04 | 288 | 2 tasks | 5 files |
 | Phase 21 P01 | 236 | 2 tasks | 8 files |
 | Phase 21 P02 | 236 | 2 tasks | 4 files |
+| Phase 22 P01 | 235 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,8 @@ Recent decisions affecting current work:
 - [Phase 21]: daemon_client() catches ConnectionRefusedError/FileNotFoundError/ConnectionError uniformly as Daemon not running
 - [Phase 21]: Config loaded server-side in daemon handler (not serialized over socket)
 - [Phase 21]: new-project catches daemon connection failure gracefully -- init+clone still succeed
+- [Phase 22]: RuntimeAPI methods use lazy imports for modules outside vcompany.daemon
+- [Phase 22]: Import boundary tests xfail-marked during incremental cog rewrite
 
 ### Pending Todos
 
@@ -111,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T12:09:15.037Z
-Stopped at: Completed 21-02-PLAN.md
+Last session: 2026-03-29T12:35:35.175Z
+Stopped at: Completed 22-01-PLAN.md
 Resume file: None

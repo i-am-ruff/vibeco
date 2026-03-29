@@ -52,10 +52,10 @@ Requirements for CLI-First Architecture Rewrite. Each maps to roadmap phases.
 
 ### Bot Refactor
 
-- [ ] **BOT-01**: All slash commands (/new-project, /dispatch, /kill, /relaunch, /health) call RuntimeAPI
-- [ ] **BOT-02**: No container module imports in bot cogs
+- [x] **BOT-01**: All slash commands (/new-project, /dispatch, /kill, /relaunch, /health) call RuntimeAPI
+- [x] **BOT-02**: No container module imports in bot cogs
 - [ ] **BOT-03**: Bot implements DiscordCommunicationPort and registers with daemon on startup
-- [ ] **BOT-04**: Bot cogs are pure I/O adapters: Discord events -> daemon, daemon events -> Discord formatting (embeds, threads, reactions)
+- [x] **BOT-04**: Bot cogs are pure I/O adapters: Discord events -> daemon, daemon events -> Discord formatting (embeds, threads, reactions)
 - [ ] **BOT-05**: Message relay handlers (on_message for agent/task channels) convert to generic messages and send to daemon
 
 ### Strategist Autonomy
@@ -120,10 +120,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CLI-04 | Phase 21 | Complete |
 | CLI-05 | Phase 21 | Complete |
 | CLI-06 | Phase 21 | Complete |
-| BOT-01 | Phase 22 | Pending |
-| BOT-02 | Phase 22 | Pending |
+| BOT-01 | Phase 22 | Complete |
+| BOT-02 | Phase 22 | Complete |
 | BOT-03 | Phase 22 | Pending |
-| BOT-04 | Phase 22 | Pending |
+| BOT-04 | Phase 22 | Complete |
 | BOT-05 | Phase 22 | Pending |
 | STRAT-01 | Phase 23 | Pending |
 | STRAT-02 | Phase 23 | Pending |
