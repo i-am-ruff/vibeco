@@ -727,6 +727,132 @@ class RuntimeAPI:
         await pm_container.post_event(event)
         return True
 
+    # ── Category H: Bot cog support methods (Phase 22-03) ────────
+
+    async def handle_pm_escalation(
+        self, agent_id: str, question: str, confidence_score: float
+    ) -> str | None:
+        """Forward PM escalation to Strategist via CompanyAgent.
+
+        Called by StrategistCog instead of direct CompanyAgent.post_event.
+
+        Returns:
+            Response text if Strategist is confident, None if owner
+            escalation is needed.
+        """
+        if self._strategist_container is None:
+            return None
+        future: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
+        await self._strategist_container.post_event(
+            {
+                "type": "pm_escalation",
+                "agent_id": agent_id,
+                "question": question,
+                "confidence": confidence_score,
+                "_response_future": future,
+            }
+        )
+        return await future
+
+    async def log_decision(
+        self,
+        agent_id: str,
+        question: str,
+        decision: str,
+        confidence_level: str,
+        decided_by: str,
+    ) -> None:
+        """Log a decision via the Strategist's DecisionLogger.
+
+        Called by QuestionHandlerCog instead of importing DecisionLogEntry directly.
+        """
+        from vcompany.strategist.models import DecisionLogEntry
+        from datetime import datetime, timezone
+
+        if self._strategist_container is not None:
+            decision_logger = getattr(self._strategist_container, "decision_logger", None)
+            if decision_logger:
+                await decision_logger.log_decision(
+                    DecisionLogEntry(
+                        timestamp=datetime.now(timezone.utc),
+                        question_or_plan=question,
+                        decision=decision,
+                        confidence_level=confidence_level,
+                        decided_by=decided_by,
+                        agent_id=agent_id,
+                    )
+                )
+
+    async def initialize_workflow_master(self, worktree_path: Path) -> None:
+        """Initialize the workflow-master conversation in the daemon layer.
+
+        Called by WorkflowMasterCog.initialize() instead of creating
+        StrategistConversation directly.
+        """
+        from vcompany.strategist.conversation import StrategistConversation
+        from vcompany.strategist.workflow_master_persona import (
+            WORKFLOW_MASTER_SESSION_UUID,
+            build_workflow_master_persona,
+        )
+
+        persona_text = build_workflow_master_persona(worktree_path)
+        runtime_persona_path = Path.home() / "vco-workflow-master-persona.md"
+        runtime_persona_path.write_text(persona_text)
+
+        self._wm_conversation = StrategistConversation(
+            persona_path=runtime_persona_path,
+            session_id=WORKFLOW_MASTER_SESSION_UUID,
+            allowed_tools="Bash Read Write Edit Glob Grep",
+        )
+        logger.info("Workflow-master conversation initialized (worktree: %s)", worktree_path)
+
+    def detect_active_project(self) -> tuple[Path, object] | None:
+        """Scan ~/vco-projects/ for the most recently active project.
+
+        Looks for projects with state/agents.json (meaning they were dispatched).
+        Returns the one with the newest agents.json mtime as (project_dir, config).
+        """
+        from vcompany.shared.paths import PROJECTS_BASE
+        from vcompany.models.config import load_config
+
+        if not PROJECTS_BASE.exists():
+            return None
+
+        best: tuple[Path, float] | None = None
+        for project_dir in PROJECTS_BASE.iterdir():
+            if not project_dir.is_dir():
+                continue
+            agents_json = project_dir / "state" / "agents.json"
+            agents_yaml = project_dir / "agents.yaml"
+            if agents_json.exists() and agents_yaml.exists():
+                mtime = agents_json.stat().st_mtime
+                if best is None or mtime > best[1]:
+                    best = (project_dir, mtime)
+
+        if best is None:
+            return None
+
+        try:
+            config = load_config(best[0] / "agents.yaml")
+            return (best[0], config)
+        except Exception:
+            logger.warning("Failed to load config for detected project %s", best[0])
+            return None
+
+    async def relay_workflow_master_message(self, content: str) -> str:
+        """Relay a message to the workflow-master conversation.
+
+        Called by WorkflowMasterCog._send_to_channel() instead of calling
+        StrategistConversation.send_streaming() directly.
+
+        Returns:
+            Full response text from the conversation.
+        """
+        conversation = getattr(self, "_wm_conversation", None)
+        if conversation is None:
+            return "Workflow-master conversation not initialized."
+        return await conversation.send(content)
+
     # ── Category D: Review gate callbacks ─────────────────────────
 
     async def handle_plan_approval(self, agent_id: str, plan_path: str) -> None:

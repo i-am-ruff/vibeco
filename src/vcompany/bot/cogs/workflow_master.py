@@ -3,6 +3,9 @@
 Mirrors StrategistCog structure but simpler -- no PM escalation, no decision
 logger, no pending escalations. workflow-master is a hands-on developer agent
 with full dev tools (Bash, Read, Write, Edit, Glob, Grep).
+
+Pure I/O adapter: routes Discord messages to daemon via RuntimeAPI.
+Conversation management lives in the daemon layer.
 """
 
 from __future__ import annotations
@@ -14,12 +17,11 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-from vcompany.strategist.conversation import StrategistConversation
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
+    from vcompany.daemon.runtime_api import RuntimeAPI
 
 logger = logging.getLogger(__name__)
 
@@ -30,47 +32,49 @@ _WM_FILES_DIR = Path.home() / "vco-workflow-master-files"
 _DISCORD_MAX_CHARS = 2000
 
 
+def _get_runtime_api(bot: VcoBot) -> RuntimeAPI | None:
+    """Get RuntimeAPI from daemon if available."""
+    daemon = getattr(bot, "_daemon", None)
+    if daemon is None:
+        return None
+    return getattr(daemon, "runtime_api", None)
+
+
 class WorkflowMasterCog(commands.Cog):
     """Bridges #workflow-master channel to persistent Claude dev conversation.
 
-    Owner messages are forwarded to a Claude conversation with full dev tools.
-    Responses are posted back with Thinking... placeholder and split on 2000 chars.
+    Owner messages are forwarded via RuntimeAPI. Responses are posted back
+    with Thinking... placeholder and split on 2000 chars.
+
+    Pure Discord I/O adapter -- conversation management lives in daemon.
     """
 
     def __init__(self, bot: VcoBot) -> None:
         self.bot = bot
-        self._conversation: StrategistConversation | None = None
         self._wm_channel: discord.TextChannel | None = None
         self._owner_role_name = "vco-owner"
+        self._initialized: bool = False
 
     async def initialize(
         self, persona_path: Path | None, worktree_path: Path
     ) -> None:
-        """Initialize the workflow-master conversation with worktree-aware persona.
+        """Initialize the workflow-master channel and signal daemon.
 
-        Writes the built persona to a known file path so StrategistConversation
-        can load it via persona_path. Uses workflow-master's own session UUID
-        and expanded tool set.
+        Conversation creation now happens in the daemon layer via RuntimeAPI.
+        This method just resolves the Discord channel.
 
         Args:
-            persona_path: Unused (persona is built from template). Kept for API symmetry.
-            worktree_path: Path to the git worktree for workflow-master.
+            persona_path: Unused (persona handled in daemon). Kept for API symmetry.
+            worktree_path: Path to the git worktree (passed to daemon for conversation init).
         """
-        from vcompany.strategist.workflow_master_persona import (
-            WORKFLOW_MASTER_SESSION_UUID,
-            build_workflow_master_persona,
-        )
-
-        persona_text = build_workflow_master_persona(worktree_path)
-        runtime_persona_path = Path.home() / "vco-workflow-master-persona.md"
-        runtime_persona_path.write_text(persona_text)
-
-        self._conversation = StrategistConversation(
-            persona_path=runtime_persona_path,
-            session_id=WORKFLOW_MASTER_SESSION_UUID,
-            allowed_tools="Bash Read Write Edit Glob Grep",
-        )
         await self._resolve_channel()
+
+        # Signal daemon to initialize the workflow-master conversation
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is not None:
+            await runtime_api.initialize_workflow_master(worktree_path)
+
+        self._initialized = True
         logger.info("WorkflowMasterCog initialized with worktree: %s", worktree_path)
 
     async def _resolve_channel(self) -> None:
@@ -126,8 +130,9 @@ class WorkflowMasterCog(commands.Cog):
         if not is_owner and not is_strategist_task:
             return
 
-        # Check if conversation is initialized
-        if self._conversation is None:
+        # Route through RuntimeAPI
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is None:
             await message.reply(
                 "Workflow-master not initialized yet. Please wait for bot startup to complete."
             )
@@ -136,8 +141,8 @@ class WorkflowMasterCog(commands.Cog):
         # Build message content with attachments
         content = await self._build_message_with_attachments(message)
 
-        # Forward to conversation and post response
-        await self._send_to_channel(message.channel, content)
+        # Forward to daemon and post response
+        await self._send_to_channel(message.channel, content, runtime_api)
 
     @staticmethod
     def _has_owner_role(member: discord.Member) -> bool:
@@ -183,33 +188,21 @@ class WorkflowMasterCog(commands.Cog):
         return content
 
     async def _send_to_channel(
-        self, channel: discord.TextChannel, content: str
+        self, channel: discord.TextChannel, content: str, runtime_api: RuntimeAPI
     ) -> str:
-        """Send message to workflow-master with streaming progress.
-
-        Posts new messages for each tool action so the Strategist and owner
-        can see what's happening in real-time. Final response is a separate message.
+        """Send message to workflow-master via RuntimeAPI and post response.
 
         Args:
             channel: Discord channel to send response to.
-            content: User message content to send to conversation.
+            content: User message content to send.
+            runtime_api: RuntimeAPI instance for daemon delegation.
 
         Returns:
             Full response text.
         """
         status_msg = await channel.send("[workflow-master] working on it...")
-        last_tool_desc = ""
 
-        async def on_tool_use(description: str):
-            nonlocal last_tool_desc
-            if description != last_tool_desc:
-                last_tool_desc = description
-                try:
-                    await channel.send(f"[workflow-master] {description}")
-                except Exception:
-                    pass  # don't break the stream if Discord rate-limits
-
-        response = await self._conversation.send_streaming(content, on_tool_use=on_tool_use)
+        response = await runtime_api.relay_workflow_master_message(content)
 
         # Delete the "working on it" status
         try:

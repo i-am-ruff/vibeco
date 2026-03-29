@@ -12,14 +12,16 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import discord
 from discord.ext import commands
 
 from vcompany.bot.comm_adapter import DiscordCommunicationPort
 from vcompany.daemon.comm import SendMessagePayload
-from vcompany.models.config import ProjectConfig
+
+if TYPE_CHECKING:
+    from vcompany.models.config import ProjectConfig
 
 logger = logging.getLogger("vcompany.bot.client")
 
@@ -191,38 +193,15 @@ class VcoBot(commands.Bot):
         if self._daemon is not None and hasattr(self._daemon, '_bot_ready_event'):
             self._daemon._bot_ready_event.set()
 
-    def _detect_active_project(self) -> tuple[Path, ProjectConfig] | None:
+    def _detect_active_project(self) -> tuple[Path, object] | None:
         """Scan ~/vco-projects/ for the most recently active project.
 
-        Looks for projects with state/agents.json (meaning they were dispatched).
-        Returns the one with the newest agents.json mtime.
+        Delegates to RuntimeAPI.detect_active_project() if available,
+        otherwise returns None.
         """
-        from vcompany.shared.paths import PROJECTS_BASE
-
-        if not PROJECTS_BASE.exists():
-            return None
-
-        best: tuple[Path, float] | None = None
-        for project_dir in PROJECTS_BASE.iterdir():
-            if not project_dir.is_dir():
-                continue
-            agents_json = project_dir / "state" / "agents.json"
-            agents_yaml = project_dir / "agents.yaml"
-            if agents_json.exists() and agents_yaml.exists():
-                mtime = agents_json.stat().st_mtime
-                if best is None or mtime > best[1]:
-                    best = (project_dir, mtime)
-
-        if best is None:
-            return None
-
-        try:
-            from vcompany.models.config import load_config
-            config = load_config(best[0] / "agents.yaml")
-            return (best[0], config)
-        except Exception:
-            logger.warning("Failed to load config for detected project %s", best[0])
-            return None
+        if self._daemon is not None and hasattr(self._daemon, 'runtime_api') and self._daemon.runtime_api is not None:
+            return self._daemon.runtime_api.detect_active_project()
+        return None
 
     async def _send_boot_notifications(self, guild: discord.Guild) -> None:
         """Send boot notifications through CommunicationPort if available."""

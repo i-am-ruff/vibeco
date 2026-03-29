@@ -2,12 +2,13 @@
 
 Implements HLTH-03 (health tree rendering in Discord) and HLTH-04
 (notification delivery to Discord alerts channel on significant transitions).
+
+Pure I/O adapter: uses RuntimeAPI.health_tree() for data, formats as Discord embed.
 """
 
 from __future__ import annotations
 
 import logging
-import time
 from typing import TYPE_CHECKING
 
 import discord
@@ -16,21 +17,29 @@ from discord.ext import commands
 
 from vcompany.bot.embeds import STATE_INDICATORS, build_health_tree_embed
 from vcompany.bot.permissions import is_owner_app_check
-from vcompany.resilience.message_queue import MessagePriority, QueuedMessage
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
-    from vcompany.container.health import HealthReport
+    from vcompany.daemon.runtime_api import RuntimeAPI
 
 logger = logging.getLogger("vcompany.bot.cogs.health")
+
+
+def _get_runtime_api(bot: VcoBot) -> RuntimeAPI | None:
+    """Get RuntimeAPI from daemon if available."""
+    daemon = getattr(bot, "_daemon", None)
+    if daemon is None:
+        return None
+    return getattr(daemon, "runtime_api", None)
 
 
 class HealthCog(commands.Cog):
     """Health tree rendering and state-change notifications.
 
     Provides the /health slash command to display the supervision tree
-    as a color-coded Discord embed, and a _notify_state_change method
-    that pushes significant transitions to the #alerts channel.
+    as a color-coded Discord embed via RuntimeAPI.health_tree().
+
+    Pure Discord I/O adapter -- all health data comes from the daemon.
     """
 
     def __init__(self, bot: VcoBot) -> None:
@@ -54,20 +63,20 @@ class HealthCog(commands.Cog):
         """
         await interaction.response.defer()
 
-        company_root = getattr(self.bot, "company_root", None)
-        if company_root is None:
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is None:
             await interaction.followup.send(
                 "No supervision tree active.", ephemeral=True
             )
             return
 
-        tree = company_root.health_tree()
+        tree = await runtime_api.health_tree()
         embed = build_health_tree_embed(
             tree, project_filter=project, agent_filter=agent_id
         )
         await interaction.followup.send(embed=embed)
 
-    async def _notify_state_change(self, report: HealthReport) -> None:
+    async def _notify_state_change(self, report: dict) -> None:
         """Push significant state transitions to #alerts channel (HLTH-04).
 
         Only notifies on errored, running, and stopped transitions.
@@ -75,10 +84,11 @@ class HealthCog(commands.Cog):
         breaking the callback chain.
 
         Args:
-            report: HealthReport from the container that changed state.
+            report: Dict with state, agent_id, inner_state, blocked_reason fields.
         """
         try:
-            if report.state not in ("errored", "running", "stopped", "blocked", "stopping"):
+            state = report.get("state", "")
+            if state not in ("errored", "running", "stopped", "blocked", "stopping"):
                 return
 
             # Find the alerts channel in the first guild
@@ -90,23 +100,19 @@ class HealthCog(commands.Cog):
             if alerts_channel is None:
                 return
 
-            if self.bot.message_queue is None:
-                return  # queue not started yet
+            agent_id = report.get("agent_id", "unknown")
+            inner_state = report.get("inner_state", "")
+            blocked_reason = report.get("blocked_reason", "")
 
-            emoji = STATE_INDICATORS.get(report.state, "")
-            inner = f" ({report.inner_state})" if report.inner_state else ""
-            blocked = f" -- {report.blocked_reason}" if report.blocked_reason else ""
-            msg = f"{emoji} **{report.agent_id}** -> {report.state}{inner}{blocked}"
-            await self.bot.message_queue.enqueue(QueuedMessage(
-                priority=MessagePriority.STATUS,
-                timestamp=time.monotonic(),
-                channel_id=alerts_channel.id,
-                content=msg,
-            ))
+            emoji = STATE_INDICATORS.get(state, "")
+            inner = f" ({inner_state})" if inner_state else ""
+            blocked = f" -- {blocked_reason}" if blocked_reason else ""
+            msg = f"{emoji} **{agent_id}** -> {state}{inner}{blocked}"
+            await alerts_channel.send(msg)
         except Exception:
             logger.exception(
-                "Failed to enqueue state-change notification for %s",
-                report.agent_id,
+                "Failed to send state-change notification for %s",
+                report.get("agent_id", "unknown"),
             )
 
 

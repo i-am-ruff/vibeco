@@ -5,12 +5,14 @@ using the bot token). PM auto-answers via Discord reply (D-09/D-11). Escalation 
 non-reply Pattern B mentions (D-10). Owner escalation happens in agent channel (D-03).
 
 No file-based IPC -- all answer delivery is via Discord replies (D-04, D-13).
+
+Pure I/O adapter: decision logging routes through RuntimeAPI.log_decision().
+PM tier is injected but is a pure evaluation function (no prohibited imports).
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
 import discord
 from discord.ext import commands
@@ -23,7 +25,15 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
-    from vcompany.strategist.pm import PMTier
+    from vcompany.daemon.runtime_api import RuntimeAPI
+
+
+def _get_runtime_api(bot: VcoBot) -> RuntimeAPI | None:
+    """Get RuntimeAPI from daemon if available."""
+    daemon = getattr(bot, "_daemon", None)
+    if daemon is None:
+        return None
+    return getattr(daemon, "runtime_api", None)
 
 
 class QuestionHandlerCog(commands.Cog):
@@ -32,14 +42,16 @@ class QuestionHandlerCog(commands.Cog):
     Phase 9: Uses routing framework's is_question_embed() to detect questions posted by
     the hook. PM evaluates and replies directly. Escalation uses non-reply Pattern B.
     No file-based IPC remains.
+
+    Pure I/O adapter -- decision logging routed through RuntimeAPI.
     """
 
     def __init__(self, bot: VcoBot) -> None:
         self.bot = bot
-        self._pm: PMTier | None = None
+        self._pm: object | None = None  # PMTier instance (injected at runtime)
         self._entity_prefixes = {"pm": "[PM]"}
 
-    def set_pm(self, pm: PMTier) -> None:
+    def set_pm(self, pm: object) -> None:
         """Inject PMTier for question evaluation. Called from bot startup."""
         self._pm = pm
 
@@ -114,7 +126,7 @@ class QuestionHandlerCog(commands.Cog):
             # Answer with note, reply to the question message
             answer_text = (decision.answer or "")[:1800]
             await message.reply(f"[PM] {answer_text}\n*{decision.note}*")
-            # D-19: Log escalation-worthy event
+            # D-19: Log escalation-worthy event via RuntimeAPI
             await self._log_decision(
                 agent_id, question_text, decision.answer or "", "MEDIUM", "PM"
             )
@@ -167,23 +179,19 @@ class QuestionHandlerCog(commands.Cog):
         confidence_level: str,
         decided_by: str,
     ) -> None:
-        """Log a decision via StrategistCog's DecisionLogger if available.
+        """Log a decision via RuntimeAPI if available.
 
         Only called for escalated decisions per D-19 (not routine HIGH-confidence).
+        Routes through RuntimeAPI.log_decision() to keep decision logging in daemon.
         """
-        strategist_cog = self.bot.get_cog("StrategistCog")
-        if strategist_cog and strategist_cog.decision_logger:
-            from vcompany.strategist.models import DecisionLogEntry
-
-            await strategist_cog.decision_logger.log_decision(
-                DecisionLogEntry(
-                    timestamp=datetime.now(timezone.utc),
-                    question_or_plan=question,
-                    decision=decision,
-                    confidence_level=confidence_level,
-                    decided_by=decided_by,
-                    agent_id=agent_id,
-                )
+        runtime_api = _get_runtime_api(self.bot)
+        if runtime_api is not None:
+            await runtime_api.log_decision(
+                agent_id=agent_id,
+                question=question,
+                decision=decision,
+                confidence_level=confidence_level,
+                decided_by=decided_by,
             )
 
 
