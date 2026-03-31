@@ -43,6 +43,9 @@ markers = [
     "integration: interaction regression tests (run only during vco integrate, not on every pytest run)",
 ]
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
