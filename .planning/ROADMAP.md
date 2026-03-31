@@ -134,7 +134,12 @@ Plans:
   2. `vco hire` creates a Discord channel, registers routing, and sends a config blob through the transport -- the worker bootstraps itself from that config
   3. Health tree is populated from health-report messages received through the transport channel, not from daemon-side container health methods
   4. Discord channel/category lifecycle is managed by head -- create on hire, cleanup on dismiss, routing state persists across daemon restarts
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 31-01-PLAN.md -- AgentHandle model and routing state persistence
+- [ ] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
+- [ ] 31-03-PLAN.md -- Refactor MentionRouter and Daemon wiring
 
 ### Phase 32: Transport Channel Implementations
 **Goal**: Both Docker and native transports use the channel protocol end-to-end -- no socket mounts, no shared filesystem between head and worker
@@ -144,7 +149,12 @@ Plans:
   1. Docker transport creates a container running vco-worker, communicates through the channel protocol (docker exec stdin/stdout or mapped TCP port) -- no Unix socket mount into the container
   2. Native transport starts vco-worker in a local process, communicates through the channel protocol (local socket or in-process bridge)
   3. An agent hired with transport "docker" and an agent hired with transport "native" both produce the same observable behavior: signals appear, health reports come through, Discord messages route correctly
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 31-01-PLAN.md -- AgentHandle model and routing state persistence
+- [ ] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
+- [ ] 31-03-PLAN.md -- Refactor MentionRouter and Daemon wiring
 
 ### Phase 33: Container Autonomy
 **Goal**: Agent containers are fully autonomous -- state lives inside, duplicating a transport creates independent agents, and workers survive daemon restarts
@@ -154,7 +164,12 @@ Plans:
   1. Agent state (conversations, checkpoints, memory store, session files) lives inside the execution environment filesystem -- not on the daemon side
   2. Duplicating a transport and sending a new config blob creates a fully independent agent with its own state -- no shared daemon-side state between agents of the same type
   3. When the daemon restarts, running workers continue operating -- upon reconnection via transport channel, the worker sends its current state and the head reconstructs routing without the worker losing progress
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 31-01-PLAN.md -- AgentHandle model and routing state persistence
+- [ ] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
+- [ ] 31-03-PLAN.md -- Refactor MentionRouter and Daemon wiring
 
 ### Phase 34: Cleanup and Network Stub
 **Goal**: All daemon-side container dead code is removed, and a network transport stub defines the TCP/WebSocket contract for future remote agents
@@ -164,7 +179,12 @@ Plans:
   1. Daemon-side GsdAgent, CompanyAgent, FulltimeAgent Python objects are deleted -- along with handler factory injection, NoopCommunicationPort, StrategistConversation-from-daemon, and all v3.1 shims
   2. A NetworkTransport stub exists with TCP/WebSocket interface definition -- not production-ready, but the contract is defined and a basic connect/send/receive works
   3. The codebase compiles and all existing functionality (hire, give-task, dismiss, health, status) works after dead code removal
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 31-01-PLAN.md -- AgentHandle model and routing state persistence
+- [ ] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
+- [ ] 31-03-PLAN.md -- Refactor MentionRouter and Daemon wiring
 
 ## Progress
 
@@ -175,7 +195,7 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 |-------|----------------|--------|-----------|
 | 29. Transport Channel Protocol | 1/1 | Complete    | 2026-03-31 |
 | 30. Worker Runtime | 3/3 | Complete    | 2026-03-31 |
-| 31. Head Refactor | 0/TBD | Not started | - |
+| 31. Head Refactor | 0/3 | Not started | - |
 | 32. Transport Channel Implementations | 0/TBD | Not started | - |
 | 33. Container Autonomy | 0/TBD | Not started | - |
 | 34. Cleanup and Network Stub | 0/TBD | Not started | - |
