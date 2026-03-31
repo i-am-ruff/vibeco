@@ -1,13 +1,18 @@
 """CLI entry points for worker channel commands.
 
 These are invoked by agent processes (Claude Code hooks, GSD scripts)
-to send messages through the transport channel. Each command is purely
-synchronous -- encode a message, write to stdout, exit. No asyncio needed.
+to send messages through the transport channel.
 
-Transport mechanism: writes NDJSON to stdout. The worker main loop or
-transport layer reads stdout from the agent process.
+Transport mechanism:
+- If VCO_WORKER_SOCKET is set: connect to worker's Unix socket and write there
+- Otherwise: write NDJSON to stdout (direct-pipe mode)
+
+The socket path lets Claude Code running inside tmux send messages back
+through the channel without needing stdout to be the channel pipe.
 """
 
+import os
+import socket
 import sys
 
 import click
@@ -21,6 +26,18 @@ from vco_worker.channel.messages import (
 )
 
 
+def _send(data: bytes) -> None:
+    """Send encoded message through the channel (socket or stdout)."""
+    sock_path = os.environ.get("VCO_WORKER_SOCKET")
+    if sock_path:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.connect(sock_path)
+            s.sendall(data)
+    else:
+        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.flush()
+
+
 @click.command()
 @click.argument("channel")
 @click.argument("content")
@@ -28,8 +45,7 @@ from vco_worker.channel.messages import (
 def report(channel: str, content: str, task_id: str | None) -> None:
     """Send a report message through the transport channel."""
     msg = ReportMessage(channel=channel, content=content, task_id=task_id)
-    sys.stdout.buffer.write(encode(msg))
-    sys.stdout.buffer.flush()
+    _send(encode(msg))
 
 
 @click.command()
@@ -38,8 +54,7 @@ def report(channel: str, content: str, task_id: str | None) -> None:
 def ask(channel: str, question: str) -> None:
     """Send an ask message through the transport channel."""
     msg = AskMessage(channel=channel, question=question)
-    sys.stdout.buffer.write(encode(msg))
-    sys.stdout.buffer.flush()
+    _send(encode(msg))
 
 
 @click.command("signal")
@@ -48,8 +63,7 @@ def ask(channel: str, question: str) -> None:
 def signal_cmd(signal_name: str, detail: str) -> None:
     """Send a signal message through the transport channel."""
     msg = SignalMessage(signal=signal_name, detail=detail)
-    sys.stdout.buffer.write(encode(msg))
-    sys.stdout.buffer.flush()
+    _send(encode(msg))
 
 
 @click.command()
@@ -65,5 +79,4 @@ def send_file(channel: str, filename: str, content_b64: str, description: str) -
         content_b64=content_b64,
         description=description,
     )
-    sys.stdout.buffer.write(encode(msg))
-    sys.stdout.buffer.flush()
+    _send(encode(msg))

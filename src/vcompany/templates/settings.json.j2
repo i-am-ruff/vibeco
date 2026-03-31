@@ -6,8 +6,30 @@
         "hooks": [
           {
             "type": "command",
-            "command": "vco ask",
+            "command": "vco-worker-ask strategist \"${question}\"",
             "timeout": 86400
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "vco-worker-signal ready --detail session-started"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "vco-worker-signal idle --detail session-stopped"
           }
         ]
       }
