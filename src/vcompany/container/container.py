@@ -12,9 +12,11 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 logger = logging.getLogger(__name__)
+
+from statemachine.orderedset import OrderedSet
 
 from vcompany.container.context import ContainerContext
 from vcompany.container.health import HealthReport
@@ -78,17 +80,36 @@ class AgentContainer:
         self._idle_watcher_task: asyncio.Task | None = None
         # Transport setup kwargs from agent type config (D-06: tweakcc_profile, settings_json)
         self._transport_setup_kwargs: dict = {}
+        # Handler injection point (D-03: handler-based composition)
+        self._handler: Any = None
+        # Primary Discord channel ID for outbound messages (D-05: set at registration)
+        self._channel_id: str | None = None
 
     # --- Properties ---
 
     @property
     def state(self) -> str:
-        """Current lifecycle state as a string."""
-        return str(self._fsm_state)
+        """Current outer lifecycle state as a plain string.
+
+        Handles compound states (OrderedSet) from GsdLifecycle,
+        EventDrivenLifecycle, and ContinuousLifecycle.
+        """
+        val = self._fsm_state
+        if isinstance(val, OrderedSet):
+            return str(list(val)[0])
+        return str(val)
 
     @property
     def inner_state(self) -> str | None:
-        """Agent-type-specific sub-state. Overridden by subclasses."""
+        """Sub-state when in compound state (e.g., running.idle, running.listening).
+
+        Returns None for simple (non-compound) lifecycle states.
+        """
+        val = self._fsm_state
+        if isinstance(val, OrderedSet):
+            items = list(val)
+            if len(items) >= 2:
+                return str(items[1])
         return None
 
     @property
@@ -306,6 +327,8 @@ class AgentContainer:
         await self.memory.open()
         if self._transport is not None and self._needs_transport:
             await self._launch_agent()
+        if self._handler is not None:
+            await self._handler.on_start(self)
 
     async def sleep(self) -> None:
         """Transition to sleeping."""
@@ -344,6 +367,8 @@ class AgentContainer:
             except asyncio.CancelledError:
                 pass
             self._idle_watcher_task = None
+        if self._handler is not None:
+            await self._handler.on_stop(self)
         self._lifecycle.begin_stop()
         if self._transport is not None:
             await self._transport.teardown(self.context.agent_id)
@@ -361,18 +386,36 @@ class AgentContainer:
 
     # --- Discord Message Delivery ---
 
+    async def _send_discord(self, channel_id: str, content: str) -> None:
+        """Send a message to Discord via CommunicationPort.
+
+        Consolidated from 3 duplicate implementations in subclasses (D-04).
+        Uses numeric channel_id (D-05), not channel names.
+        """
+        if self.comm_port is None:
+            logger.warning("Cannot send Discord message -- no comm_port wired")
+            return
+        from vcompany.daemon.comm import SendMessagePayload
+
+        payload = SendMessagePayload(channel_id=channel_id, content=content)
+        await self.comm_port.send_message(payload)
+
     async def receive_discord_message(self, context: MessageContext) -> None:
         """Receive an inbound Discord message routed to this agent.
 
-        Base implementation is a no-op log. Subclasses (FulltimeAgent,
-        CompanyAgent, GsdAgent) override to process messages.
+        If a handler is injected (D-03), delegates to handler.handle_message().
+        Otherwise falls back to no-op log for backward compat with subclasses
+        that override this method directly.
 
         Args:
             context: Message context with sender, channel, content, and
                 optional parent_message for reply context.
         """
+        if self._handler is not None:
+            await self._handler.handle_message(self, context)
+            return
         logger.info(
-            "Agent %s received Discord message from %s in #%s",
+            "Agent %s received Discord message from %s in #%s (no handler)",
             self.context.agent_id,
             context.sender,
             context.channel,
