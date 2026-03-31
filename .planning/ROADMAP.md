@@ -163,11 +163,11 @@ Plans:
   1. Agent state (conversations, checkpoints, memory store, session files) lives inside the execution environment filesystem -- not on the daemon side
   2. Duplicating a transport and sending a new config blob creates a fully independent agent with its own state -- no shared daemon-side state between agents of the same type
   3. When the daemon restarts, running workers continue operating -- upon reconnection via transport channel, the worker sends its current state and the head reconstructs routing without the worker losing progress
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 
 Plans:
-- [ ] 33-01-PLAN.md -- Worker-side autonomy: ReconnectMessage, cwd-relative state, Unix socket server
-- [ ] 33-02-PLAN.md -- Head-side transports: socket-based NativeTransport, detached Docker, AgentHandle socket support
+- [x] 33-01-PLAN.md -- Worker-side autonomy: ReconnectMessage, cwd-relative state, Unix socket server
+- [x] 33-02-PLAN.md -- Head-side transports: socket-based NativeTransport, detached Docker, AgentHandle socket support
 - [ ] 33-03-PLAN.md -- CompanyRoot reconnection: reconnect_agents() on startup, updated hire/reader flows
 
 ### Phase 34: Cleanup and Network Stub
@@ -191,5 +191,5 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 | 30. Worker Runtime | 3/3 | Complete    | 2026-03-31 |
 | 31. Head Refactor | 3/3 | Complete    | 2026-03-31 |
 | 32. Transport Channel Implementations | 2/2 | Complete    | 2026-03-31 |
-| 33. Container Autonomy | 0/3 | In progress | - |
+| 33. Container Autonomy | 2/3 | In Progress|  |
 | 34. Cleanup and Network Stub | 0/TBD | Not started | - |

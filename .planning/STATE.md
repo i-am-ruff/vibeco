@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
-status: Ready to plan
-stopped_at: Completed 32-02-PLAN.md
-last_updated: "2026-03-31T16:36:15.320Z"
+status: Ready to execute
+stopped_at: Completed 33-01-PLAN.md
+last_updated: "2026-03-31T16:53:49.695Z"
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 12
+  completed_plans: 11
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-31)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 32 — transport-channel-implementations
+**Current focus:** Phase 33 — container-autonomy
 
 ## Current Position
 
-Phase: 33
-Plan: Not started
+Phase: 33 (container-autonomy) — EXECUTING
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -55,6 +55,8 @@ Plan: Not started
 | Phase 31 P03 | 2min | 2 tasks | 2 files |
 | Phase 32 P01 | 2min | 2 tasks | 3 files |
 | Phase 32 P02 | 2min | 2 tasks | 3 files |
+| Phase 33 P01 | 2min | 2 tasks | 6 files |
+| Phase 33 P02 | 2min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -84,6 +86,9 @@ Recent decisions affecting current work:
 - [Phase 31]: isinstance dispatch for AgentHandle vs AgentContainer in MentionRouterCog _deliver_to_agent()
 - [Phase 32]: ChannelTransport uses typing.Protocol with @runtime_checkable, DockerChannelTransport uses subprocess docker run -i instead of docker-py SDK
 - [Phase 32]: Lazy transport instantiation cached in _transports dict for reuse across hire() calls
+- [Phase 33]: Worker derives data_dir from Path.cwd() / .vco-state / agent_id, not from daemon config
+- [Phase 33]: SocketWriter proxy wraps current connection writer for seamless reconnection
+- [Phase 33]: Socket-based transports: workers spawned with start_new_session=True and --socket flag, Docker uses -d mode with socket mount
 
 ### Roadmap Evolution
 
@@ -106,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T16:28:30.194Z
-Stopped at: Completed 32-02-PLAN.md
+Last session: 2026-03-31T16:53:35.305Z
+Stopped at: Completed 33-01-PLAN.md
 Resume file: None

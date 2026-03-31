@@ -32,9 +32,9 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 
 ### Container Autonomy
 
-- [ ] **AUTO-01**: Agent state (conversations, checkpoints, memory, session files) lives inside the execution environment -- not on the daemon side
+- [x] **AUTO-01**: Agent state (conversations, checkpoints, memory, session files) lives inside the execution environment -- not on the daemon side
 - [ ] **AUTO-02**: Duplicating a transport creates a fully independent agent -- no shared daemon-side state between agents of the same type
-- [ ] **AUTO-03**: Container survives daemon restart -- worker continues running, reconnects via transport channel when head comes back
+- [x] **AUTO-03**: Container survives daemon restart -- worker continues running, reconnects via transport channel when head comes back
 
 ## Previously Completed
 
@@ -104,8 +104,8 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 | HEAD-05 | Phase 31 | Complete |
 | CHAN-02 | Phase 32 | Complete |
 | CHAN-03 | Phase 32 | Complete |
-| AUTO-01 | Phase 33 | Pending |
+| AUTO-01 | Phase 33 | Complete |
 | AUTO-02 | Phase 33 | Pending |
-| AUTO-03 | Phase 33 | Pending |
+| AUTO-03 | Phase 33 | Complete |
 | HEAD-04 | Phase 34 | Pending |
 | CHAN-04 | Phase 34 | Pending |
