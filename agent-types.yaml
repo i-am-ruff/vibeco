@@ -3,6 +3,7 @@
 
 agent_types:
   gsd:
+    handler: session
     transport: local
     container_class: GsdAgent
     capabilities:
@@ -11,12 +12,14 @@ agent_types:
     gsd_command: "/gsd:discuss-phase 1"
 
   continuous:
+    handler: session
     transport: local
     container_class: ContinuousAgent
     capabilities:
       - uses_tmux
 
   fulltime:
+    handler: transient
     transport: local
     container_class: FulltimeAgent
     capabilities:
@@ -24,18 +27,21 @@ agent_types:
       - reviews_plans
 
   company:
+    handler: conversation
     transport: local
     container_class: CompanyAgent
     capabilities:
       - event_driven
 
   task:
+    handler: session
     transport: local
     container_class: TaskAgent
     capabilities:
       - uses_tmux
 
   docker-gsd:
+    handler: session
     transport: docker
     docker_image: "vco-agent:latest"
     container_class: GsdAgent

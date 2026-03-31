@@ -16,6 +16,7 @@ from pydantic import BaseModel
 class AgentTypeConfig(BaseModel):
     """Schema for a single agent type definition (D-08)."""
 
+    handler: str | None = None  # "session", "conversation", "transient", or None (legacy)
     transport: str = "local"
     docker_image: str | None = None
     container_class: str = "AgentContainer"
@@ -47,27 +48,32 @@ class AgentTypesConfig(BaseModel):
 # System works even without an agent-types.yaml file on disk.
 _BUILTIN_DEFAULTS: dict[str, dict] = {
     "gsd": {
+        "handler": "session",
         "transport": "local",
         "container_class": "GsdAgent",
         "capabilities": ["gsd_driven", "uses_tmux"],
         "gsd_command": "/gsd:discuss-phase 1",
     },
     "continuous": {
+        "handler": "session",
         "transport": "local",
         "container_class": "ContinuousAgent",
         "capabilities": ["uses_tmux"],
     },
     "fulltime": {
+        "handler": "transient",
         "transport": "local",
         "container_class": "FulltimeAgent",
         "capabilities": ["event_driven", "reviews_plans"],
     },
     "company": {
+        "handler": "conversation",
         "transport": "local",
         "container_class": "CompanyAgent",
         "capabilities": ["event_driven"],
     },
     "task": {
+        "handler": "session",
         "transport": "local",
         "container_class": "TaskAgent",
         "capabilities": ["uses_tmux"],
