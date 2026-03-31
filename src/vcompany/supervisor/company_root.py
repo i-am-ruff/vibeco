@@ -170,8 +170,11 @@ class CompanyRoot(Supervisor):
                 self._transports[transport_name] = NativeTransport()
             elif transport_name == "docker":
                 self._transports[transport_name] = DockerChannelTransport()
+            elif transport_name == "network":
+                from vcompany.transport.network import NetworkTransport
+                self._transports[transport_name] = NetworkTransport()
             else:
-                raise ValueError(f"Unknown transport: {transport_name}. Use 'native' or 'docker'.")
+                raise ValueError(f"Unknown transport: {transport_name}. Use 'native', 'docker', or 'network'.")
         return self._transports[transport_name]
 
     # Available agent templates. Maps template name to Jinja2 template file.
