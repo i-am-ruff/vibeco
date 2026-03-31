@@ -118,24 +118,29 @@ class MentionRouterCog(commands.Cog):
         1. If message is in an agent's primary channel → deliver to that agent
         2. If message contains @Handle text → deliver to matching agent(s)
         """
-        if message.author.bot:
-            return
-        if self.bot.user and message.author.id == self.bot.user.id:
-            return
+        if message.author.bot and not (self.bot.user and message.author.id == self.bot.user.id):
+            return  # Ignore other bots, but process our own bot's messages (agent reports)
         if not self._agent_handles:
             return
 
+        is_own_bot = self.bot.user and message.author.id == self.bot.user.id
         channel_id = str(message.channel.id)
 
         # Channel-based routing: message is in an agent's own channel
-        handle = self._channel_handles.get(channel_id)
-        if handle is not None:
-            await self._deliver_to_agent(handle, message)
-            return
+        # Skip for bot messages — prevents agents receiving their own output
+        if not is_own_bot:
+            handle = self._channel_handles.get(channel_id)
+            if handle is not None:
+                await self._deliver_to_agent(handle, message)
+                return
 
         # @mention-based routing: scan for @Handle patterns
+        # Works for both human messages and agent reports (bot messages)
         content = message.content
+        source_handle = self._channel_handles.get(channel_id)
         for h in self._agent_handles:
+            if h == source_handle:
+                continue  # Don't route back to the agent whose channel this is
             if f"@{h}" in content:
                 await self._deliver_to_agent(h, message)
 
