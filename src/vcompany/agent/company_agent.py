@@ -1,8 +1,8 @@
 """CompanyAgent -- Discord-message-driven container for Strategist role (TYPE-05).
 
 Company-scoped (no project_id), survives project restarts, holds cross-project
-state in memory_store. Receives Discord messages via receive_discord_message()
-and forwards to StrategistConversation for processing.
+state in memory_store. Message handling delegated to StrategistConversationHandler
+via base container.
 """
 
 from __future__ import annotations
@@ -11,27 +11,24 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from statemachine.orderedset import OrderedSet
-
 from vcompany.agent.event_driven_lifecycle import EventDrivenLifecycle
 from vcompany.container.container import AgentContainer
 from vcompany.container.context import ContainerContext
 from vcompany.container.health import HealthReport
-from vcompany.models.messages import MessageContext
 from vcompany.strategist.conversation import StrategistConversation
 
 if TYPE_CHECKING:
-    from vcompany.container.communication import CommunicationPort, SendMessagePayload
+    from vcompany.container.communication import CommunicationPort
 
 logger = logging.getLogger("vcompany.agent.company_agent")
 
 
 class CompanyAgent(AgentContainer):
-    """Discord-message-driven agent for Strategist role (TYPE-05).
+    """Thin wrapper: EventDrivenLifecycle + Strategist conversation management.
 
-    Company-scoped (context.project_id should be None), survives project
-    restarts, holds cross-project state in memory_store. Receives Discord
-    messages and forwards to StrategistConversation.
+    Message handling is delegated to StrategistConversationHandler via base container.
+    state/inner_state inherited from base container (OrderedSet handling).
+    _send_discord inherited from base container (D-04).
 
     Args:
         context: Immutable agent metadata (project_id should be None).
@@ -55,26 +52,6 @@ class CompanyAgent(AgentContainer):
         # Strategist conversation (wired via initialize_conversation())
         self._conversation: StrategistConversation | None = None
 
-    # --- Properties (override parent for compound state handling) ---
-
-    @property
-    def state(self) -> str:
-        """Current outer lifecycle state as a plain string."""
-        val = self._fsm_state
-        if isinstance(val, OrderedSet):
-            return str(list(val)[0])
-        return str(val)
-
-    @property
-    def inner_state(self) -> str | None:
-        """Sub-state when in running compound state (listening/processing)."""
-        val = self._fsm_state
-        if isinstance(val, OrderedSet):
-            items = list(val)
-            if len(items) >= 2:
-                return str(items[1])
-        return None
-
     # --- Conversation ---
 
     def initialize_conversation(self, persona_path: Path | None = None) -> None:
@@ -90,55 +67,6 @@ class CompanyAgent(AgentContainer):
             transport=self._transport,
         )
         logger.info("StrategistConversation initialized (persona=%s)", persona_path)
-
-    # --- Discord Message Handling ---
-
-    async def receive_discord_message(self, context: MessageContext) -> None:
-        """Process an inbound Discord message routed to the Strategist.
-
-        Forwards the message content to the StrategistConversation and posts
-        the response back to Discord via _send_discord().
-
-        Args:
-            context: Message context with sender, channel, content.
-        """
-        self._lifecycle.start_processing()
-        try:
-            if self._conversation is None:
-                logger.warning(
-                    "Strategist received message but conversation not initialized"
-                )
-                return
-
-            response = await self._conversation.send(context.content)
-            await self._send_discord(context.channel_id or context.channel, response)
-            logger.info(
-                "Strategist responded to message from %s (len=%d)",
-                context.sender, len(response),
-            )
-        finally:
-            self._lifecycle.done_processing()
-
-    # --- Discord Output ---
-
-    async def _send_discord(self, channel_name: str, content: str) -> None:
-        """Send a message to a Discord channel via the CommunicationPort.
-
-        Uses self.comm_port (from parent AgentContainer) if available.
-        Channel name is used as a logical identifier; the CommunicationPort
-        adapter handles name-to-id resolution.
-
-        Args:
-            channel_name: Logical channel name (e.g. "strategist").
-            content: Message text to send.
-        """
-        if self.comm_port is None:
-            logger.warning("Cannot send Discord message -- no comm_port wired")
-            return
-        from vcompany.daemon.comm import SendMessagePayload
-
-        payload = SendMessagePayload(channel_id=channel_name, content=content)
-        await self.comm_port.send_message(payload)
 
     # --- Cross-Project State ---
 
@@ -157,21 +85,3 @@ class CompanyAgent(AgentContainer):
         standard per-agent keys.
         """
         await self.memory.set(f"xp:{key}", value)
-
-    # --- Lifecycle Overrides ---
-
-    async def start(self) -> None:
-        """Transition to running and open memory."""
-        await super().start()
-
-    async def stop(self) -> None:
-        """Delegate to parent stop."""
-        await super().stop()
-
-    async def sleep(self) -> None:
-        """Transition to sleeping."""
-        await super().sleep()
-
-    async def error(self) -> None:
-        """Transition to errored."""
-        await super().error()

@@ -74,29 +74,7 @@ class ContinuousAgent(AgentContainer):
         # AGNT-01: Delegation callback -- wired by supervisor
         self._request_delegation: Callable[[Any], Awaitable[Any]] | None = None
 
-    # --- Properties (override parent for compound state handling) ---
-
-    @property
-    def state(self) -> str:
-        """Current outer lifecycle state as a plain string.
-
-        When in compound state (running), _fsm_state is an OrderedSet like
-        OrderedSet(['running', 'wake']). Return just the outer state.
-        """
-        val = self._fsm_state
-        if isinstance(val, OrderedSet):
-            return str(list(val)[0])
-        return str(val)
-
-    @property
-    def inner_state(self) -> str | None:
-        """Cycle sub-state when in running compound state, None otherwise."""
-        val = self._fsm_state
-        if isinstance(val, OrderedSet):
-            items = list(val)
-            if len(items) >= 2:
-                return str(items[1])
-        return None
+    # state/inner_state inherited from base container (OrderedSet handling)
 
     # --- Delegation (AGNT-01) ---
 
