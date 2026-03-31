@@ -4,14 +4,16 @@ The root of the supervision tree. Manages ProjectSupervisor instances,
 one per active project. When escalation bubbles to the top (no parent),
 calls the on_escalation callback to alert via Discord.
 
-Owns the Scheduler (AUTO-06) which wakes sleeping ContinuousAgents on
-schedule. Registers all built-in agent types in the factory at startup.
+Company-level agents (hired via hire()) use AgentHandle + transport channel
+protocol. Project-level agents still go through ProjectSupervisor/containers.
+Owns the Scheduler (AUTO-06) which wakes sleeping ContinuousAgents on schedule.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -22,11 +24,23 @@ from vcompany.container.context import ContainerContext
 from vcompany.container.factory import create_container, register_defaults
 from vcompany.container.health import CompanyHealthTree, HealthNode, HealthReport, HealthTree
 from vcompany.container.memory_store import MemoryStore
+from vcompany.daemon.agent_handle import AgentHandle
+from vcompany.daemon.routing_state import AgentRouting, RoutingState
 from vcompany.resilience.degraded_mode import DegradedModeManager
 from vcompany.supervisor.project_supervisor import ProjectSupervisor
 from vcompany.supervisor.scheduler import Scheduler
 from vcompany.supervisor.strategies import RestartStrategy
 from vcompany.supervisor.supervisor import Supervisor
+from vcompany.transport.channel.framing import decode_worker
+from vcompany.transport.channel.messages import (
+    AskMessage,
+    HealthReportMessage,
+    ReportMessage,
+    SendFileMessage,
+    SignalMessage,
+    StartMessage,
+    StopMessage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +52,9 @@ class CompanyRoot(Supervisor):
     and manages ProjectSupervisor instances (one per project). When
     escalation reaches CompanyRoot and cannot be handled (restart budget
     exceeded), it calls the on_escalation callback -- the Discord alert path.
+
+    Company-level agents use AgentHandle (transport channel protocol).
+    Project-level agents still use AgentContainer via ProjectSupervisor.
 
     Args:
         on_escalation: Async callback invoked when escalation cannot be
@@ -77,10 +94,15 @@ class CompanyRoot(Supervisor):
             signal_router=signal_router,
         )
         self._projects: dict[str, ProjectSupervisor] = {}
-        self._company_agents: dict[str, AgentContainer] = {}
+        self._company_agents: dict[str, AgentHandle] = {}
         self._comm_port = comm_port or NoopCommunicationPort()
         self._transport_deps = transport_deps
         self._project_dir = project_dir
+        # Routing state persistence (HEAD-05)
+        self._routing_path: Path | None = None
+        if data_dir is not None:
+            self._routing_path = data_dir / "routing.json"
+        self._routing_state = RoutingState.load(self._routing_path) if self._routing_path else RoutingState()
         # Degraded mode manager (RESL-03)
         self._degraded_mode: DegradedModeManager | None = None
         if health_check is not None:
@@ -115,8 +137,8 @@ class CompanyRoot(Supervisor):
         HealthNodes for company-level agents (e.g. Strategist).
         """
         company_nodes = [
-            HealthNode(report=agent.health_report())
-            for agent in self._company_agents.values()
+            HealthNode(report=handle.health_report())
+            for handle in self._company_agents.values()
         ]
         project_trees: list[HealthTree] = []
         for _project_id, ps in self._projects.items():
@@ -139,45 +161,45 @@ class CompanyRoot(Supervisor):
         agent_id: str,
         template: str = "generic",
         agent_type: str | None = None,
-    ) -> AgentContainer:
+        channel_id: str | None = None,
+    ) -> AgentHandle:
         """Hire a company-level agent. Creates scratch dir, deploys artifacts,
-        starts container in tmux. Agent starts idle -- use ``give_task()`` to
-        assign work.
+        spawns vco-worker subprocess, sends StartMessage via channel protocol.
+        Agent starts idle -- use ``give_task()`` to assign work.
 
-        Channel creation is handled by RuntimeAPI via CommunicationPort, not here.
+        CRITICAL: channel_id must be passed in so AgentHandle is created with
+        it populated BEFORE _save_routing() persists routing state.
 
         Args:
             agent_id: Unique identifier for the agent.
             template: Agent template key (see AGENT_TEMPLATES).
             agent_type: If provided, look up from agent-types config for
-                transport, capabilities, gsd_command, etc.
+                capabilities, gsd_command, etc.
+            channel_id: Discord channel ID for this agent (passed by RuntimeAPI).
 
         Returns:
-            The started AgentContainer (or subclass, idle, ready for tasks).
+            The AgentHandle for the spawned worker.
         """
         from vcompany.agent.task_agent import TASKS_DIR
-        from vcompany.container.child_spec import RestartPolicy
-        from vcompany.container.factory import get_agent_types_config
-        from vcompany.models.agent_types import AgentTypeConfig
         from vcompany.shared.file_ops import write_atomic
         from vcompany.shared.templates import render_template
         import shutil
 
         # Look up agent type config
-        agent_types = get_agent_types_config()
-        type_config: AgentTypeConfig | None = None
-        effective_type = agent_type or "task"
+        agent_types = None
+        try:
+            from vcompany.container.factory import get_agent_types_config
+            agent_types = get_agent_types_config()
+        except Exception:
+            pass
 
+        effective_type = agent_type or "task"
+        type_config = None
         if agent_types:
             try:
                 type_config = agent_types.get_type(effective_type)
             except KeyError:
                 logger.warning("Unknown agent type %s, using defaults", effective_type)
-
-        # D-03: Auto-build Docker image on first hire
-        if type_config and type_config.transport == "docker" and type_config.docker_image:
-            from vcompany.docker.build import ensure_docker_image
-            await ensure_docker_image(type_config.docker_image)
 
         tmpl = self.AGENT_TEMPLATES.get(template, self.AGENT_TEMPLATES["generic"])
         repo_root = Path(__file__).parent.parent.parent.parent
@@ -193,7 +215,7 @@ class CompanyRoot(Supervisor):
         # settings.json (hooks: ask_discord, idle signals)
         write_atomic(claude_dir / "settings.json", render_template("settings.json.j2"))
 
-        # CLAUDE.md (identity + workflow — template-specific)
+        # CLAUDE.md (identity + workflow -- template-specific)
         claude_md = render_template(
             tmpl["claude_md"],
             task_id=agent_id,
@@ -221,35 +243,99 @@ class CompanyRoot(Supervisor):
                         shutil.copy2(f, dest_dir / f.name)
                 logger.info("Deployed %s to %s", extra, dest_dir)
 
-        # 3. Create and start container (no initial command -- starts idle)
-        ctx = ContainerContext(
+        # 3. Build worker config dict
+        config_dict = {
+            "handler_type": type_config.handler_type if type_config and hasattr(type_config, "handler_type") else "session",
+            "agent_type": effective_type,
+            "capabilities": list(type_config.capabilities) if type_config else [],
+            "gsd_command": type_config.gsd_command if type_config else None,
+            "uses_tmux": "uses_tmux" in type_config.capabilities if type_config else True,
+        }
+
+        # 4. Create handle -- channel_id is passed in so it's populated BEFORE _save_routing
+        handle = AgentHandle(
             agent_id=agent_id,
             agent_type=effective_type,
-            uses_tmux="uses_tmux" in type_config.capabilities if type_config else True,
-            gsd_command=type_config.gsd_command if type_config else None,
+            handler_type=config_dict["handler_type"],
+            config=config_dict,
+            capabilities=config_dict.get("capabilities", []),
+            channel_id=channel_id,
         )
-        spec = ChildSpec(
-            child_id=agent_id,
-            agent_type=effective_type,
-            context=ctx,
-            restart_policy=RestartPolicy.TEMPORARY,
-            transport=type_config.transport if type_config else "local",
+
+        # 5. Spawn worker subprocess
+        worker_cmd = [sys.executable, "-m", "vco_worker"]
+        process = await asyncio.create_subprocess_exec(
+            *worker_cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        container = create_container(
-            spec,
-            data_dir=self._data_dir or TASKS_DIR / ".data",
-            transport_deps=self._transport_deps,
-            project_dir=working_dir,
-            project_session_name="vco-tasks",
-            on_state_change=self._make_state_change_callback(agent_id),
+        handle._process = process
+
+        # 6. Send StartMessage
+        await handle.send(StartMessage(agent_id=agent_id, config=config_dict))
+
+        # 7. Start channel reader task
+        handle._reader_task = asyncio.create_task(
+            self._channel_reader(handle),
+            name=f"channel-reader-{agent_id}",
         )
-        await container.start()
-        self._company_agents[agent_id] = container
+
+        self._company_agents[agent_id] = handle
+        # Persist routing state -- channel_id is already set on handle
+        self._save_routing(handle)
         logger.info("Hired agent %s (template=%s, type=%s)", agent_id, template, effective_type)
-        return container
+        return handle
+
+    async def _channel_reader(self, handle: AgentHandle) -> None:
+        """Read WorkerMessages from transport channel, dispatch to handlers."""
+        if handle._process is None or handle._process.stdout is None:
+            return
+        try:
+            async for line in handle._process.stdout:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    msg = decode_worker(stripped)
+                except Exception:
+                    logger.warning("Failed to decode worker message: %s", stripped[:200])
+                    continue
+                if isinstance(msg, HealthReportMessage):
+                    handle.update_health(msg)
+                elif isinstance(msg, SignalMessage):
+                    logger.info("Agent %s signal: %s %s", handle.agent_id, msg.signal, msg.detail)
+                elif isinstance(msg, ReportMessage):
+                    await self._route_report(handle, msg)
+                elif isinstance(msg, AskMessage):
+                    await self._route_ask(handle, msg)
+                elif isinstance(msg, SendFileMessage):
+                    logger.info("Agent %s sent file: %s", handle.agent_id, msg.filename)
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception("Channel reader error for %s", handle.agent_id)
+
+    async def _route_report(self, handle: AgentHandle, msg: ReportMessage) -> None:
+        """Route a worker report to the appropriate Discord channel via comm_port."""
+        from vcompany.daemon.comm import SendMessagePayload
+        if handle.channel_id:
+            await self._comm_port.send_message(
+                SendMessagePayload(channel_id=handle.channel_id, content=msg.content)
+            )
+
+    async def _route_ask(self, handle: AgentHandle, msg: AskMessage) -> None:
+        """Route a worker question to the appropriate Discord channel via comm_port."""
+        from vcompany.daemon.comm import SendMessagePayload
+        if handle.channel_id:
+            await self._comm_port.send_message(
+                SendMessagePayload(channel_id=handle.channel_id, content=f"**Question:** {msg.question}")
+            )
 
     async def dismiss(self, agent_id: str) -> None:
         """Dismiss (stop) a company-level agent.
+
+        Sends StopMessage through transport, stops process, cleans up reader task.
 
         Args:
             agent_id: The agent to dismiss.
@@ -257,9 +343,11 @@ class CompanyRoot(Supervisor):
         Raises:
             KeyError: If agent_id not found in company agents.
         """
-        container = self._company_agents.pop(agent_id)
-        if container.state not in ("stopped", "destroyed", "stopping"):
-            await container.stop()
+        handle = self._company_agents.pop(agent_id)
+        await handle.stop_process()
+        if handle._reader_task is not None:
+            handle._reader_task.cancel()
+        self._remove_routing(agent_id)
         logger.info("Dismissed agent %s", agent_id)
 
     async def dispatch_task_agent(
@@ -267,20 +355,25 @@ class CompanyRoot(Supervisor):
         task_id: str,
         task_prompt: str,
         template: str = "generic",
-    ) -> AgentContainer:
+    ) -> AgentHandle:
         """Convenience: hire an agent and immediately give it a task.
 
-        Equivalent to ``hire()`` followed by ``give_task()``.
+        Equivalent to ``hire()`` followed by sending a GiveTaskMessage.
         """
-        container = await self.hire(task_id, template=template)
-        await container.give_task(task_prompt)
-        return container
+        from vcompany.transport.channel.messages import GiveTaskMessage
+        handle = await self.hire(task_id, template=template)
+        await handle.send(GiveTaskMessage(task_id=task_id, description=task_prompt))
+        return handle
 
     async def add_company_agent(self, spec: ChildSpec) -> AgentContainer:
         """Create and start a company-level agent (e.g., Strategist).
 
         Company agents are direct children of CompanyRoot, not under any
         ProjectSupervisor. They appear in health_tree().company_agents.
+
+        NOTE: This method still uses the container path for backward compatibility
+        with Strategist and other agents that need container features not yet
+        ported to the worker protocol. Will be refactored in Phase 34.
 
         Args:
             spec: ChildSpec for the company agent.
@@ -295,7 +388,7 @@ class CompanyRoot(Supervisor):
             on_state_change=self._make_state_change_callback(spec.child_id),
         )
         await container.start()
-        self._company_agents[spec.child_id] = container
+        self._company_agents[spec.child_id] = container  # type: ignore[assignment]
         logger.info("Added company agent %s", spec.child_id)
         return container
 
@@ -359,23 +452,64 @@ class CompanyRoot(Supervisor):
             await ps.stop()
         logger.info("Removed project %s", project_id)
 
-    async def _find_container(self, agent_id: str) -> AgentContainer | None:
-        """Search company agents and all ProjectSupervisors for a container by agent_id."""
-        # Check company agents first
-        container = self._company_agents.get(agent_id)
-        if container is not None:
-            return container
-        # Then check project supervisors
+    async def _find_handle(self, agent_id: str) -> AgentHandle | None:
+        """Search company agents and all ProjectSupervisors for a handle by agent_id.
+
+        For company agents, returns the AgentHandle directly.
+        For project agents, returns the child (AgentContainer) which duck-types
+        as having .state, .agent_type etc.
+        """
+        handle = self._company_agents.get(agent_id)
+        if handle is not None:
+            return handle  # type: ignore[return-value]
         for ps in self._projects.values():
-            container = ps.children.get(agent_id)
-            if container is not None:
-                return container
+            child = ps.children.get(agent_id)
+            if child is not None:
+                return child  # type: ignore[return-value]
         return None
 
+    async def _find_container(self, agent_id: str) -> AgentHandle | None:
+        """Backward-compatible alias for _find_handle.
+
+        Returns AgentHandle for company agents, AgentContainer for project agents.
+        Callers should use duck-typing (getattr) for type-specific attributes.
+        """
+        return await self._find_handle(agent_id)
+
+    # ── Routing state persistence (HEAD-05) ──────────────────────────
+
+    def _save_routing(self, handle: AgentHandle) -> None:
+        """Persist routing state after adding an agent."""
+        if self._routing_path is None:
+            return
+        routing = AgentRouting(
+            agent_id=handle.agent_id,
+            channel_id=handle.channel_id,
+            agent_type=handle.agent_type,
+            handler_type=handle.handler_type,
+            config=handle.config,
+            capabilities=handle.capabilities,
+        )
+        self._routing_state.add_agent(routing)
+        self._routing_state.save(self._routing_path)
+
+    def _remove_routing(self, agent_id: str) -> None:
+        """Remove routing state after dismissing an agent."""
+        if self._routing_path is None:
+            return
+        self._routing_state.remove_agent(agent_id)
+        self._routing_state.save(self._routing_path)
+
+    # ── Lifecycle ────────────────────────────────────────────────────
+
     async def start(self) -> None:
-        """Register agent types, open scheduler memory, and start scheduler loop."""
+        """Register agent types, load routing state, open scheduler memory, and start scheduler loop."""
         register_defaults()
         await super().start()
+
+        # Load routing state from disk
+        if self._routing_path is not None:
+            self._routing_state = RoutingState.load(self._routing_path)
 
         if self._degraded_mode is not None:
             await self._degraded_mode.start()
@@ -461,7 +595,7 @@ class CompanyRoot(Supervisor):
                 await self._on_escalation(msg)
 
     async def stop(self) -> None:
-        """Cancel scheduler, stop all ProjectSupervisors, and stop the root."""
+        """Cancel scheduler, stop all agents and ProjectSupervisors, and stop the root."""
         # Stop degraded mode manager first
         if self._degraded_mode is not None:
             await self._degraded_mode.stop()
@@ -481,13 +615,17 @@ class CompanyRoot(Supervisor):
         if self._scheduler_memory is not None:
             await self._scheduler_memory.close()
 
-        # Stop company-level agents (Strategist, etc.)
+        # Stop company-level agents (handles or containers)
         for agent in list(self._company_agents.values()):
-            if agent.state not in ("stopped", "destroyed", "stopping"):
-                try:
+            try:
+                if isinstance(agent, AgentHandle):
+                    await agent.stop_process()
+                    if agent._reader_task is not None:
+                        agent._reader_task.cancel()
+                elif hasattr(agent, "state") and agent.state not in ("stopped", "destroyed", "stopping"):
                     await agent.stop()
-                except Exception:
-                    logger.warning("Error stopping company agent", exc_info=True)
+            except Exception:
+                logger.warning("Error stopping company agent", exc_info=True)
         self._company_agents.clear()
 
         # Stop all dynamically added projects
