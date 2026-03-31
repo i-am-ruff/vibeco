@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
 status: Milestone complete
-stopped_at: Completed 27-04-PLAN.md
-last_updated: "2026-03-29T23:30:16.927Z"
+stopped_at: Phase 28 context gathered
+last_updated: "2026-03-31T04:10:06.949Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
   total_plans: 14
   completed_plans: 14
@@ -85,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T23:25:24.276Z
-Stopped at: Completed 27-04-PLAN.md
-Resume file: None
+Last session: 2026-03-31T04:10:06.942Z
+Stopped at: Phase 28 context gathered
+Resume file: .planning/phases/28-agent-transport-separation/28-CONTEXT.md
