@@ -205,6 +205,8 @@ class Daemon:
 
         self._project_dir = project_dir
         self._project_config = project_config
+        # data_dir hosts supervision state including routing state persistence
+        # (routing.json for handle-to-channel mappings, reconstructed on restart)
         data_dir = project_dir / "state" / "supervision" if project_dir else None
 
         # Create comm_port getter (lazy -- uses Noop until Discord adapter is set)
