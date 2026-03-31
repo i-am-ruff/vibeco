@@ -17,6 +17,9 @@ from typing import Callable
 from vcompany.container.child_spec import ChildSpec
 from vcompany.container.container import AgentContainer
 from vcompany.container.health import HealthReport
+from vcompany.handler.conversation import StrategistConversationHandler
+from vcompany.handler.session import GsdSessionHandler
+from vcompany.handler.transient import PMTransientHandler
 from vcompany.models.agent_types import AgentTypeConfig, AgentTypesConfig
 from vcompany.transport.docker import DockerTransport
 from vcompany.transport.local import LocalTransport
@@ -31,6 +34,13 @@ _REGISTRY: dict[str, type[AgentContainer]] = {}
 _TRANSPORT_REGISTRY: dict[str, type] = {
     "local": LocalTransport,
     "docker": DockerTransport,
+}
+
+# Handler registry: handler name -> handler class (D-08)
+_HANDLER_REGISTRY: dict[str, type] = {
+    "session": GsdSessionHandler,
+    "conversation": StrategistConversationHandler,
+    "transient": PMTransientHandler,
 }
 
 # Module-level agent types config -- set once at daemon startup via set_agent_types_config()
@@ -166,6 +176,23 @@ def create_container(
         project_dir=project_dir,
         project_session_name=project_session_name,
     )
+    # D-08: Inject handler from config
+    handler_name = None
+    if _agent_types_config is not None:
+        try:
+            _handler_cfg = _agent_types_config.get_type(spec.agent_type)
+            handler_name = _handler_cfg.handler
+        except KeyError:
+            pass
+    if handler_name:
+        handler_cls = _HANDLER_REGISTRY.get(handler_name)
+        if handler_cls:
+            container_instance._handler = handler_cls()
+            logger.debug(
+                "Injected %s handler for agent %s",
+                handler_name, spec.child_id,
+            )
+
     container_instance._transport_setup_kwargs = _setup_kwargs
     return container_instance
 
@@ -200,3 +227,8 @@ def register_defaults() -> None:
 def get_registry() -> dict[str, type[AgentContainer]]:
     """Return a copy of the current registry for inspection/testing."""
     return dict(_REGISTRY)
+
+
+def get_handler_registry() -> dict[str, type]:
+    """Return a copy of the handler registry for inspection/testing."""
+    return dict(_HANDLER_REGISTRY)
