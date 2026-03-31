@@ -89,7 +89,7 @@ See phase details in `.planning/milestones/v3.0-ROADMAP.md`.
 - [x] **Phase 29: Transport Channel Protocol** - Define the bidirectional message protocol between head and worker (completed 2026-03-31)
 - [x] **Phase 30: Worker Runtime** - Build vco-worker as a separate installable package with agent lifecycle management (completed 2026-03-31)
 - [x] **Phase 31: Head Refactor** - Strip daemon to orchestrator with transport handles only, no agent Python objects (completed 2026-03-31)
-- [ ] **Phase 32: Transport Channel Implementations** - Docker and native transports use the channel protocol
+- [x] **Phase 32: Transport Channel Implementations** - Docker and native transports use the channel protocol (completed 2026-03-31)
 - [ ] **Phase 33: Container Autonomy** - Agent state lives inside containers, independence and resilience proven
 - [ ] **Phase 34: Cleanup and Network Stub** - Remove dead daemon-side code and define network transport contract
 
@@ -149,11 +149,11 @@ Plans:
   1. Docker transport creates a container running vco-worker, communicates through the channel protocol (docker exec stdin/stdout or mapped TCP port) -- no Unix socket mount into the container
   2. Native transport starts vco-worker in a local process, communicates through the channel protocol (local socket or in-process bridge)
   3. An agent hired with transport "docker" and an agent hired with transport "native" both produce the same observable behavior: signals appear, health reports come through, Discord messages route correctly
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 32-01-PLAN.md -- ChannelTransport protocol, NativeTransport, and DockerChannelTransport
-- [ ] 32-02-PLAN.md -- Wire transports into CompanyRoot.hire() and update Dockerfile
+- [x] 32-02-PLAN.md -- Wire transports into CompanyRoot.hire() and update Dockerfile
 
 ### Phase 33: Container Autonomy
 **Goal**: Agent containers are fully autonomous -- state lives inside, duplicating a transport creates independent agents, and workers survive daemon restarts
@@ -185,6 +185,6 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 | 29. Transport Channel Protocol | 1/1 | Complete    | 2026-03-31 |
 | 30. Worker Runtime | 3/3 | Complete    | 2026-03-31 |
 | 31. Head Refactor | 3/3 | Complete    | 2026-03-31 |
-| 32. Transport Channel Implementations | 1/2 | In Progress|  |
+| 32. Transport Channel Implementations | 2/2 | Complete   | 2026-03-31 |
 | 33. Container Autonomy | 0/TBD | Not started | - |
 | 34. Cleanup and Network Stub | 0/TBD | Not started | - |
