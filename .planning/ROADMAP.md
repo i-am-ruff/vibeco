@@ -143,6 +143,7 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 | 25. Transport Abstraction | 3/3 | Complete    | 2026-03-29 |
 | 26. Docker Runtime | 2/2 | Complete    | 2026-03-29 |
 | 27. Docker Integration Wiring | 4/4 | Complete    | 2026-03-29 |
+| 28. Agent-Transport Separation | 0/4 | Planned     | - |
 
 ### Phase 27: Docker Integration Wiring
 **Goal**: Docker agents work end-to-end: per-transport deps resolution, docker_image flow from config to constructor, auto-build on first use, parametric agent setup (tweakcc profiles, custom settings via kwargs), and removal of hardcoded agent-type checks from business logic
@@ -167,9 +168,19 @@ Plans:
 ### Phase 28: Agent-Transport Separation Refactor
 
 **Goal:** Extract handler types (tmux session, resume-conversation, memory-based transient) from agent subclasses into composable pieces orthogonal to transport (native, Docker, network). Any handler type can run on any transport without new classes.
-**Requirements**: TBD
+**Requirements**: HSEP-01, HSEP-02, HSEP-03, HSEP-04, HSEP-05, HSEP-06, HSEP-07, HSEP-08
 **Depends on:** Phase 27
-**Plans:** 0 plans
+**Success Criteria** (what must be TRUE):
+  1. Three handler protocols (SessionHandler, ConversationHandler, TransientHandler) exist as @runtime_checkable Protocols
+  2. _send_discord is consolidated into base AgentContainer -- no duplicate implementations in subclasses
+  3. agent-types.yaml has a handler field, factory composes handler+transport from config
+  4. Agent subclasses are thin wrappers: lifecycle FSM + domain methods only, no _send_discord/state/inner_state/receive_discord_message overrides
+  5. Dead code (self._tmux, _launch_tmux_session) in GsdAgent and TaskAgent is removed
+  6. RuntimeAPI hasattr checks (resolve_review, initialize_conversation, backlog) still work
+**Plans**: 4 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 28 to break down)
+- [ ] 28-01-PLAN.md -- Handler protocols, base container consolidation (_send_discord, _channel_id, _handler, OrderedSet state)
+- [ ] 28-02-PLAN.md -- Handler implementations (GsdSessionHandler, StrategistConversationHandler, PMTransientHandler)
+- [ ] 28-03-PLAN.md -- Config handler field and factory handler registry
+- [ ] 28-04-PLAN.md -- Agent subclass thinning, dead code cleanup, handler hook ordering
