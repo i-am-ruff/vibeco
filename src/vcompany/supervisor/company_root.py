@@ -38,6 +38,7 @@ from vcompany.transport.native import NativeTransport
 from vcompany.transport.channel.messages import (
     AskMessage,
     HealthReportMessage,
+    ReconnectMessage,
     ReportMessage,
     SendFileMessage,
     SignalMessage,
@@ -295,13 +296,13 @@ class CompanyRoot(Supervisor):
         # 5. Spawn worker via transport (native subprocess or Docker container)
         import os
         transport = self._get_transport(transport_name)
-        process = await transport.spawn(
+        reader, writer = await transport.spawn(
             agent_id,
             config=config_dict,
             env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
             working_dir=str(working_dir),
         )
-        handle._process = process
+        handle.attach_socket(reader, writer)
 
         # 6. Send StartMessage
         await handle.send(StartMessage(agent_id=agent_id, config=config_dict))
@@ -314,16 +315,17 @@ class CompanyRoot(Supervisor):
 
         self._company_agents[agent_id] = handle
         # Persist routing state -- channel_id is already set on handle
-        self._save_routing(handle)
+        self._save_routing(handle, transport_name=transport_name)
         logger.info("Hired agent %s (template=%s, type=%s)", agent_id, template, effective_type)
         return handle
 
     async def _channel_reader(self, handle: AgentHandle) -> None:
         """Read WorkerMessages from transport channel, dispatch to handlers."""
-        if handle._process is None or handle._process.stdout is None:
+        reader = handle.reader
+        if reader is None:
             return
         try:
-            async for line in handle._process.stdout:
+            async for line in reader:
                 stripped = line.strip()
                 if not stripped:
                     continue
@@ -344,6 +346,8 @@ class CompanyRoot(Supervisor):
                     logger.info("Agent %s sent file: %s", handle.agent_id, msg.filename)
         except asyncio.CancelledError:
             pass
+        except (ConnectionResetError, BrokenPipeError):
+            logger.warning("Channel reader lost connection to %s", handle.agent_id)
         except Exception:
             logger.exception("Channel reader error for %s", handle.agent_id)
 
@@ -509,7 +513,7 @@ class CompanyRoot(Supervisor):
 
     # ── Routing state persistence (HEAD-05) ──────────────────────────
 
-    def _save_routing(self, handle: AgentHandle) -> None:
+    def _save_routing(self, handle: AgentHandle, transport_name: str = "native") -> None:
         """Persist routing state after adding an agent."""
         if self._routing_path is None:
             return
@@ -520,6 +524,7 @@ class CompanyRoot(Supervisor):
             handler_type=handle.handler_type,
             config=handle.config,
             capabilities=handle.capabilities,
+            transport_type=transport_name,
         )
         self._routing_state.add_agent(routing)
         self._routing_state.save(self._routing_path)
@@ -531,6 +536,63 @@ class CompanyRoot(Supervisor):
         self._routing_state.remove_agent(agent_id)
         self._routing_state.save(self._routing_path)
 
+    # ── Reconnection (AUTO-03) ─────────────────────────────────────
+
+    async def reconnect_agents(self) -> None:
+        """Reconnect to surviving workers after daemon restart.
+
+        Iterates RoutingState, gets the appropriate transport for each agent,
+        attempts to connect to its socket. On success: creates AgentHandle,
+        sends ReconnectMessage, starts channel reader. On failure: removes
+        stale routing entry.
+        """
+        if not self._routing_state.agents:
+            return
+
+        logger.info("Reconnecting to %d persisted agents", len(self._routing_state.agents))
+        stale_agents: list[str] = []
+
+        for agent_id, routing in list(self._routing_state.agents.items()):
+            try:
+                transport = self._get_transport(routing.transport_type)
+                reader, writer = await transport.connect(agent_id)
+
+                handle = AgentHandle(
+                    agent_id=routing.agent_id,
+                    agent_type=routing.agent_type,
+                    channel_id=routing.channel_id,
+                    handler_type=routing.handler_type,
+                    config=routing.config,
+                    capabilities=routing.capabilities,
+                )
+                handle.attach_socket(reader, writer)
+
+                # Send reconnect message -- worker responds with HealthReport
+                await handle.send(ReconnectMessage(agent_id=agent_id))
+
+                # Start channel reader
+                handle._reader_task = asyncio.create_task(
+                    self._channel_reader(handle),
+                    name=f"channel-reader-{agent_id}",
+                )
+
+                self._company_agents[agent_id] = handle
+                logger.info("Reconnected to worker %s (transport=%s)", agent_id, routing.transport_type)
+
+            except (ConnectionError, ConnectionRefusedError, FileNotFoundError, TimeoutError) as e:
+                logger.warning("Failed to reconnect to worker %s: %s", agent_id, e)
+                stale_agents.append(agent_id)
+            except Exception:
+                logger.exception("Unexpected error reconnecting to %s", agent_id)
+                stale_agents.append(agent_id)
+
+        # Clean up stale routing entries
+        for agent_id in stale_agents:
+            self._routing_state.remove_agent(agent_id)
+        if stale_agents and self._routing_path:
+            self._routing_state.save(self._routing_path)
+            logger.info("Removed %d stale agent entries from routing state", len(stale_agents))
+
     # ── Lifecycle ────────────────────────────────────────────────────
 
     async def start(self) -> None:
@@ -541,6 +603,9 @@ class CompanyRoot(Supervisor):
         # Load routing state from disk
         if self._routing_path is not None:
             self._routing_state = RoutingState.load(self._routing_path)
+
+        # Reconnect to surviving workers (AUTO-03)
+        await self.reconnect_agents()
 
         if self._degraded_mode is not None:
             await self._degraded_mode.start()
