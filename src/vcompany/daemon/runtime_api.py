@@ -752,37 +752,27 @@ class RuntimeAPI:
     # -- new_project: replaces on_ready project initialization ─────────
 
     async def create_strategist(self, persona_path: Path | None = None) -> None:
-        """Create the Strategist agent and register it for Discord routing.
+        """Create the Strategist conversation and register it for Discord routing.
 
         Works in both standalone mode (no project) and as part of new_project().
-        NOTE: Strategist still uses add_company_agent (container path) until
-        the conversation handler is fully ported to vco-worker.
+        Uses direct subprocess (no AgentTransport, no AgentContainer).
         """
-        from vcompany.supervisor.child_spec import ChildSpec
-        from vcompany.container.context import ContainerContext
+        from vcompany.strategist.conversation import StrategistConversation
 
-        strategist_ctx = ContainerContext(
-            agent_id="strategist",
-            agent_type="company",
-            parent_id="company-root",
-            project_id=None,
+        conversation = StrategistConversation(
+            persona_path=persona_path,
+            working_dir=Path.cwd(),
         )
-        strategist_spec = ChildSpec(
-            child_id="strategist",
-            agent_type="company",
-            context=strategist_ctx,
-        )
-        strategist_container = await self._root.add_company_agent(strategist_spec)
+        self._strategist_conversation = conversation
 
-        if hasattr(strategist_container, 'initialize_conversation'):
-            strategist_container.initialize_conversation(persona_path)
-            if self._mention_router:
-                self._mention_router.register_agent(
-                    "Strategist",
-                    strategist_container,
-                    channel_id=self.get_channel_id("strategist"),
-                )
-        logger.info("Strategist agent created and registered")
+        # Register with MentionRouter so Discord messages reach the Strategist
+        if self._mention_router:
+            self._mention_router.register_agent(
+                "Strategist",
+                conversation,
+                channel_id=self.get_channel_id("strategist"),
+            )
+        logger.info("Strategist conversation created and registered")
 
     async def new_project(
         self,

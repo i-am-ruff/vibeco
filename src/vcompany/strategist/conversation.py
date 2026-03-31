@@ -1,11 +1,9 @@
 """StrategistConversation -- persistent Claude CLI session manager.
 
-Manages a piped `claude -p --resume` conversation through the transport layer.
-The transport handles subprocess execution — this class handles session state
-(resume UUID, persona injection, style reminder cycling).
+Manages a piped `claude -p --resume` conversation via direct subprocess.
+Handles session state (resume UUID, persona injection, style reminder cycling).
 
-All execution goes through transport.exec() / transport.exec_streaming().
-No direct subprocess calls.
+Uses asyncio.create_subprocess_exec directly -- no AgentTransport dependency.
 """
 
 from __future__ import annotations
@@ -13,16 +11,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from vcompany.transport.protocol import AgentTransport
 
 logger = logging.getLogger("vcompany.strategist.conversation")
 
-# Stable UUID for the Strategist session — deterministic from a fixed seed
+# Stable UUID for the Strategist session -- deterministic from a fixed seed
 # so it survives restarts. uuid5 with DNS namespace + version string.
 # Bump the version string to force a new session (e.g., after persona changes).
 _SESSION_VERSION = "vco-strategist-v12"
@@ -128,10 +123,10 @@ def _describe_tool_use(block: dict) -> str | None:
 
 
 class StrategistConversation:
-    """Persistent Claude CLI session via transport.exec().
+    """Persistent Claude CLI session via direct subprocess.
 
-    All execution goes through the injected AgentTransport. The transport
-    handles subprocess creation, env vars (AGENT_ID), and working directory.
+    Uses asyncio.create_subprocess_exec for all Claude CLI invocations.
+    No AgentTransport dependency.
     """
 
     def __init__(
@@ -140,22 +135,19 @@ class StrategistConversation:
         session_id: str = _SESSION_UUID,
         allowed_tools: str = "Bash Read Write",
         model: str = "opus",
-        transport: AgentTransport | None = None,
+        working_dir: Path | None = None,
         agent_id: str = "strategist",
     ) -> None:
-        if transport is None:
-            raise ValueError("StrategistConversation requires a transport")
         self._system_prompt = self._load_persona(persona_path)
         self._session_id = session_id
         self._allowed_tools = allowed_tools
         self._model = model
+        self._working_dir = working_dir or Path.cwd()
         self._initialized = False
         self._lock = asyncio.Lock()
         self._message_count = 0
         self._reinject_every = 10
-        self._transport = transport
         self._agent_id = agent_id
-        self._transport_setup_done = False
 
     @staticmethod
     def _load_persona(persona_path: Path | None) -> str:
@@ -185,22 +177,19 @@ class StrategistConversation:
             for name, tc in config.types.items():
                 transport_tag = " [Docker]" if tc.transport == "docker" else ""
                 caps = ", ".join(tc.capabilities) if tc.capabilities else "none"
-                lines.append(f"- `{name}`{transport_tag} — capabilities: {caps}")
+                lines.append(f"- `{name}`{transport_tag} -- capabilities: {caps}")
             agent_types_section = "\n".join(lines) if lines else "- Run `cat agent-types.yaml` to see available types"
         except Exception:
             agent_types_section = "- Run `cat agent-types.yaml` to see available types"
 
         return raw.replace("{agent_types_section}", agent_types_section)
 
-    async def _ensure_transport_setup(self) -> None:
-        """Set up transport for piped (non-interactive) execution if not already done."""
-        if not self._transport_setup_done:
-            await self._transport.setup(
-                self._agent_id,
-                working_dir=Path.cwd(),
-                interactive=False,
-            )
-            self._transport_setup_done = True
+    def _make_env(self) -> dict[str, str]:
+        """Build environment dict with agent identity vars."""
+        env = dict(os.environ)
+        env["AGENT_ID"] = self._agent_id
+        env["VCO_AGENT_ID"] = self._agent_id
+        return env
 
     async def send(self, content: str) -> str:
         """Send a message and get the Strategist's response.
@@ -224,7 +213,7 @@ class StrategistConversation:
                 logger.info("Strategist resumed existing session: %s", self._session_id)
                 return result
 
-            # No existing session — create new one with persona as first message
+            # No existing session -- create new one with persona as first message
             logger.info("Creating new Strategist session: %s", self._session_id)
             persona_result = await self._exec_claude(
                 self._create_command(), self._system_prompt
@@ -239,15 +228,23 @@ class StrategistConversation:
     async def _exec_claude(
         self, cmd: list[str], content: str, *, allow_failure: bool = False
     ) -> str | None:
-        """Execute a claude CLI command via transport and return the response."""
-        await self._ensure_transport_setup()
+        """Execute a claude CLI command via subprocess and return the response."""
         try:
-            result = await self._transport.exec(
-                self._agent_id,
-                cmd,
-                stdin=content,
-                timeout=600,
+            env = self._make_env()
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(self._working_dir),
+                env=env,
             )
+            coro = process.communicate(input=content.encode())
+            stdout, stderr = await asyncio.wait_for(coro, timeout=600)
+            if process.returncode != 0:
+                stderr_text = stderr.decode()[:500] if stderr else ""
+                raise RuntimeError(f"Claude CLI failed (exit {process.returncode}): {stderr_text}")
+            result = stdout.decode().strip()
             return result if result else "I don't have a response for that."
         except asyncio.TimeoutError:
             logger.error("Strategist timed out after 600s")
@@ -290,13 +287,23 @@ class StrategistConversation:
                 content = f"{_STYLE_REMINDER}\n\n{content}"
 
             cmd = self._resume_command_stream()
-            await self._ensure_transport_setup()
+            env = self._make_env()
             final_text = ""
             try:
-                async for line_str in self._transport.exec_streaming(
-                    self._agent_id, cmd, stdin=content
-                ):
-                    line_str = line_str.strip()
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=str(self._working_dir),
+                    env=env,
+                )
+                process.stdin.write(content.encode())
+                process.stdin.write_eof()
+
+                # Read stdout line by line
+                async for raw_line in process.stdout:
+                    line_str = raw_line.decode().strip()
                     if not line_str:
                         continue
                     try:
@@ -315,6 +322,7 @@ class StrategistConversation:
                     if etype == "result":
                         final_text = event.get("result", "")
 
+                await process.wait()
                 return final_text if final_text else "Done (no text response)."
             except asyncio.TimeoutError:
                 return "Timed out on that task."
