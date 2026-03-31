@@ -143,7 +143,7 @@ Phases execute in numeric order: 24 -> 24.1 -> 24.2 -> 25 -> ... -> 26
 | 25. Transport Abstraction | 3/3 | Complete    | 2026-03-29 |
 | 26. Docker Runtime | 2/2 | Complete    | 2026-03-29 |
 | 27. Docker Integration Wiring | 4/4 | Complete    | 2026-03-29 |
-| 28. Agent-Transport Separation | 3/4 | In Progress|  |
+| 28. Agent-Transport Separation | 3/4 | Complete    | 2026-03-31 |
 
 ### Phase 27: Docker Integration Wiring
 **Goal**: Docker agents work end-to-end: per-transport deps resolution, docker_image flow from config to constructor, auto-build on first use, parametric agent setup (tweakcc profiles, custom settings via kwargs), and removal of hardcoded agent-type checks from business logic
