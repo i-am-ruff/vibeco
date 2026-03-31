@@ -46,14 +46,14 @@ Requirements for Container Runtime Abstraction. Each maps to roadmap phases.
 
 ### Handler Separation
 
-- [ ] **HSEP-01**: Three handler protocols (SessionHandler, ConversationHandler, TransientHandler) exist as @runtime_checkable Python Protocols with async handle_message/on_start/on_stop methods
-- [ ] **HSEP-02**: _send_discord is consolidated into base AgentContainer -- no duplicate implementations across agent subclasses
-- [ ] **HSEP-03**: Base AgentContainer delegates receive_discord_message() to injected handler, stores _channel_id for outbound messages
+- [x] **HSEP-01**: Three handler protocols (SessionHandler, ConversationHandler, TransientHandler) exist as @runtime_checkable Python Protocols with async handle_message/on_start/on_stop methods
+- [x] **HSEP-02**: _send_discord is consolidated into base AgentContainer -- no duplicate implementations across agent subclasses
+- [x] **HSEP-03**: Base AgentContainer delegates receive_discord_message() to injected handler, stores _channel_id for outbound messages
 - [ ] **HSEP-04**: agent-types.yaml has a handler field (session/conversation/transient) on every agent type entry
 - [ ] **HSEP-05**: Factory has _HANDLER_REGISTRY and injects the correct handler into containers based on agent type config
 - [ ] **HSEP-06**: Agent subclasses are thin wrappers (lifecycle FSM + domain methods only) -- handler logic extracted to handler implementations
 - [ ] **HSEP-07**: Dead code paths (self._tmux, _launch_tmux_session) removed from GsdAgent and TaskAgent
-- [ ] **HSEP-08**: Base AgentContainer handles OrderedSet compound state/inner_state -- no duplicate overrides in subclasses
+- [x] **HSEP-08**: Base AgentContainer handles OrderedSet compound state/inner_state -- no duplicate overrides in subclasses
 
 ## v3.2+ Requirements
 

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
-status: Milestone complete
-stopped_at: Phase 28 context gathered
-last_updated: "2026-03-31T04:10:06.949Z"
+status: Ready to execute
+stopped_at: Completed 28-01-PLAN.md
+last_updated: "2026-03-31T04:40:09.645Z"
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 18
+  completed_plans: 15
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 27 — docker-integration-wiring
+**Current focus:** Phase 28 — agent-transport-separation
 
 ## Current Position
 
-Phase: 27
-Plan: Not started
+Phase: 28 (agent-transport-separation) — EXECUTING
+Plan: 2 of 4
 
 ## Accumulated Context
 
@@ -60,6 +60,8 @@ Recent decisions affecting current work:
 - [Phase 27]: Dual registry by type string and class name enables docker-gsd -> GsdAgent mapping via container_class config
 - [Phase 27]: Auto-build placed in company_root.hire() not factory -- factory is sync, ensure_docker_image is async
 - [Phase 27]: Transport type detection in health_report uses hasattr duck typing on _image attribute
+- [Phase 28]: Handler protocols have identical signatures but separate types for semantic isinstance checks
+- [Phase 28]: Base _send_discord uses daemon.comm.SendMessagePayload (canonical import), _handler typed as Any to avoid import cycle
 
 ### Roadmap Evolution
 
@@ -85,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T04:10:06.942Z
-Stopped at: Phase 28 context gathered
-Resume file: .planning/phases/28-agent-transport-separation/28-CONTEXT.md
+Last session: 2026-03-31T04:40:09.642Z
+Stopped at: Completed 28-01-PLAN.md
+Resume file: None
