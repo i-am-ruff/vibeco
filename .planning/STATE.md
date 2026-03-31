@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
-status: Ready to plan
-stopped_at: Completed 30-03-PLAN.md
-last_updated: "2026-03-31T15:32:03.064Z"
+status: Ready to execute
+stopped_at: Completed 31-01-PLAN.md
+last_updated: "2026-03-31T15:55:28.882Z"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 7
+  completed_plans: 5
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-31)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 30 — worker-runtime
+**Current focus:** Phase 31 — head-refactor
 
 ## Current Position
 
-Phase: 31
-Plan: Not started
+Phase: 31 (head-refactor) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Plan: Not started
 | Phase 30 P01 | 2min | 2 tasks | 11 files |
 | Phase 30 P02 | 4min | 2 tasks | 15 files |
 | Phase 30 P03 | 2min | 1 tasks | 4 files |
+| Phase 31 P01 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,8 @@ Recent decisions affecting current work:
 - [Phase 30]: WorkerConversationHandler uses relay mode when no conversation subprocess wired -- avoids anthropic SDK dependency
 - [Phase 30]: StdioWriter uses sync stdout.buffer.write instead of private asyncio StreamWriter APIs
 - [Phase 30]: run_worker accepts duck-typed writer for testable I/O -- any object with write(bytes) + drain()
+- [Phase 31]: AgentHandle uses PrivateAttr for runtime state -- process and health cache excluded from serialization
+- [Phase 31]: RoutingState persists as JSON -- filesystem-first, no database, human-readable
 
 ### Roadmap Evolution
 
@@ -94,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T15:27:06.435Z
-Stopped at: Completed 30-03-PLAN.md
+Last session: 2026-03-31T15:55:28.878Z
+Stopped at: Completed 31-01-PLAN.md
 Resume file: None

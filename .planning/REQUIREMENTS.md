@@ -17,11 +17,11 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 
 ### Head Refactor
 
-- [ ] **HEAD-01**: Daemon holds transport handle + agent metadata per agent (id, type, capabilities, channel_id, handler type, config) -- enough to route messages, report health, and identify agents without knowing internals
+- [x] **HEAD-01**: Daemon holds transport handle + agent metadata per agent (id, type, capabilities, channel_id, handler type, config) -- enough to route messages, report health, and identify agents without knowing internals
 - [ ] **HEAD-02**: Hire flow creates Discord channel, registers routing, sends config blob through transport -- worker bootstraps from config
 - [ ] **HEAD-03**: Health tree populated from worker health reports received through transport, not daemon-side container objects
 - [ ] **HEAD-04**: Dead code removed -- daemon-side GsdAgent/CompanyAgent/FulltimeAgent Python objects, handler factory injection, NoopCommunicationPort, StrategistConversation-from-daemon, all v3.1 shims
-- [ ] **HEAD-05**: Discord channel/category lifecycle managed by head -- create on hire, cleanup on dismiss, routing persists across daemon restarts
+- [x] **HEAD-05**: Discord channel/category lifecycle managed by head -- create on hire, cleanup on dismiss, routing persists across daemon restarts
 
 ### Transport Channel
 
@@ -98,10 +98,10 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 | WORK-03 | Phase 30 | Complete |
 | WORK-04 | Phase 30 | Complete |
 | WORK-05 | Phase 30 | Complete |
-| HEAD-01 | Phase 31 | Pending |
+| HEAD-01 | Phase 31 | Complete |
 | HEAD-02 | Phase 31 | Pending |
 | HEAD-03 | Phase 31 | Pending |
-| HEAD-05 | Phase 31 | Pending |
+| HEAD-05 | Phase 31 | Complete |
 | CHAN-02 | Phase 32 | Pending |
 | CHAN-03 | Phase 32 | Pending |
 | AUTO-01 | Phase 33 | Pending |
