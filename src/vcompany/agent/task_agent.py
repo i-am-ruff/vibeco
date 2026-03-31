@@ -106,11 +106,8 @@ class TaskAgent(AgentContainer):
     # --- Lifecycle ---
 
     async def start(self) -> None:
-        """Start the task agent in tmux."""
-        self._lifecycle.start()
-        await self.memory.open()
-        if self._tmux is not None and self._needs_tmux_session:
-            await self._launch_tmux_session()
+        """Start the task agent."""
+        await super().start()
 
     async def stop(self) -> None:
         """Stop the task agent and clean up signal files."""
