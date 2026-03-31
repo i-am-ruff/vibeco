@@ -2,8 +2,9 @@
 
 import click
 
-from vcompany.cli.bot_cmd import bot
 from vcompany.cli.ask_cmd import ask
+from vcompany.cli.bot_cmd import bot
+from vcompany.cli.clean_cmd import clean
 from vcompany.cli.build_cmd import build
 from vcompany.cli.clone_cmd import clone
 from vcompany.cli.init_cmd import init
@@ -53,3 +54,4 @@ cli.add_command(health)
 cli.add_command(new_project)
 cli.add_command(send_file)
 cli.add_command(signal)
+cli.add_command(clean)
