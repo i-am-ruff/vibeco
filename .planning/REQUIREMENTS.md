@@ -1,124 +1,111 @@
 # Requirements: vCompany
 
-**Defined:** 2026-03-29
+**Defined:** 2026-03-31
 **Core Value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
 
-## v3.1 Requirements
+## v4.0 Requirements
 
-Requirements for Container Runtime Abstraction. Each maps to roadmap phases.
+Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
+
+### Worker Runtime
+
+- [ ] **WORK-01**: vco-worker is a separate installable package with report/ask/send-file/signal commands that communicate through the transport channel
+- [ ] **WORK-02**: vco-worker accepts config blob at startup (handler type, capabilities, gsd_command, persona, env vars) and self-configures the right agent process
+- [ ] **WORK-03**: vco-worker manages agent lifecycle inside the execution environment (start, health reporting, graceful stop)
+- [ ] **WORK-04**: vco-worker communicates exclusively through the transport channel (no socket mounts, no shared filesystem, no direct Discord access)
+- [ ] **WORK-05**: Worker contains full agent container runtime — handler logic (session/conversation/transient), lifecycle FSM, task queue, idle tracking, memory store, checkpoint/restore — same capabilities as previous daemon-side containers but self-managed behind the transport boundary
+
+### Head Refactor
+
+- [ ] **HEAD-01**: Daemon holds transport handle + agent metadata per agent (id, type, capabilities, channel_id, handler type, config) — enough to route messages, report health, and identify agents without knowing internals
+- [ ] **HEAD-02**: Hire flow creates Discord channel, registers routing, sends config blob through transport — worker bootstraps from config
+- [ ] **HEAD-03**: Health tree populated from worker health reports received through transport, not daemon-side container objects
+- [ ] **HEAD-04**: Dead code removed — daemon-side GsdAgent/CompanyAgent/FulltimeAgent Python objects, handler factory injection, NoopCommunicationPort, StrategistConversation-from-daemon, all v3.1 shims
+- [ ] **HEAD-05**: Discord channel/category lifecycle managed by head — create on hire, cleanup on dismiss, routing persists across daemon restarts
+
+### Transport Channel
+
+- [ ] **CHAN-01**: Bidirectional message protocol defined (head→worker: start/task/message/stop/health-check; worker→head: signal/report/ask/send-file/health-report)
+- [ ] **CHAN-02**: Docker transport uses transport channel instead of Unix socket mount — vco-worker inside Docker talks through the channel, not a mounted socket
+- [ ] **CHAN-03**: Native transport uses transport channel (local socket or in-process bridge)
+- [ ] **CHAN-04**: Network transport stub exists with TCP/WebSocket interface definition — not full production impl, but the contract is defined and a basic implementation works
+
+### Container Autonomy
+
+- [ ] **AUTO-01**: Agent state (conversations, checkpoints, memory, session files) lives inside the execution environment — not on the daemon side
+- [ ] **AUTO-02**: Duplicating a transport creates a fully independent agent — no shared daemon-side state between agents of the same type
+- [ ] **AUTO-03**: Container survives daemon restart — worker continues running, reconnects via transport channel when head comes back
+
+## Previously Completed
+
+<details>
+<summary>v3.1 Container Runtime Abstraction (44 requirements) — shipped 2026-03-31</summary>
 
 ### Discord Visibility
-
-- [x] **VIS-01**: Every inter-agent event (phase complete, task assigned, plan reviewed, escalation) produces a Discord message in the appropriate channel before the event takes effect
-- [x] **VIS-02**: PM backlog operations (add, remove, prioritize) are posted to Discord with the change described, not silently mutated
-- [x] **VIS-03**: Plan review decisions (approve/reject with confidence score and reasoning) are posted to Discord before the approval/rejection is processed
-- [x] **VIS-04**: RuntimeAPI has no agent-type-specific routing methods -- no hardcoded "send this to PM" or "send this to Strategist" wiring
-- [x] **VIS-05**: Agent-to-agent coordination uses Discord channel subscriptions, not Python post_event() calls -- any agent watching a channel can react to events
-- [x] **VIS-06**: Task assignment from PM to GSD agent is a Discord message in the agent's channel, not an internal queue_task() bypass
+- [x] **VIS-01** through **VIS-06**: All inter-agent events surfaced through Discord
 
 ### Transport Abstraction
-
-- [x] **TXPT-01**: AgentTransport protocol exists with setup/teardown/exec/is_alive/read_file/write_file methods that abstract the execution environment boundary
-- [x] **TXPT-02**: LocalTransport implements AgentTransport using TmuxManager for interactive sessions and subprocess for piped invocations
-- [x] **TXPT-03**: AgentContainer uses injected AgentTransport instead of direct TmuxManager calls
-- [x] **TXPT-04**: StrategistConversation uses injected AgentTransport.exec() instead of direct asyncio.create_subprocess_exec
-- [x] **TXPT-05**: Agent readiness and idle signaling uses daemon socket (vco signal --ready/--idle) instead of sentinel temp files
-- [x] **TXPT-06**: AgentConfig has a transport field (default "local") that factory uses to inject the correct transport implementation
+- [x] **TXPT-01** through **TXPT-06**: AgentTransport protocol, LocalTransport, socket signaling
 
 ### Docker Runtime
-
-- [x] **DOCK-01**: DockerTransport implements AgentTransport using docker exec for both interactive (tmux inside container) and piped (claude -p) modes
-- [x] **DOCK-02**: Dockerfile exists for building a Claude Code image with tweakcc patches applied
-- [x] **DOCK-03**: Docker container receives daemon Unix socket via volume mount so vco CLI commands work from inside
-- [x] **DOCK-04**: Docker container mounts agent work directory as a volume for code access
-- [x] **DOCK-05**: AgentConfig.docker_image field specifies which image to use when transport is "docker"
-- [x] **DOCK-06**: Persistent Docker containers (docker create + start/stop) preserve ~/.claude session state across agent restarts
+- [x] **DOCK-01** through **DOCK-06**: DockerTransport, Dockerfile, socket mount, persistent containers
 
 ### Docker Integration Wiring
-
-- [x] **WIRE-01**: Factory resolves transport_deps per transport type -- LocalTransport receives tmux_manager, DockerTransport receives docker_image and project_name -- daemon passes transport-agnostic context, factory maps to constructor args
-- [x] **WIRE-02**: docker_image flows from AgentConfig through ChildSpec (or transport_deps) to DockerTransport constructor without manual intervention
-- [x] **WIRE-03**: Docker image auto-builds on first use when agent with transport "docker" is hired and image is missing, OR a `vco build` command exists for explicit builds
-- [x] **WIRE-04**: DockerTransport.setup() accepts parametric kwargs (tweakcc profile name, custom settings.json content/path) enabling per-agent customization from a single universal image
-- [x] **WIRE-05**: No hardcoded agent-type string checks (if/in on type literals) remain in runtime_api.py or supervisor.py -- agent capabilities (uses_tmux, gsd_command, etc.) derived from AgentConfig fields or container class capabilities
-- [x] **WIRE-06**: Full e2e: Discord hire command -> Docker container created -> agent executes task -> signals readiness via mounted daemon socket -> appears in health tree
-- [x] **WIRE-07**: Adding a new agent type requires only an AgentConfig entry (agents.yaml) and optional container subclass registration -- zero business logic changes in runtime_api.py or supervisor.py
+- [x] **WIRE-01** through **WIRE-07**: Factory dep resolution, auto-build, parametric setup, type-check elimination
 
 ### Handler Separation
+- [x] **HSEP-01** through **HSEP-08**: Handler protocols, factory registry, subclass thinning
 
-- [x] **HSEP-01**: Three handler protocols (SessionHandler, ConversationHandler, TransientHandler) exist as @runtime_checkable Python Protocols with async handle_message/on_start/on_stop methods
-- [x] **HSEP-02**: _send_discord is consolidated into base AgentContainer -- no duplicate implementations across agent subclasses
-- [x] **HSEP-03**: Base AgentContainer delegates receive_discord_message() to injected handler, stores _channel_id for outbound messages
-- [x] **HSEP-04**: agent-types.yaml has a handler field (session/conversation/transient) on every agent type entry
-- [x] **HSEP-05**: Factory has _HANDLER_REGISTRY and injects the correct handler into containers based on agent type config
-- [x] **HSEP-06**: Agent subclasses are thin wrappers (lifecycle FSM + domain methods only) -- handler logic extracted to handler implementations
-- [x] **HSEP-07**: Dead code paths (self._tmux, _launch_tmux_session) removed from GsdAgent and TaskAgent
-- [x] **HSEP-08**: Base AgentContainer handles OrderedSet compound state/inner_state -- no duplicate overrides in subclasses
+</details>
 
-## v3.2+ Requirements
+<details>
+<summary>v3.0 CLI-First Architecture Rewrite (36 requirements) — shipped 2026-03-29</summary>
 
-Deferred to future release.
+- [x] Runtime daemon with Unix socket API
+- [x] CommunicationPort protocol + DiscordCommunicationPort adapter
+- [x] CompanyRoot extracted to daemon with RuntimeAPI gateway
+- [x] CLI commands as API clients
+- [x] Bot refactored to thin relay
+- [x] Strategist Bash-based autonomy
 
-### State Persistence
+</details>
 
-- **PERSIST-01**: Container state persists to disk and survives daemon restart
-- **PERSIST-02**: Task queue state persists and recovers on restart
-- **PERSIST-03**: Daemon reconnects to running tmux sessions on restart
-- **PERSIST-04**: FSM state recovery from persisted snapshots
+<details>
+<summary>v2.0/v2.1 Agent Container Architecture — shipped 2026-03-28</summary>
+
+- [x] Lifecycle FSM, supervision tree, 4 agent types, health tree, resilience, PM autonomy
+- [x] Work initiation, PM review gates, auto distribution, event routing, stuck detection
+
+</details>
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| State persistence / crash recovery | Deferred to v3.2 -- daemon restart loses state for now |
-| Multi-machine distributed agents | v4 scope -- NetworkTransport not in v3.1 |
-| Non-Discord CommunicationPort adapters (Slack, web) | v4 scope -- only DiscordCommunicationPort |
-| Kubernetes/orchestrator integration | v4 scope -- Docker only for v3.1 |
-| Agent-to-agent direct messaging | By design -- all communication through Discord channels |
+| Full production network deployment | v4 defines the transport stub — production multi-machine is v5 |
+| Non-Discord CommunicationPort adapters (Slack, web) | Separate concern from transport architecture |
+| Kubernetes/orchestrator integration | Docker compose or raw Docker only |
+| Agent-to-agent direct messaging | By design — all communication through Discord channels via head |
+| State persistence across Docker container rebuilds | Handled by transport channel reconnect, not filesystem persistence |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VIS-01 | Phase 24 | Complete |
-| VIS-02 | Phase 24 | Complete |
-| VIS-03 | Phase 24 | Complete |
-| VIS-04 | Phase 24 | Complete |
-| VIS-05 | Phase 24 | Complete |
-| VIS-06 | Phase 24 | Complete |
-| TXPT-01 | Phase 25 | Complete |
-| TXPT-02 | Phase 25 | Complete |
-| TXPT-03 | Phase 25 | Complete |
-| TXPT-04 | Phase 25 | Complete |
-| TXPT-05 | Phase 25 | Complete |
-| TXPT-06 | Phase 25 | Complete |
-| DOCK-01 | Phase 26 | Complete |
-| DOCK-02 | Phase 26 | Complete |
-| DOCK-03 | Phase 26 | Complete |
-| DOCK-04 | Phase 26 | Complete |
-| DOCK-05 | Phase 26 | Complete |
-| DOCK-06 | Phase 26 | Complete |
-| WIRE-01 | Phase 27 | Complete |
-| WIRE-02 | Phase 27 | Complete |
-| WIRE-03 | Phase 27 | Complete |
-| WIRE-04 | Phase 27 | Complete |
-| WIRE-05 | Phase 27 | Complete |
-| WIRE-06 | Phase 27 | Complete |
-| WIRE-07 | Phase 27 | Complete |
-| HSEP-01 | Phase 28 | Planned |
-| HSEP-02 | Phase 28 | Planned |
-| HSEP-03 | Phase 28 | Planned |
-| HSEP-04 | Phase 28 | Planned |
-| HSEP-05 | Phase 28 | Planned |
-| HSEP-06 | Phase 28 | Planned |
-| HSEP-07 | Phase 28 | Planned |
-| HSEP-08 | Phase 28 | Planned |
-
-**Coverage:**
-- v3.1 requirements: 33 total
-- Mapped to phases: 33/33
-- Unmapped: 0
-
----
-*Requirements defined: 2026-03-29*
-*Traceability updated: 2026-03-31*
+| WORK-01 | TBD | Planned |
+| WORK-02 | TBD | Planned |
+| WORK-03 | TBD | Planned |
+| WORK-04 | TBD | Planned |
+| WORK-05 | TBD | Planned |
+| HEAD-01 | TBD | Planned |
+| HEAD-02 | TBD | Planned |
+| HEAD-03 | TBD | Planned |
+| HEAD-04 | TBD | Planned |
+| HEAD-05 | TBD | Planned |
+| CHAN-01 | TBD | Planned |
+| CHAN-02 | TBD | Planned |
+| CHAN-03 | TBD | Planned |
+| CHAN-04 | TBD | Planned |
+| AUTO-01 | TBD | Planned |
+| AUTO-02 | TBD | Planned |
+| AUTO-03 | TBD | Planned |
