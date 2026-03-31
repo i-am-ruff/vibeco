@@ -163,3 +163,13 @@ Plans:
 - [x] 27-02-PLAN.md -- Docker auto-build utility and vco build CLI command
 - [x] 27-03-PLAN.md -- Type-check elimination in runtime_api.py and supervisor.py
 - [x] 27-04-PLAN.md -- Parametric DockerTransport setup, hire flow wiring, e2e validation
+
+### Phase 28: Agent-Transport Separation Refactor
+
+**Goal:** Extract handler types (tmux session, resume-conversation, memory-based transient) from agent subclasses into composable pieces orthogonal to transport (native, Docker, network). Any handler type can run on any transport without new classes.
+**Requirements**: TBD
+**Depends on:** Phase 27
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 28 to break down)

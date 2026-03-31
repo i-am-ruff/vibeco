@@ -64,6 +64,7 @@ Recent decisions affecting current work:
 ### Roadmap Evolution
 
 - Phase 27 added: Docker Integration Wiring — per-transport deps, docker_image flow, auto-build, parametric setup, remove hardcoded type checks, e2e Docker agent via Discord
+- Phase 28 added: Agent-Transport Separation Refactor — extract handler types from agent subclasses into composable pieces orthogonal to transport
 
 ### Blockers/Concerns
 
