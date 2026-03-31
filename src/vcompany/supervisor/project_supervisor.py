@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from vcompany.autonomy.delegation import DelegationPolicy
-from vcompany.container.child_spec import ChildSpec
+from vcompany.supervisor.child_spec import ChildSpec
 from vcompany.supervisor.strategies import RestartStrategy
 from vcompany.supervisor.supervisor import Supervisor
 

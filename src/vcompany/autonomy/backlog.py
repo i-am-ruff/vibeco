@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
-from vcompany.container.memory_store import MemoryStore
+from vcompany.shared.memory_store import MemoryStore
 
 BACKLOG_KEY = "backlog"
 

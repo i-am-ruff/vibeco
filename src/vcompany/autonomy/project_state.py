@@ -17,7 +17,7 @@ import json
 import logging
 
 from vcompany.autonomy.backlog import BacklogItem, BacklogItemStatus, BacklogQueue
-from vcompany.container.memory_store import MemoryStore
+from vcompany.shared.memory_store import MemoryStore
 
 logger = logging.getLogger("vcompany.autonomy.project_state")
 

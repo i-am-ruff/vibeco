@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from vcompany.container.health import HealthReport
+from vcompany.supervisor.health import HealthReport
 from vcompany.transport.channel.framing import encode
 from vcompany.transport.channel.messages import (
     HeadMessage,

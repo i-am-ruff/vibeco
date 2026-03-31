@@ -15,7 +15,7 @@ import discord
 
 if TYPE_CHECKING:
     from vcompany.communication.checkin import CheckinData
-    from vcompany.container.health import CompanyHealthTree
+    from vcompany.supervisor.health import CompanyHealthTree
     from vcompany.integration.models import IntegrationResult
 
 

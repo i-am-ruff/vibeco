@@ -758,7 +758,7 @@ class RuntimeAPI:
         NOTE: Strategist still uses add_company_agent (container path) until
         the conversation handler is fully ported to vco-worker.
         """
-        from vcompany.container.child_spec import ChildSpec
+        from vcompany.supervisor.child_spec import ChildSpec
         from vcompany.container.context import ContainerContext
 
         strategist_ctx = ContainerContext(
@@ -810,7 +810,8 @@ class RuntimeAPI:
         await self.create_strategist(persona_path)
 
         # 2. Build child specs from agents.yaml
-        from vcompany.container.factory import get_agent_types_config
+        from vcompany.models.agent_types import get_agent_types_config
+        from vcompany.supervisor.child_spec import ChildSpec
 
         agent_types = get_agent_types_config()
         specs = []

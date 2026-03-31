@@ -17,13 +17,13 @@ import sys
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from vcompany.container.child_spec import ChildSpec
 from vcompany.container.communication import NoopCommunicationPort
 from vcompany.container.container import AgentContainer
 from vcompany.container.context import ContainerContext
 from vcompany.container.factory import create_container, register_defaults
-from vcompany.container.health import CompanyHealthTree, HealthNode, HealthReport, HealthTree
-from vcompany.container.memory_store import MemoryStore
+from vcompany.shared.memory_store import MemoryStore
+from vcompany.supervisor.child_spec import ChildSpec
+from vcompany.supervisor.health import CompanyHealthTree, HealthNode, HealthReport, HealthTree
 from vcompany.daemon.agent_handle import AgentHandle
 from vcompany.daemon.routing_state import AgentRouting, RoutingState
 from vcompany.resilience.degraded_mode import DegradedModeManager
@@ -219,7 +219,7 @@ class CompanyRoot(Supervisor):
         # Look up agent type config
         agent_types = None
         try:
-            from vcompany.container.factory import get_agent_types_config
+            from vcompany.models.agent_types import get_agent_types_config
             agent_types = get_agent_types_config()
         except Exception:
             pass

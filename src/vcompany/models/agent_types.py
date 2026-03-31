@@ -91,6 +91,24 @@ def get_default_config() -> AgentTypesConfig:
     )
 
 
+# Module-level agent types config -- set once at daemon startup via set_agent_types_config()
+_agent_types_config: AgentTypesConfig | None = None
+
+
+def set_agent_types_config(config: AgentTypesConfig) -> None:
+    """Set the agent types config for factory transport resolution.
+
+    Called once at daemon startup after loading agent-types.yaml.
+    """
+    global _agent_types_config
+    _agent_types_config = config
+
+
+def get_agent_types_config() -> AgentTypesConfig | None:
+    """Return the current agent types config, or None if not set."""
+    return _agent_types_config
+
+
 def load_agent_types(config_path: Path) -> AgentTypesConfig:
     """Load and validate agent-types.yaml.
 

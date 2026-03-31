@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 
 from pydantic import BaseModel
 
-from vcompany.container.memory_store import MemoryStore
+from vcompany.shared.memory_store import MemoryStore
 
 if TYPE_CHECKING:
     from vcompany.container.container import AgentContainer

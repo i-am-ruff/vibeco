@@ -14,7 +14,7 @@ from pathlib import Path
 
 from aiohttp import web
 
-from vcompany.container.factory import set_agent_types_config
+from vcompany.models.agent_types import set_agent_types_config
 from vcompany.daemon.comm import (
     CommunicationPort,
     NoopCommunicationPort,

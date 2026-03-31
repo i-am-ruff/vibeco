@@ -70,7 +70,7 @@ class HealthCog(commands.Cog):
             )
             return
 
-        from vcompany.container.health import CompanyHealthTree
+        from vcompany.supervisor.health import CompanyHealthTree
 
         tree_data = await runtime_api.health_tree()
         tree = CompanyHealthTree(**tree_data)

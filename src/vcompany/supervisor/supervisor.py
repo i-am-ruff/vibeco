@@ -19,11 +19,11 @@ from vcompany.autonomy.delegation import (
     DelegationResult,
     DelegationTracker,
 )
-from vcompany.container.child_spec import ChildSpec, RestartPolicy
 from vcompany.container.container import AgentContainer
 from vcompany.container.context import ContainerContext
 from vcompany.container.factory import create_container
-from vcompany.container.health import HealthNode, HealthReport, HealthTree
+from vcompany.supervisor.child_spec import ChildSpec, RestartPolicy
+from vcompany.supervisor.health import HealthNode, HealthReport, HealthTree
 from vcompany.resilience.bulk_failure import BulkFailureDetector
 from vcompany.supervisor.restart_tracker import RestartTracker
 from vcompany.supervisor.strategies import RestartStrategy
@@ -170,7 +170,7 @@ class Supervisor:
             project_id = self._child_specs[0].context.project_id
 
         # D-11: Look up type config from agent-types for capability-driven fields
-        from vcompany.container.factory import get_agent_types_config
+        from vcompany.models.agent_types import get_agent_types_config
 
         agent_types = get_agent_types_config()
         type_config = agent_types.get_type(request.agent_type) if agent_types else None
