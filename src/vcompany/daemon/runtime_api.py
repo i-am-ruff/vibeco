@@ -87,6 +87,18 @@ class RuntimeAPI:
             )
 
         container = await self._root.hire(agent_id, template=template, agent_type=agent_type)
+
+        # Immediate hire confirmation in the agent's channel
+        channel_id = self._channel_ids.get(f"task-{agent_id}")
+        if channel_id:
+            effective_type = agent_type or template
+            await self._get_comm().send_message(
+                SendMessagePayload(
+                    channel_id=channel_id,
+                    content=f"Hired **{agent_id}** (type: `{effective_type}`). Starting up...",
+                )
+            )
+
         return container.context.agent_id
 
     async def give_task(self, agent_id: str, task: str) -> None:
