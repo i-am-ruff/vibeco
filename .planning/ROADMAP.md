@@ -118,7 +118,12 @@ Plans:
   3. Worker manages full agent lifecycle inside the execution environment: start, health reporting on request, graceful stop on signal
   4. Worker contains the complete agent container runtime -- handler logic (session/conversation/transient), lifecycle FSM, task queue, idle tracking, memory store, checkpoint/restore -- previously daemon-side capabilities now self-managed
   5. Worker has no dependency on discord.py, bot code, or orchestration modules -- only transport channel client and agent process management
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 30-01-PLAN.md -- Scaffold vco-worker package with channel protocol, config, CLI commands
+- [ ] 30-02-PLAN.md -- Extract WorkerContainer with adapted handlers and lifecycle FSMs
+- [ ] 30-03-PLAN.md -- Wire worker main loop with message dispatch and bootstrap
 
 ### Phase 31: Head Refactor
 **Goal**: Daemon holds only transport handles and agent metadata -- all container internals run inside the worker on the other side of the transport
@@ -169,7 +174,7 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 29. Transport Channel Protocol | 1/1 | Complete    | 2026-03-31 |
-| 30. Worker Runtime | 0/TBD | Not started | - |
+| 30. Worker Runtime | 0/3 | Not started | - |
 | 31. Head Refactor | 0/TBD | Not started | - |
 | 32. Transport Channel Implementations | 0/TBD | Not started | - |
 | 33. Container Autonomy | 0/TBD | Not started | - |
