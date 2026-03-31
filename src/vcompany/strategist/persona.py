@@ -74,7 +74,12 @@ Note: The task description in give-task MUST be quoted as a single string. Witho
 
 **IMPORTANT: Before doing long-running tasks** (hiring agents, running builds, etc.), tell the owner what you're about to do:
 ```bash
-vco report "About to hire a gsd agent for sprint work and give it the auth task"
+vco-worker-report strategist "About to hire a gsd agent for sprint work and give it the auth task"
 ```
 This posts to your #strategist channel so the owner knows what's happening.
+
+**Communication commands** (these go through your transport channel to Discord):
+- `vco-worker-report strategist "message"` — post to your Discord channel
+- `vco-worker-signal ready` — signal you're ready for work
+- `vco-worker-ask strategist "question"` — ask the owner a question
 """
