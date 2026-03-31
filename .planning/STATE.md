@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
-status: Ready to plan
-stopped_at: Completed 29-01-PLAN.md
-last_updated: "2026-03-31T06:32:12.492Z"
+status: Ready to execute
+stopped_at: Completed 30-01-PLAN.md
+last_updated: "2026-03-31T15:16:57.550Z"
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_plans: 4
+  completed_plans: 2
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-31)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 29 — transport-channel-protocol
+**Current focus:** Phase 30 — worker-runtime
 
 ## Current Position
 
-Phase: 30
-Plan: Not started
+Phase: 30 (worker-runtime) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
@@ -47,6 +47,7 @@ Plan: Not started
 
 *Updated after each plan completion*
 | Phase 29 P01 | 2min | 1 tasks | 4 files |
+| Phase 30 P01 | 2min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,8 @@ Recent decisions affecting current work:
 - [v4.0]: vco-worker must be installable standalone -- no discord.py, no bot code, no orchestration
 - [Phase 29]: StrEnum discriminators for channel protocol messages -- human-readable JSON type fields
 - [Phase 29]: Separate TypeAdapter per direction -- decode_head/decode_worker enforce type-level direction safety
+- [Phase 30]: Duplicate channel protocol files verbatim into worker package for zero vcompany dependency
+- [Phase 30]: Handler registry uses lazy string-based imports so it can be defined before handler classes exist
 
 ### Roadmap Evolution
 
@@ -85,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T06:29:16.103Z
-Stopped at: Completed 29-01-PLAN.md
+Last session: 2026-03-31T15:16:57.547Z
+Stopped at: Completed 30-01-PLAN.md
 Resume file: None

@@ -9,10 +9,10 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 
 ### Worker Runtime
 
-- [ ] **WORK-01**: vco-worker is a separate installable package with report/ask/send-file/signal commands that communicate through the transport channel
-- [ ] **WORK-02**: vco-worker accepts config blob at startup (handler type, capabilities, gsd_command, persona, env vars) and self-configures the right agent process
+- [x] **WORK-01**: vco-worker is a separate installable package with report/ask/send-file/signal commands that communicate through the transport channel
+- [x] **WORK-02**: vco-worker accepts config blob at startup (handler type, capabilities, gsd_command, persona, env vars) and self-configures the right agent process
 - [ ] **WORK-03**: vco-worker manages agent lifecycle inside the execution environment (start, health reporting, graceful stop)
-- [ ] **WORK-04**: vco-worker communicates exclusively through the transport channel (no socket mounts, no shared filesystem, no direct Discord access)
+- [x] **WORK-04**: vco-worker communicates exclusively through the transport channel (no socket mounts, no shared filesystem, no direct Discord access)
 - [ ] **WORK-05**: Worker contains full agent container runtime -- handler logic (session/conversation/transient), lifecycle FSM, task queue, idle tracking, memory store, checkpoint/restore -- same capabilities as previous daemon-side containers but self-managed behind the transport boundary
 
 ### Head Refactor
@@ -93,10 +93,10 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | CHAN-01 | Phase 29 | Complete |
-| WORK-01 | Phase 30 | Pending |
-| WORK-02 | Phase 30 | Pending |
+| WORK-01 | Phase 30 | Complete |
+| WORK-02 | Phase 30 | Complete |
 | WORK-03 | Phase 30 | Pending |
-| WORK-04 | Phase 30 | Pending |
+| WORK-04 | Phase 30 | Complete |
 | WORK-05 | Phase 30 | Pending |
 | HEAD-01 | Phase 31 | Pending |
 | HEAD-02 | Phase 31 | Pending |
