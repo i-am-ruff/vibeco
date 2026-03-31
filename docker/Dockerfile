@@ -26,6 +26,10 @@ COPY pyproject.toml /opt/vcompany/pyproject.toml
 COPY src/ /opt/vcompany/src/
 RUN cd /opt/vcompany && uv pip install --system -e .
 
+# Install vco-worker package (Phase 30) for channel protocol communication
+COPY packages/vco-worker/ /opt/vco-worker/
+RUN cd /opt/vco-worker && uv pip install --system -e .
+
 # Default Claude settings baked into image (D-09)
 # Container writable layer preserves modifications across stop/start
 RUN mkdir -p /root/.claude
@@ -34,6 +38,6 @@ COPY docker/settings.json /root/.claude/settings.json
 # Working directory mounted at runtime via -v host_clone:/workspace
 WORKDIR /workspace
 
-# Keep container alive for exec-based interaction
-# tmux server started by DockerTransport.setup() via docker exec
-CMD ["sleep", "infinity"]
+# Default entrypoint: vco-worker reads from stdin, writes to stdout
+# DockerChannelTransport pipes channel protocol via docker run -i
+CMD ["python", "-m", "vco_worker"]
