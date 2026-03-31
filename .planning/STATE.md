@@ -1,30 +1,32 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.1
-milestone_name: Container Runtime Abstraction
-status: Milestone complete
-stopped_at: Completed 28-04-PLAN.md
-last_updated: "2026-03-31T05:00:26.533Z"
+milestone: v4.0
+milestone_name: Distributed Agent Runtime
+status: Defining requirements
+stopped_at: ""
+last_updated: "2026-03-31T08:30:00.000Z"
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 18
-  completed_plans: 18
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-29)
+See: .planning/PROJECT.md (updated 2026-03-31)
 
-**Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 28 — agent-transport-separation
+**Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly — all operable from Discord.
+**Current focus:** v4.0 — Distributed Agent Runtime (defining requirements)
 
 ## Current Position
 
-Phase: 28
-Plan: Not started
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-31 — Milestone v4.0 started
 
 ## Accumulated Context
 

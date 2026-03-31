@@ -10,25 +10,27 @@ Every agent runs inside an Erlang-style supervision tree with lifecycle state ma
 
 Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly — all operable from Discord.
 
-## Current Milestone: v3.1 Container Runtime Abstraction
+## Current Milestone: v4.0 Distributed Agent Runtime
 
-**Goal:** Remove hidden inter-agent communication, surface all agent interactions through Discord, then abstract the execution environment so agents can run in Docker containers with isolated Claude Code configurations.
+**Goal:** Agent containers run inside transports as autonomous processes. Split vco into vco-head (orchestration) and vco-worker (container runtime). All communication through transport channel. Dead code from daemon-side container architecture ripped out.
 
 **Target features:**
-- All inter-agent events routed through Discord (no hidden post_event() bypasses)
-- PM actions (task assignment, plan review, escalation) visible on Discord before taking effect
-- No agent-specific hardcoding in RuntimeAPI — channel subscriptions replace Python method wiring
-- AgentTransport protocol abstracting execution environment (local tmux vs Docker)
-- Socket-based agent signaling (replaces sentinel temp files)
-- DockerTransport for isolated agent runtimes (enables per-agent tweakcc)
+- vco-worker package — lightweight runtime (report/ask/send-file/signal), runs inside Docker/native/network
+- vco-head — daemon stripped to orchestration + transport handles only, no agent Python objects
+- Transport channel protocol — replaces Unix socket mounts, bidirectional head↔worker messaging
+- Container bootstrapping — head sends config blob through transport, worker self-configures and starts agent
+- Agent state inside container — conversations, checkpoints, memory all behind transport boundary
+- Docker containers run vco-worker only — no socket mount, no daemon filesystem access
+- Rip out daemon-side container objects, handler injection from factory, StrategistConversation managed from daemon side, all v3.1 shims
+- Network transport stub — TCP/WebSocket interface ready for remote agents
 
 ## Current State
 
-**v3.1 Phase 27 complete (2026-03-30).** Docker Integration Wiring done — agent-types.yaml as single source of truth, factory resolves per-transport deps, auto-build on first use, parametric DockerTransport setup (tweakcc/settings), all hardcoded type checks eliminated, config-derived capabilities throughout.
+**v4.0 starting (2026-03-31).** v3.1 complete — transport abstraction, Docker runtime, agent-types config, handler extraction done. Architecture docs define the v4 target: containers behind transport boundary, vco-head/worker split.
 
 ## Previously Shipped
 
-**v3.1 Phase 27 Docker Integration Wiring (2026-03-30):** Agent-types config system, factory per-transport dep resolution, Docker auto-build, parametric setup (tweakcc profiles, custom settings), hardcoded type-check elimination, config-derived capabilities, vco build CLI — 4 plans, 7 requirements (WIRE-01–07)
+**v3.1 Container Runtime Abstraction (2026-03-31):** Transport abstraction (AgentTransport protocol, LocalTransport, DockerTransport), Docker runtime (Dockerfile, auto-build, parametric setup), agent-types.yaml config system, handler extraction (SessionHandler, ConversationHandler, TransientHandler), communication abstraction (all agent comms through daemon socket), MentionRouterCog unified routing, StrategistCog removed — 5 phases, 15 plans, 44 requirements
 **v3.0 CLI-First Architecture Rewrite (2026-03-29):** Runtime daemon, Unix socket API (NDJSON), CommunicationPort abstraction, RuntimeAPI gateway (600+ lines), CompanyRoot extraction, 6 CLI commands, bot cogs as pure I/O adapters, Strategist CLI autonomy — 6 phases, 15 plans, 36 requirements
 **v2.1 Behavioral Integration (2026-03-28):** Work initiation, PM review gates, auto work distribution, PM event routing, stuck-agent detection, health tree rendering
 **v2.0 Agent Container Architecture (2026-03-28):** 8-state lifecycle FSM, supervision tree, 4 agent types, health tree, resilience, PM autonomy
@@ -103,14 +105,20 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ### Active
 
-- [ ] State persistence for container state, pane IDs, task queues (deferred to v3.2+)
+- [ ] vco-worker package — lightweight container-side runtime
+- [ ] vco-head — daemon as pure orchestrator with transport handles only
+- [ ] Transport channel protocol — replaces socket mounts
+- [ ] Container bootstrapping via transport
+- [ ] Agent state inside container (conversations, checkpoints, memory)
+- [ ] Docker containers without socket mount
+- [ ] Dead code removal (daemon-side containers, handler factory injection, shims)
+- [ ] Network transport stub
 
 ### Out of Scope
 
 - Any specific product implementation — vCompany is project-agnostic, products are inputs
 - Mobile app or web UI for vCompany itself — Discord is the interface
-- Multi-machine distributed agents — runs on a single local machine (v4 scope)
-- Non-Discord interaction channels — v4 scope (abstract channel backends)
+- Full multi-machine production deployment — network transport is a stub/foundation in v4
 - Clone disk space optimization — noted, not solving yet
 - CI/CD pipeline integration — agents build and test locally
 
@@ -130,7 +138,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - **Agent isolation**: Agents never share working directories, never write outside owned paths
 - **CLI-first, Discord-second**: CLI is primary interface, Discord is a relay adapter
 - **GSD compatibility**: Agents run standard GSD pipelines — vCompany orchestrates, not replaces, GSD
-- **Single machine**: All agents, monitor, and bot run on one machine (v2)
+- **Transport-agnostic**: Agent containers work behind any transport (native, Docker, network)
 
 ## Key Decisions
 
@@ -170,4 +178,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-30 after Phase 27 completion*
+*Last updated: 2026-03-31 after v4.0 milestone start*
