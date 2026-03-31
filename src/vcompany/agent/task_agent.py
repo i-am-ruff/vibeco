@@ -1,15 +1,15 @@
 """TaskAgent — lightweight company-scoped agent for Strategist-dispatched tasks.
 
-Runs Claude Code interactively via transport (like GSD agents) but without GSD
+Runs Claude Code interactively in tmux (like GSD agents) but without GSD
 workflow, phases, or plan gates.  The Strategist dispatches it with a task
-prompt, communicates via Discord (messages relayed to/from the agent),
+prompt, communicates via Discord (messages relayed to/from the tmux pane),
 and dismisses it when done.
 
 Lifecycle:
-  1. Dispatched by Strategist -> scratch dir created, Claude launched via transport
+  1. Dispatched by Strategist → scratch dir created, Claude launched in tmux
   2. Agent works autonomously, posts results via /vco:send
-  3. Strategist replies -> relayed to agent via handler
-  4. Agent finishes -> runs /vco:finish (writes marker, exits)
+  3. Strategist replies → relayed to agent's tmux pane
+  4. Agent finishes → runs /vco:finish (writes marker, exits)
   5. Container detects clean finish (marker) vs crash (no marker)
 """
 
@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from vcompany.container.container import AgentContainer
+from vcompany.container.context import ContainerContext
 from vcompany.container.health import HealthReport
 
 if TYPE_CHECKING:
@@ -32,16 +33,16 @@ TASKS_DIR = Path.home() / "vco-tasks"
 
 
 class TaskAgent(AgentContainer):
-    """Company-scoped task agent running Claude Code via transport.
+    """Company-scoped task agent running Claude Code in tmux.
 
     Unlike GSD agents, TaskAgents:
     - Have no phase FSM or plan gates
     - Work in a scratch directory, not a project clone
-    - Communicate with the Strategist via Discord + handler relay
+    - Communicate with the Strategist via Discord + tmux relay
     - Use TEMPORARY restart policy (no auto-restart on crash)
     - Track lightweight inner state via a ``.phase`` marker file
 
-    Path layout: the ``project_dir`` IS the working directory -- no
+    Path layout: the ``project_dir`` IS the working directory — no
     ``clones/`` subdirectory. System prompt is handled by CLAUDE.md
     auto-discovery, not ``--append-system-prompt-file``.
     """
@@ -57,7 +58,7 @@ class TaskAgent(AgentContainer):
 
     @property
     def system_prompt_path(self) -> Path | None:
-        """None -- task agents use CLAUDE.md auto-discovery, not --append-system-prompt-file."""
+        """None — task agents use CLAUDE.md auto-discovery, not --append-system-prompt-file."""
         return None
 
     # --- Finish & Phase Tracking ---
@@ -105,10 +106,13 @@ class TaskAgent(AgentContainer):
     # --- Lifecycle ---
 
     async def start(self) -> None:
-        """Start the task agent via base container transport."""
-        await super().start()
+        """Start the task agent in tmux."""
+        self._lifecycle.start()
+        await self.memory.open()
+        if self._tmux is not None and self._needs_tmux_session:
+            await self._launch_tmux_session()
 
     async def stop(self) -> None:
         """Stop the task agent and clean up signal files."""
         await super().stop()
-        # Don't delete working_dir -- Strategist may want to read REPORT.md
+        # Don't delete working_dir — Strategist may want to read REPORT.md

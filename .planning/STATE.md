@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
-status: Ready to execute
-stopped_at: Completed 28-03-PLAN.md
-last_updated: "2026-03-31T04:47:26.117Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 28-04-PLAN.md
+last_updated: "2026-03-31T04:54:46.452Z"
 progress:
   total_phases: 5
   completed_phases: 4
@@ -65,6 +65,9 @@ Recent decisions affecting current work:
 - [Phase 28]: Checkpoint lock on handler (D-02 exception): synchronization infra, not agent state
 - [Phase 28]: handler field defaults to None for backward compatibility with legacy subclass routing
 - [Phase 28]: _HANDLER_REGISTRY parallels _TRANSPORT_REGISTRY pattern for consistency
+- [Phase 28]: GsdAgent keeps checkpoint/phase methods locally rather than delegating to handler
+- [Phase 28]: Handler on_start runs between memory.open() and transport launch for correct checkpoint-restore ordering
+- [Phase 28]: TaskAgent inner_state override kept for .phase marker file (different mechanism than OrderedSet)
 
 ### Roadmap Evolution
 
@@ -90,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T04:47:26.113Z
-Stopped at: Completed 28-03-PLAN.md
+Last session: 2026-03-31T04:54:46.449Z
+Stopped at: Completed 28-04-PLAN.md
 Resume file: None
