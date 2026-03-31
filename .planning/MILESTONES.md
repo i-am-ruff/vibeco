@@ -1,5 +1,28 @@
 # Milestones
 
+## v4.0 Distributed Agent Runtime (Shipped: 2026-03-31)
+
+**Phases completed:** 6 phases, 15 plans, 24 tasks
+
+**Key accomplishments:**
+
+- 10 Pydantic v2 message models with StrEnum discriminated unions and NDJSON framing for bidirectional head-worker transport
+- Standalone vco-worker package with channel protocol, WorkerConfig model, handler registry, and 4 NDJSON CLI commands -- zero vcompany imports
+- WorkerContainer with lifecycle FSM, channel-based communication, and three adapted handler types (session, conversation, transient) -- complete agent runtime inside worker process
+- Async worker main loop reading HeadMessages from stdin, dispatching to WorkerContainer, writing NDJSON responses to stdout via duck-typed writer
+- CompanyRoot and RuntimeAPI refactored to use AgentHandle + transport channel messages for company-level agents, with routing state persistence and background channel readers
+- MentionRouterCog dual dispatch -- AgentHandle receives InboundMessage via transport channel, AgentContainer preserved for legacy project agents
+- ChannelTransport protocol with NativeTransport (local subprocess) and DockerChannelTransport (docker run -i) both spawning vco-worker with piped stdin/stdout for NDJSON communication
+- CompanyRoot.hire() delegates to ChannelTransport.spawn() via transport_name parameter, Dockerfile runs vco-worker directly
+- ReconnectMessage in channel protocol, Unix socket server for worker, cwd-relative .vco-state paths
+- Socket-based transports with detached workers, Unix domain socket communication, and reconnection support for daemon restart survival
+- CompanyRoot wired for daemon restart survival: reconnect_agents() reconnects to surviving workers via socket transport, hire() uses attach_socket, channel reader uses handle.reader property
+- Migrated HealthReport/ChildSpec/MemoryStore to permanent homes and ported StrategistConversation to direct subprocess, eliminating all container/ imports for migrated types
+- Deleted agent/, handler/, container/ directories and 3 transport files (7,872 lines removed), cleaned all isinstance dispatch branches to assume AgentHandle only, deleted 18 dead test files and updated 14 surviving test imports
+- NetworkTransport TCP stub implementing ChannelTransport protocol with asyncio.open_connection for remote worker connectivity
+
+---
+
 ## v3.0 CLI-First Architecture Rewrite (Shipped: 2026-03-29)
 
 **Phases completed:** 6 phases, 15 plans, 29 tasks

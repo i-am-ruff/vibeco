@@ -4,32 +4,19 @@
 
 vCompany is a project-agnostic orchestration system that coordinates multiple parallel Claude Code/GSD agents to build software products autonomously. A human owner provides strategic direction via Discord. A Claude-powered PM/Strategist bot handles product decisions. A Python CLI (`vco`) and Discord bot handle dispatch, monitoring, integration, and recovery. Give it a product blueprint and a milestone scope — it builds.
 
-Every agent runs inside an Erlang-style supervision tree with lifecycle state machines, real tmux session bridging, self-reported health, and priority-queued Discord communication.
+Every agent runs as an autonomous vco-worker process behind a transport channel. The daemon (vco-head) holds only transport handles and metadata — all container internals (handlers, lifecycle FSMs, memory, checkpoint) live inside the worker. Workers survive daemon restarts and reconnect via Unix domain sockets.
 
 ## Core Value
 
 Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly — all operable from Discord.
 
-## Current Milestone: v4.0 Distributed Agent Runtime
-
-**Goal:** Agent containers run inside transports as autonomous processes. Split vco into vco-head (orchestration) and vco-worker (container runtime). All communication through transport channel. Dead code from daemon-side container architecture ripped out.
-
-**Target features:**
-- vco-worker package — lightweight runtime (report/ask/send-file/signal), runs inside Docker/native/network
-- vco-head — daemon stripped to orchestration + transport handles only, no agent Python objects
-- Transport channel protocol — replaces Unix socket mounts, bidirectional head↔worker messaging
-- Container bootstrapping — head sends config blob through transport, worker self-configures and starts agent
-- Agent state inside container — conversations, checkpoints, memory all behind transport boundary
-- Docker containers run vco-worker only — no socket mount, no daemon filesystem access
-- Rip out daemon-side container objects, handler injection from factory, StrategistConversation managed from daemon side, all v3.1 shims
-- Network transport stub — TCP/WebSocket interface ready for remote agents
-
 ## Current State
 
-**v4.0 complete (2026-03-31).** All 6 phases shipped — transport channel protocol, vco-worker package, head refactor, transport implementations, container autonomy, dead code cleanup + network stub. v3.1 complete — transport abstraction, Docker runtime, agent-types config, handler extraction done.
+**v4.0 shipped (2026-03-31).** Distributed Agent Runtime — 6 phases, 15 plans, 17 requirements. vco-worker standalone package, head refactored to AgentHandle + channel messages, NativeTransport + DockerChannelTransport, socket-based daemon restart survival, ~7,800 lines dead code removed, NetworkTransport TCP stub.
 
 ## Previously Shipped
 
+**v4.0 Distributed Agent Runtime (2026-03-31):** Transport channel protocol (10 typed Pydantic v2 message models, NDJSON framing), vco-worker standalone package (WorkerContainer, handlers, lifecycle FSMs, memory store), head refactored to AgentHandle + channel messages, NativeTransport + DockerChannelTransport, container autonomy (socket comms, cwd-relative state, daemon restart survival), dead code removed (~7,800 lines), NetworkTransport TCP stub — 6 phases, 15 plans, 17 requirements
 **v3.1 Container Runtime Abstraction (2026-03-31):** Transport abstraction (AgentTransport protocol, LocalTransport, DockerTransport), Docker runtime (Dockerfile, auto-build, parametric setup), agent-types.yaml config system, handler extraction (SessionHandler, ConversationHandler, TransientHandler), communication abstraction (all agent comms through daemon socket), MentionRouterCog unified routing, StrategistCog removed — 5 phases, 15 plans, 44 requirements
 **v3.0 CLI-First Architecture Rewrite (2026-03-29):** Runtime daemon, Unix socket API (NDJSON), CommunicationPort abstraction, RuntimeAPI gateway (600+ lines), CompanyRoot extraction, 6 CLI commands, bot cogs as pure I/O adapters, Strategist CLI autonomy — 6 phases, 15 plans, 36 requirements
 **v2.1 Behavioral Integration (2026-03-28):** Work initiation, PM review gates, auto work distribution, PM event routing, stuck-agent detection, health tree rendering
@@ -128,9 +115,8 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - Python 3.12 for all tooling (vco CLI, Discord bot, hooks)
 - Depends on: Claude Code, GSD (globally installed), Node.js 22 LTS, tmux, Git, GitHub CLI
 - Discord server configured with bot, webhooks, channel structure
-- v3.1 shipped: Phase 26 complete — DockerTransport, Dockerfile, transport abstraction, socket-based signaling, Discord visibility
-- v3.0 shipped: daemon architecture, RuntimeAPI (600+ lines), 6 CLI commands, bot as thin relay, 17k LOC Python
-- Known tech debt: test suite needs cleanup (asyncio patterns, Click 8.3 compat, missing Phase 23 verification)
+- v4.0 shipped: vco-worker standalone package, AgentHandle + channel messages, socket-based daemon restart survival, ~18.6k LOC Python
+- Known tech debt: dispatch() uses old stdio spawn path, health polling loop missing, test suite cleanup needed (asyncio patterns, Click 8.3 compat)
 
 ## Constraints
 
@@ -159,6 +145,12 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 | RuntimeAPI gateway pattern | Single typed class wrapping all CompanyRoot operations | ✓ Good |
 | Bot as thin I/O adapter | Zero container/supervisor/agent imports in cog modules | ✓ Good |
 | Strategist uses vco CLI | Bash tool runs vco commands instead of [CMD:] action tags | ✓ Good |
+| vco-worker as separate package | Standalone installable, zero vcompany imports, runs inside any transport | ✓ Good |
+| Channel protocol over NDJSON | Transport-agnostic typed messages, same framing as daemon API | ✓ Good |
+| AgentHandle replaces AgentContainer | Daemon holds only metadata + transport handle, no container internals | ✓ Good |
+| Unix domain sockets for transport | Workers survive daemon restarts, deterministic socket paths | ✓ Good |
+| Duplicate channel protocol in worker | ~150 lines, stable, avoids third shared package complexity | ✓ Good |
+| Strategist ported to direct subprocess | Eliminates AgentTransport/CompanyAgent pipeline, simpler | ✓ Good |
 
 ## Evolution
 
@@ -178,4 +170,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31 after v4.0 milestone completion*
+*Last updated: 2026-03-31 after v4.0 milestone shipped*
