@@ -178,10 +178,10 @@ Plans:
   1. Daemon-side GsdAgent, CompanyAgent, FulltimeAgent Python objects are deleted -- along with handler factory injection, NoopCommunicationPort, StrategistConversation-from-daemon, and all v3.1 shims
   2. A NetworkTransport stub exists with TCP/WebSocket interface definition -- not production-ready, but the contract is defined and a basic connect/send/receive works
   3. The codebase compiles and all existing functionality (hire, give-task, dismiss, health, status) works after dead code removal
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
-- [ ] 34-01-PLAN.md -- Migrate live types from container/ and port StrategistConversation to direct subprocess
+- [x] 34-01-PLAN.md -- Migrate live types from container/ and port StrategistConversation to direct subprocess
 - [ ] 34-02-PLAN.md -- Delete dead code directories, clean isinstance branches, remove dead tests
 - [ ] 34-03-PLAN.md -- Create NetworkTransport TCP stub implementing ChannelTransport protocol
 
@@ -197,4 +197,4 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 | 31. Head Refactor | 3/3 | Complete    | 2026-03-31 |
 | 32. Transport Channel Implementations | 2/2 | Complete    | 2026-03-31 |
 | 33. Container Autonomy | 3/3 | Complete    | 2026-03-31 |
-| 34. Cleanup and Network Stub | 0/3 | Not started | - |
+| 34. Cleanup and Network Stub | 1/3 | In Progress|  |

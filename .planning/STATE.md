@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
-status: Ready to plan
-stopped_at: Completed 33-03-PLAN.md
-last_updated: "2026-03-31T17:01:20.992Z"
+status: Ready to execute
+stopped_at: Completed 34-01-PLAN.md
+last_updated: "2026-03-31T17:23:08.520Z"
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 15
+  completed_plans: 13
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-31)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 33 — container-autonomy
+**Current focus:** Phase 34 — cleanup-and-network-stub
 
 ## Current Position
 
-Phase: 34
-Plan: Not started
+Phase: 34 (cleanup-and-network-stub) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Plan: Not started
 | Phase 33 P01 | 2min | 2 tasks | 6 files |
 | Phase 33 P02 | 2min | 2 tasks | 5 files |
 | Phase 33 P03 | 2min | 1 tasks | 1 files |
+| Phase 34 P01 | 5min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,8 @@ Recent decisions affecting current work:
 - [Phase 33]: Socket-based transports: workers spawned with start_new_session=True and --socket flag, Docker uses -d mode with socket mount
 - [Phase 33]: reconnect_agents() called in start() after RoutingState load for daemon restart survival
 - [Phase 33]: _save_routing takes transport_name param -- transport_type is a routing concern, not a handle property
+- [Phase 34]: Migrated types (HealthReport, ChildSpec, MemoryStore) to permanent homes outside container/
+- [Phase 34]: StrategistConversation uses direct subprocess instead of AgentTransport
 
 ### Roadmap Evolution
 
@@ -114,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T16:56:45.719Z
-Stopped at: Completed 33-03-PLAN.md
+Last session: 2026-03-31T17:23:08.505Z
+Stopped at: Completed 34-01-PLAN.md
 Resume file: None
