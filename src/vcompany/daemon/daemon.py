@@ -440,22 +440,6 @@ class Daemon:
         if not file_path:
             return {"status": "error", "message": "No file_path provided"}
 
-        # Resolve container path → host path via transport.
-        # TODO(v4-distributed): This assumes daemon and agent share a local
-        # filesystem (same machine). For remote agents, send_file should accept
-        # file bytes over the network instead of resolving host paths. See
-        # DockerTransport.resolve_file_to_host() for the full TODO.
-        if agent_id:
-            container = await self._runtime_api._root._find_container(agent_id)
-            if container and hasattr(container, "_transport") and container._transport:
-                transport = container._transport
-                if hasattr(transport, "resolve_file_to_host"):
-                    try:
-                        host_path = await transport.resolve_file_to_host(agent_id, file_path)
-                        file_path = str(host_path)
-                    except Exception as e:
-                        return {"status": "error", "message": f"Cannot resolve file: {e}"}
-
         # Resolve channel
         if not channel_id and agent_id:
             channel_id = self._runtime_api.get_channel_id(f"task-{agent_id}")

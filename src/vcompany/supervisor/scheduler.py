@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from vcompany.shared.memory_store import MemoryStore
 
 if TYPE_CHECKING:
-    from vcompany.container.container import AgentContainer
+    from vcompany.daemon.agent_handle import AgentHandle
 
 logger = logging.getLogger(__name__)
 

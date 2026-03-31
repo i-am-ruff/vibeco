@@ -2,17 +2,15 @@
 
 Two routing modes:
 - **Channel-based**: All messages in an agent's primary channel go to that agent
-  (no @mention needed — if you're in #strategist, you're talking to the Strategist)
+  (no @mention needed -- if you're in #strategist, you're talking to the Strategist)
 - **@mention-based**: Messages in any channel containing @Handle go to that agent
 
 Design decisions:
 - D-01: Discord is the ONLY interaction channel for inter-agent communication
 - D-02: All agent communication surfaces through Discord channels
-- D-04: No agent-type-specific routing -- all agents receive the same MessageContext
+- D-04: No agent-type-specific routing -- all agents receive the same InboundMessage
 
-Supports both AgentHandle (Phase 31+ transport channel) and AgentContainer (legacy
-project agents). Routes to AgentHandle via InboundMessage, to AgentContainer via
-MessageContext.
+All agents are routed via AgentHandle + InboundMessage through transport channel.
 """
 
 from __future__ import annotations
@@ -20,17 +18,15 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord.ext import commands
 
-from vcompany.models.messages import MessageContext
 from vcompany.transport.channel.messages import InboundMessage
 
 if TYPE_CHECKING:
     from vcompany.bot.client import VcoBot
-    from vcompany.container.container import AgentContainer
     from vcompany.daemon.agent_handle import AgentHandle
 
 logger = logging.getLogger(__name__)
@@ -42,42 +38,40 @@ _ATTACHMENT_DIR = Path.home() / "vco-attachments"
 class MentionRouterCog(commands.Cog):
     """Unified message router: channel-based + @mention-based delivery.
 
-    Maintains a registry of handle -> agent mappings (AgentHandle or
-    AgentContainer) and channel_id -> handle reverse lookups. Messages
-    are delivered via InboundMessage for AgentHandle or
-    container.receive_discord_message(context) for legacy AgentContainer.
+    Maintains a registry of handle -> agent mappings and channel_id -> handle
+    reverse lookups. Messages are delivered via InboundMessage through
+    transport channel (AgentHandle.send()).
     """
 
     def __init__(self, bot: VcoBot) -> None:
         self.bot = bot
-        self._agent_handles: dict[str, AgentContainer | AgentHandle] = {}
+        self._agent_handles: dict[str, Any] = {}
         self._handle_channels: dict[str, str] = {}  # handle -> channel_id
         self._channel_handles: dict[str, str] = {}  # channel_id -> handle (reverse)
 
     def register_agent(
         self,
         handle: str,
-        container: AgentContainer,
+        agent: Any,
         channel_id: str | None = None,
     ) -> None:
-        """Register an agent handle for message routing.
+        """Register an agent for message routing.
 
         Args:
             handle: Text handle (e.g. "Strategist", "agent-sprint-dev").
-            container: AgentContainer to deliver messages to.
-            channel_id: Primary channel ID — all messages in this channel
+            agent: Agent object that supports send() for InboundMessage delivery.
+            channel_id: Primary channel ID -- all messages in this channel
                 route to this agent without needing @mention.
         """
-        self._agent_handles[handle] = container
+        self._agent_handles[handle] = agent
         if channel_id is not None:
             self._handle_channels[handle] = channel_id
             self._channel_handles[channel_id] = handle
-            # D-05: Store channel_id on container for outbound messages
-            container._channel_id = channel_id
+        agent_id = getattr(agent, "agent_id", str(agent))
         logger.info(
             "Registered agent handle @%s -> %s (channel=%s)",
             handle,
-            container.context.agent_id,
+            agent_id,
             channel_id or "none",
         )
 
@@ -179,12 +173,8 @@ class MentionRouterCog(commands.Cog):
     ) -> None:
         """Deliver a Discord message to the agent registered under *handle*.
 
-        Dispatches based on agent type:
-        - AgentHandle (Phase 31+): sends InboundMessage through transport channel
-        - AgentContainer (legacy): builds MessageContext, calls receive_discord_message()
-
-        Downloads attachments to local files and (for legacy path) fetches
-        reply parent content if the message is a reply (D-15).
+        Sends InboundMessage through transport channel via agent.send().
+        Downloads attachments to local files before delivery.
         """
         try:
             agent = self._agent_handles.get(handle)
@@ -193,52 +183,13 @@ class MentionRouterCog(commands.Cog):
 
             content = await self._build_content_with_attachments(message)
 
-            # Check if this is an AgentHandle (Phase 31+) or legacy AgentContainer
-            from vcompany.daemon.agent_handle import AgentHandle
-
-            if isinstance(agent, AgentHandle):
-                # Send InboundMessage through transport channel
-                inbound = InboundMessage(
-                    sender=message.author.display_name,
-                    channel=getattr(message.channel, "name", "unknown"),
-                    content=content,
-                    message_id=str(message.id),
-                )
-                await agent.send(inbound)
-            else:
-                # Legacy path: call container.receive_discord_message()
-                context = MessageContext(
-                    sender=message.author.display_name,
-                    channel=getattr(message.channel, "name", "unknown"),
-                    channel_id=str(message.channel.id),
-                    content=content,
-                    message_id=str(message.id),
-                )
-
-                # Fetch reply parent content (D-15)
-                if (
-                    message.reference is not None
-                    and message.reference.message_id is not None
-                ):
-                    try:
-                        parent = await message.channel.fetch_message(
-                            message.reference.message_id
-                        )
-                        context = context.model_copy(
-                            update={
-                                "parent_message": parent.content,
-                                "is_reply": True,
-                            }
-                        )
-                    except discord.NotFound:
-                        context = context.model_copy(
-                            update={
-                                "parent_message": None,
-                                "is_reply": True,
-                            }
-                        )
-
-                await agent.receive_discord_message(context)
+            inbound = InboundMessage(
+                sender=message.author.display_name,
+                channel=getattr(message.channel, "name", "unknown"),
+                content=content,
+                message_id=str(message.id),
+            )
+            await agent.send(inbound)
 
         except Exception:
             logger.exception(

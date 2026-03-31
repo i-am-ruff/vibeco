@@ -4,15 +4,13 @@ All methods are async. No discord.py imports. Uses CommunicationPort
 for any outbound messaging. The daemon layer accesses CompanyRoot
 exclusively through this class.
 
-Company-level agents communicate through AgentHandle + channel messages.
-Project-level agents maintain backward compatibility via duck-typing.
+All agents communicate through AgentHandle + channel messages.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -25,10 +23,8 @@ from vcompany.daemon.comm import (
 )
 from vcompany.transport.channel.messages import (
     GiveTaskMessage,
-    HealthCheckMessage,
     InboundMessage,
     StartMessage,
-    StopMessage,
 )
 
 if TYPE_CHECKING:
@@ -127,10 +123,7 @@ class RuntimeAPI:
         return handle.agent_id
 
     async def give_task(self, agent_id: str, task: str) -> None:
-        """Assign a task to an existing agent.
-
-        For company agents (AgentHandle): sends GiveTaskMessage through channel.
-        For project agents (AgentContainer): falls back to duck-typed give_task().
+        """Assign a task to an existing agent via GiveTaskMessage.
 
         Raises:
             KeyError: If agent_id is not found.
@@ -138,12 +131,8 @@ class RuntimeAPI:
         handle = await self._root._find_handle(agent_id)
         if handle is None:
             raise KeyError(f"Agent {agent_id!r} not found")
-        if isinstance(handle, AgentHandle):
-            msg = GiveTaskMessage(task_id=str(uuid.uuid4())[:8], description=task)
-            await handle.send(msg)
-        else:
-            # Project-level container -- duck-type
-            await handle.give_task(task)  # type: ignore[union-attr]
+        msg = GiveTaskMessage(task_id=str(uuid.uuid4())[:8], description=task)
+        await handle.send(msg)
 
     async def dismiss(self, agent_id: str) -> None:
         """Dismiss (stop) a company-level agent.
@@ -261,45 +250,33 @@ class RuntimeAPI:
     # -- Bot cog delegation methods ──────────────────────────────────
 
     async def dispatch(self, agent_id: str) -> None:
-        """Start or restart an agent.
-
-        For company agents (AgentHandle): respawns worker process if not alive.
-        For project agents (AgentContainer): calls start()/restart() as before.
+        """Start or restart an agent by respawning worker process if not alive.
 
         Raises:
             KeyError: If agent_id is not found.
         """
+        import sys
+
         handle = await self._root._find_handle(agent_id)
         if handle is None:
             raise KeyError(f"Agent {agent_id!r} not found")
-        if isinstance(handle, AgentHandle):
-            if not handle.is_alive:
-                # Respawn worker process
-                process = await asyncio.create_subprocess_exec(
-                    sys.executable, "-m", "vco_worker",
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                handle._process = process
-                await handle.send(StartMessage(agent_id=agent_id, config=handle.config))
-                handle._reader_task = asyncio.create_task(
-                    self._root._channel_reader(handle),
-                    name=f"channel-reader-{agent_id}",
-                )
-        else:
-            # Project-level container -- duck-type
-            state = getattr(handle, "state", "unknown")
-            if state in ("running", "idle"):
-                await handle.restart()  # type: ignore[union-attr]
-            else:
-                await handle.start()  # type: ignore[union-attr]
+        if not handle.is_alive:
+            # Respawn worker process
+            process = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "vco_worker",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            handle._process = process
+            await handle.send(StartMessage(agent_id=agent_id, config=handle.config))
+            handle._reader_task = asyncio.create_task(
+                self._root._channel_reader(handle),
+                name=f"channel-reader-{agent_id}",
+            )
 
     async def kill(self, agent_id: str) -> None:
-        """Stop an agent.
-
-        For company agents (AgentHandle): stops the worker process.
-        For project agents (AgentContainer): calls stop().
+        """Stop an agent's worker process.
 
         Raises:
             KeyError: If agent_id is not found.
@@ -307,16 +284,10 @@ class RuntimeAPI:
         handle = await self._root._find_handle(agent_id)
         if handle is None:
             raise KeyError(f"Agent {agent_id!r} not found")
-        if isinstance(handle, AgentHandle):
-            await handle.stop_process()
-        else:
-            await handle.stop()  # type: ignore[union-attr]
+        await handle.stop_process()
 
     async def relaunch(self, agent_id: str) -> None:
-        """Relaunch an agent (stop then let supervisor restart).
-
-        For company agents: stops worker process, dispatch() can respawn.
-        For project agents: calls stop(), supervisor restart policy handles it.
+        """Relaunch an agent (stop worker process, dispatch() can respawn).
 
         Raises:
             KeyError: If agent_id is not found.
@@ -324,10 +295,7 @@ class RuntimeAPI:
         handle = await self._root._find_handle(agent_id)
         if handle is None:
             raise KeyError(f"Agent {agent_id!r} not found")
-        if isinstance(handle, AgentHandle):
-            await handle.stop_process()
-        else:
-            await handle.stop()  # type: ignore[union-attr]
+        await handle.stop_process()
 
     async def new_project_from_name(self, name: str) -> None:
         """Initialize a project by name -- loads config, creates structure, clones repos, starts supervision.
@@ -422,62 +390,36 @@ class RuntimeAPI:
     async def relay_channel_message(self, agent_id: str, content: str) -> bool:
         """Relay a message to an agent through the channel protocol.
 
-        For company agents (AgentHandle): sends InboundMessage.
-        For project agents (AgentContainer): falls back to tmux relay.
-
         Returns:
             True if the message was relayed, False if agent not found.
         """
         handle = await self._root._find_handle(agent_id)
         if handle is None:
             return False
-        if isinstance(handle, AgentHandle):
-            try:
-                await handle.send(InboundMessage(
-                    sender="system",
-                    channel="relay",
-                    content=content,
-                ))
-                return True
-            except Exception:
-                logger.warning("Failed to relay message to %s", agent_id, exc_info=True)
-                return False
-        else:
-            # Project-level container -- fall back to tmux relay
-            pane_id = getattr(handle, "_pane_id", None)
-            if pane_id is None:
-                return False
-            from vcompany.tmux.session import TmuxManager
-            tmux = TmuxManager()
-            try:
-                tmux.send_keys(pane_id, content)
-                return True
-            except Exception:
-                logger.warning("Failed to relay message to %s", agent_id, exc_info=True)
-                return False
+        try:
+            await handle.send(InboundMessage(
+                sender="system",
+                channel="relay",
+                content=content,
+            ))
+            return True
+        except Exception:
+            logger.warning("Failed to relay message to %s", agent_id, exc_info=True)
+            return False
 
     async def get_agent_states(self) -> list[dict]:
-        """Return state info for all agents across company and projects.
+        """Return state info for all company-level agents.
 
         Returns:
             List of dicts with agent_id, agent_type, state fields.
         """
         states: list[dict] = []
-        # Company-level agents (AgentHandle or legacy container)
         for agent_id, handle in self._root._company_agents.items():
             states.append({
                 "agent_id": agent_id,
-                "agent_type": getattr(handle, "agent_type", getattr(getattr(handle, "context", None), "agent_type", "unknown")),
+                "agent_type": handle.agent_type,
                 "state": handle.state,
             })
-        # Project agents (still AgentContainer via ProjectSupervisor)
-        for _pid, ps in self._root._projects.items():
-            for agent_id, child in ps.children.items():
-                states.append({
-                    "agent_id": agent_id,
-                    "agent_type": getattr(child, "agent_type", getattr(getattr(child, "context", None), "agent_type", "unknown")),
-                    "state": getattr(child, "state", "unknown"),
-                })
         return states
 
     async def checkin(self) -> dict:
@@ -518,27 +460,19 @@ class RuntimeAPI:
         return await pipeline.run()
 
     async def resolve_review(self, agent_id: str, decision: str) -> bool:
-        """Resolve a GsdAgent's review gate with the given decision.
-
-        For company agents (AgentHandle): sends InboundMessage with review decision.
-        For project agents: falls back to container.resolve_review() if available.
+        """Resolve a review gate by sending InboundMessage with review decision.
 
         Returns True if a pending review was resolved, False otherwise.
         """
         handle = await self._root._find_handle(agent_id)
         if handle is None:
             return False
-        if isinstance(handle, AgentHandle):
-            await handle.send(InboundMessage(
-                sender="PM",
-                channel="plan-review",
-                content=f"[Review Decision] {decision}",
-            ))
-            return True
-        else:
-            if not hasattr(handle, 'resolve_review'):
-                return False
-            return handle.resolve_review(decision)  # type: ignore[union-attr]
+        await handle.send(InboundMessage(
+            sender="PM",
+            channel="plan-review",
+            content=f"[Review Decision] {decision}",
+        ))
+        return True
 
     async def verify_agent_execution(self, agent_id: str) -> dict:
         """Check git log for recent commits in an agent's clone directory.
@@ -556,27 +490,19 @@ class RuntimeAPI:
         return {"success": result.success, "stdout": result.stdout.strip() if result.stdout else ""}
 
     async def get_container_info(self, agent_id: str) -> dict | None:
-        """Get agent info dict (state, type, has completion event support).
+        """Get agent info dict (state, type).
 
         Returns None if agent not found.
         """
         handle = await self._root._find_handle(agent_id)
         if handle is None:
             return None
-        if isinstance(handle, AgentHandle):
-            return {
-                "agent_id": agent_id,
-                "state": handle.state,
-                "agent_type": handle.agent_type,
-                "has_make_completion_event": False,  # Workers don't expose this
-            }
-        else:
-            return {
-                "agent_id": agent_id,
-                "state": getattr(handle, "state", "unknown"),
-                "agent_type": getattr(getattr(handle, "context", None), "agent_type", "unknown"),
-                "has_make_completion_event": hasattr(handle, "make_completion_event"),
-            }
+        return {
+            "agent_id": agent_id,
+            "state": handle.state,
+            "agent_type": handle.agent_type,
+            "has_make_completion_event": False,
+        }
 
     async def log_decision(
         self,
@@ -681,11 +607,7 @@ class RuntimeAPI:
     # -- Category D: Review gate callbacks ─────────────────────────
 
     async def handle_plan_approval(self, agent_id: str, plan_path: str) -> None:
-        """COMM-05 receive path: handle plan approval from Discord button click.
-
-        Routes through channel protocol for company agents, falls back to
-        container.receive_discord_message for project agents.
-        """
+        """COMM-05 receive path: handle plan approval from Discord button click."""
         # Notify plan-review channel
         review_ch_id = self.get_channel_id("plan-review")
         if review_ch_id:
@@ -698,30 +620,16 @@ class RuntimeAPI:
         # Resolve pending review gate via channel message
         handle = await self._root._find_handle(agent_id)
         if handle is not None:
-            if isinstance(handle, AgentHandle):
-                await handle.send(InboundMessage(
-                    sender="PM",
-                    channel="plan-review",
-                    content="[Review Decision] approve",
-                ))
-            else:
-                from vcompany.models.messages import MessageContext
-                await handle.receive_discord_message(  # type: ignore[union-attr]
-                    MessageContext(
-                        sender="PM",
-                        channel="plan-review",
-                        content="[Review Decision] approve",
-                    )
-                )
+            await handle.send(InboundMessage(
+                sender="PM",
+                channel="plan-review",
+                content="[Review Decision] approve",
+            ))
 
     async def handle_plan_rejection(
         self, agent_id: str, plan_path: str, feedback: str
     ) -> None:
-        """COMM-05 receive path: handle plan rejection from Discord button click.
-
-        Routes through channel protocol for company agents, falls back to
-        container.receive_discord_message for project agents.
-        """
+        """COMM-05 receive path: handle plan rejection from Discord button click."""
         review_ch_id = self.get_channel_id("plan-review")
         if review_ch_id:
             await self._get_comm().send_message(
@@ -733,21 +641,11 @@ class RuntimeAPI:
         # Resolve pending review gate via channel message
         handle = await self._root._find_handle(agent_id)
         if handle is not None:
-            if isinstance(handle, AgentHandle):
-                await handle.send(InboundMessage(
-                    sender="PM",
-                    channel="plan-review",
-                    content=f"[Review Decision] reject {feedback}",
-                ))
-            else:
-                from vcompany.models.messages import MessageContext
-                await handle.receive_discord_message(  # type: ignore[union-attr]
-                    MessageContext(
-                        sender="PM",
-                        channel="plan-review",
-                        content=f"[Review Decision] reject {feedback}",
-                    )
-                )
+            await handle.send(InboundMessage(
+                sender="PM",
+                channel="plan-review",
+                content=f"[Review Decision] reject {feedback}",
+            ))
 
     # -- new_project: replaces on_ready project initialization ─────────
 
@@ -791,7 +689,7 @@ class RuntimeAPI:
         """
         from vcompany.autonomy.backlog import BacklogQueue
         from vcompany.autonomy.project_state import ProjectStateManager
-        from vcompany.container.context import ContainerContext
+        from vcompany.supervisor.child_spec import ContainerContext
 
         self._project_config = project_config
         self._project_dir = project_dir

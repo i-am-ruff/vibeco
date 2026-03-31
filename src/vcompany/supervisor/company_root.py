@@ -4,23 +4,18 @@ The root of the supervision tree. Manages ProjectSupervisor instances,
 one per active project. When escalation bubbles to the top (no parent),
 calls the on_escalation callback to alert via Discord.
 
-Company-level agents (hired via hire()) use AgentHandle + transport channel
-protocol. Project-level agents still go through ProjectSupervisor/containers.
-Owns the Scheduler (AUTO-06) which wakes sleeping ContinuousAgents on schedule.
+All agents use AgentHandle + transport channel protocol.
+Owns the Scheduler (AUTO-06) which wakes sleeping agents on schedule.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from vcompany.container.communication import NoopCommunicationPort
-from vcompany.container.container import AgentContainer
-from vcompany.container.context import ContainerContext
-from vcompany.container.factory import create_container, register_defaults
+from vcompany.daemon.comm import NoopCommunicationPort
 from vcompany.shared.memory_store import MemoryStore
 from vcompany.supervisor.child_spec import ChildSpec
 from vcompany.supervisor.health import CompanyHealthTree, HealthNode, HealthReport, HealthTree
@@ -57,15 +52,14 @@ class CompanyRoot(Supervisor):
     escalation reaches CompanyRoot and cannot be handled (restart budget
     exceeded), it calls the on_escalation callback -- the Discord alert path.
 
-    Company-level agents use AgentHandle (transport channel protocol).
-    Project-level agents still use AgentContainer via ProjectSupervisor.
+    All agents use AgentHandle (transport channel protocol).
 
     Args:
         on_escalation: Async callback invoked when escalation cannot be
             handled. Receives a descriptive message string.
         max_restarts: Maximum restarts within window.
         window_seconds: Sliding window size in seconds.
-        data_dir: Root directory for child container data.
+        data_dir: Root directory for child data.
     """
 
     def __init__(
@@ -211,7 +205,6 @@ class CompanyRoot(Supervisor):
         Returns:
             The AgentHandle for the spawned worker.
         """
-        from vcompany.agent.task_agent import TASKS_DIR
         from vcompany.shared.file_ops import write_atomic
         from vcompany.shared.templates import render_template
         import shutil
@@ -236,7 +229,8 @@ class CompanyRoot(Supervisor):
         repo_root = Path(__file__).parent.parent.parent.parent
 
         # 1. Create scratch working directory
-        working_dir = TASKS_DIR / agent_id
+        tasks_dir = Path.home() / "vco-tasks"
+        working_dir = tasks_dir / agent_id
         working_dir.mkdir(parents=True, exist_ok=True)
 
         # 2. Deploy artifacts
@@ -400,33 +394,6 @@ class CompanyRoot(Supervisor):
         await handle.send(GiveTaskMessage(task_id=task_id, description=task_prompt))
         return handle
 
-    async def add_company_agent(self, spec: ChildSpec) -> AgentContainer:
-        """Create and start a company-level agent (e.g., Strategist).
-
-        Company agents are direct children of CompanyRoot, not under any
-        ProjectSupervisor. They appear in health_tree().company_agents.
-
-        NOTE: This method still uses the container path for backward compatibility
-        with Strategist and other agents that need container features not yet
-        ported to the worker protocol. Will be refactored in Phase 34.
-
-        Args:
-            spec: ChildSpec for the company agent.
-
-        Returns:
-            The started AgentContainer (or subclass).
-        """
-        container = create_container(
-            spec,
-            data_dir=self._data_dir,
-            comm_port=self._comm_port,
-            on_state_change=self._make_state_change_callback(spec.child_id),
-        )
-        await container.start()
-        self._company_agents[spec.child_id] = container  # type: ignore[assignment]
-        logger.info("Added company agent %s", spec.child_id)
-        return container
-
     async def add_project(
         self,
         project_id: str,
@@ -488,28 +455,8 @@ class CompanyRoot(Supervisor):
         logger.info("Removed project %s", project_id)
 
     async def _find_handle(self, agent_id: str) -> AgentHandle | None:
-        """Search company agents and all ProjectSupervisors for a handle by agent_id.
-
-        For company agents, returns the AgentHandle directly.
-        For project agents, returns the child (AgentContainer) which duck-types
-        as having .state, .agent_type etc.
-        """
-        handle = self._company_agents.get(agent_id)
-        if handle is not None:
-            return handle  # type: ignore[return-value]
-        for ps in self._projects.values():
-            child = ps.children.get(agent_id)
-            if child is not None:
-                return child  # type: ignore[return-value]
-        return None
-
-    async def _find_container(self, agent_id: str) -> AgentHandle | None:
-        """Backward-compatible alias for _find_handle.
-
-        Returns AgentHandle for company agents, AgentContainer for project agents.
-        Callers should use duck-typing (getattr) for type-specific attributes.
-        """
-        return await self._find_handle(agent_id)
+        """Search company agents for a handle by agent_id."""
+        return self._company_agents.get(agent_id)
 
     # ── Routing state persistence (HEAD-05) ──────────────────────────
 
@@ -596,8 +543,7 @@ class CompanyRoot(Supervisor):
     # ── Lifecycle ────────────────────────────────────────────────────
 
     async def start(self) -> None:
-        """Register agent types, load routing state, open scheduler memory, and start scheduler loop."""
-        register_defaults()
+        """Load routing state, open scheduler memory, and start scheduler loop."""
         await super().start()
 
         # Load routing state from disk
@@ -615,7 +561,7 @@ class CompanyRoot(Supervisor):
             await self._scheduler_memory.open()
             self._scheduler = Scheduler(
                 memory=self._scheduler_memory,
-                find_container=self._find_container,
+                find_container=self._find_handle,
             )
             await self._scheduler.load()
             self._scheduler_task = asyncio.create_task(self._scheduler.run())
@@ -711,15 +657,12 @@ class CompanyRoot(Supervisor):
         if self._scheduler_memory is not None:
             await self._scheduler_memory.close()
 
-        # Stop company-level agents (handles or containers)
+        # Stop company-level agents
         for agent in list(self._company_agents.values()):
             try:
-                if isinstance(agent, AgentHandle):
-                    await agent.stop_process()
-                    if agent._reader_task is not None:
-                        agent._reader_task.cancel()
-                elif hasattr(agent, "state") and agent.state not in ("stopped", "destroyed", "stopping"):
-                    await agent.stop()
+                await agent.stop_process()
+                if agent._reader_task is not None:
+                    agent._reader_task.cancel()
             except Exception:
                 logger.warning("Error stopping company agent", exc_info=True)
         self._company_agents.clear()

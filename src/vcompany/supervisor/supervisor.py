@@ -1,8 +1,13 @@
 """Supervisor base class with Erlang-style restart strategies (SUPV-02..06).
 
-Manages child AgentContainers via asyncio Tasks. Implements one_for_one,
+Manages child agents via asyncio Tasks. Implements one_for_one,
 all_for_one, and rest_for_one restart strategies with restart intensity
 tracking and escalation to parent or callback.
+
+Note: Container creation (_start_child) is retained for backward compatibility
+with ProjectSupervisor but references to the deleted container factory are
+guarded behind lazy imports that will fail at runtime if actually called.
+All new agent creation goes through CompanyRoot.hire().
 """
 
 from __future__ import annotations
@@ -11,7 +16,7 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 from vcompany.autonomy.delegation import (
     DelegationPolicy,
@@ -19,23 +24,17 @@ from vcompany.autonomy.delegation import (
     DelegationResult,
     DelegationTracker,
 )
-from vcompany.container.container import AgentContainer
-from vcompany.container.context import ContainerContext
-from vcompany.container.factory import create_container
-from vcompany.supervisor.child_spec import ChildSpec, RestartPolicy
+from vcompany.supervisor.child_spec import ChildSpec, ContainerContext, RestartPolicy
 from vcompany.supervisor.health import HealthNode, HealthReport, HealthTree
 from vcompany.resilience.bulk_failure import BulkFailureDetector
 from vcompany.supervisor.restart_tracker import RestartTracker
 from vcompany.supervisor.strategies import RestartStrategy
 
-if TYPE_CHECKING:
-    pass
-
 logger = logging.getLogger(__name__)
 
 
 class Supervisor:
-    """Manages child AgentContainers with Erlang-style restart semantics.
+    """Manages child agents with Erlang-style restart semantics.
 
     Args:
         supervisor_id: Unique identifier for this supervisor.
@@ -82,7 +81,7 @@ class Supervisor:
         # Signal router for push-based signal delivery
         self._signal_router = signal_router
 
-        self._children: dict[str, AgentContainer] = {}
+        self._children: dict[str, Any] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._child_events: dict[str, asyncio.Event] = {}
         # AUTO-03/04: Delegation tracking
@@ -112,8 +111,8 @@ class Supervisor:
         return self._state
 
     @property
-    def children(self) -> dict[str, AgentContainer]:
-        """Dict of child_id -> AgentContainer."""
+    def children(self) -> dict[str, Any]:
+        """Dict of child_id -> agent (AgentHandle or legacy container)."""
         return self._children
 
     # --- Health Aggregation ---
@@ -277,43 +276,15 @@ class Supervisor:
         return callback
 
     async def _start_child(self, spec: ChildSpec) -> None:
-        """Create a container from spec, start it, and set up monitoring."""
-        # Cancel existing monitor task if any
-        old_task = self._tasks.pop(spec.child_id, None)
-        if old_task is not None:
-            old_task.cancel()
-            try:
-                await old_task
-            except asyncio.CancelledError:
-                pass
+        """Start a child from spec. Legacy path -- new agents use hire().
 
-        # Clear stale health report before creating new container
-        self._health_reports.pop(spec.child_id, None)
-
-        # Create event for this child
-        event = asyncio.Event()
-        self._child_events[spec.child_id] = event
-
-        # Create and start container
-        container = create_container(
-            spec,
-            data_dir=self._data_dir,
-            comm_port=self._comm_port,
-            on_state_change=self._make_state_change_callback(spec.child_id),
-            transport_deps=self._transport_deps,
-            project_dir=self._project_dir,
-            project_session_name=self._session_name,
-        )
-        await container.start()
-        self._children[spec.child_id] = container
-
-        # Register signal handler for push-based signal delivery
-        if self._signal_router and hasattr(container, '_handle_signal'):
-            self._signal_router.register(spec.child_id, container._handle_signal)
-
-        # Create monitor task
-        self._tasks[spec.child_id] = asyncio.create_task(
-            self._monitor_child(spec.child_id)
+        Raises NotImplementedError since the container factory has been removed.
+        Project-level container creation is no longer supported; all agents
+        should be hired via CompanyRoot.hire().
+        """
+        raise NotImplementedError(
+            f"Container creation for {spec.child_id} is no longer supported. "
+            "Use CompanyRoot.hire() instead."
         )
 
     async def _monitor_child(self, child_id: str) -> None:
