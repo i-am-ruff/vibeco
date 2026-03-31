@@ -134,11 +134,11 @@ Plans:
   2. `vco hire` creates a Discord channel, registers routing, and sends a config blob through the transport -- the worker bootstraps itself from that config
   3. Health tree is populated from health-report messages received through the transport channel, not from daemon-side container health methods
   4. Discord channel/category lifecycle is managed by head -- create on hire, cleanup on dismiss, routing state persists across daemon restarts
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 31-01-PLAN.md -- AgentHandle model and routing state persistence
-- [ ] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
+- [x] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
 - [ ] 31-03-PLAN.md -- Refactor MentionRouter and Daemon wiring
 
 ### Phase 32: Transport Channel Implementations
@@ -152,7 +152,7 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 31-01-PLAN.md -- AgentHandle model and routing state persistence
+- [x] 31-01-PLAN.md -- AgentHandle model and routing state persistence
 - [ ] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
 - [ ] 31-03-PLAN.md -- Refactor MentionRouter and Daemon wiring
 
@@ -195,7 +195,7 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 |-------|----------------|--------|-----------|
 | 29. Transport Channel Protocol | 1/1 | Complete    | 2026-03-31 |
 | 30. Worker Runtime | 3/3 | Complete    | 2026-03-31 |
-| 31. Head Refactor | 1/3 | In Progress|  |
+| 31. Head Refactor | 2/3 | In Progress|  |
 | 32. Transport Channel Implementations | 0/TBD | Not started | - |
 | 33. Container Autonomy | 0/TBD | Not started | - |
 | 34. Cleanup and Network Stub | 0/TBD | Not started | - |
