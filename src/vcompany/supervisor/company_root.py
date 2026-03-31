@@ -32,6 +32,7 @@ from vcompany.transport.docker_channel import DockerChannelTransport
 from vcompany.transport.native import NativeTransport
 from vcompany.transport.channel.messages import (
     AskMessage,
+    HealthCheckMessage,
     HealthReportMessage,
     ReconnectMessage,
     ReportMessage,
@@ -109,6 +110,9 @@ class CompanyRoot(Supervisor):
                 on_degraded=on_degraded,
                 on_recovered=on_recovered,
             )
+        # Health polling (sends HealthCheckMessage to each agent periodically)
+        self._health_poll_task: asyncio.Task | None = None
+        self._health_poll_interval: int = 60  # seconds
         # Scheduler for waking sleeping ContinuousAgents (AUTO-06)
         self._scheduler: Scheduler | None = None
         self._scheduler_task: asyncio.Task | None = None
@@ -348,6 +352,20 @@ class CompanyRoot(Supervisor):
         except Exception:
             logger.exception("Channel reader error for %s", handle.agent_id)
 
+    async def _health_poll_loop(self) -> None:
+        """Periodically send HealthCheckMessage to all agents to keep health data fresh."""
+        try:
+            while True:
+                await asyncio.sleep(self._health_poll_interval)
+                for handle in list(self._company_agents.values()):
+                    if handle.is_alive:
+                        try:
+                            await handle.send(HealthCheckMessage())
+                        except (RuntimeError, OSError, ConnectionResetError):
+                            logger.debug("Health check failed for %s", handle.agent_id)
+        except asyncio.CancelledError:
+            pass
+
     async def _route_report(self, handle: AgentHandle, msg: ReportMessage) -> None:
         """Route a worker report to the appropriate Discord channel via comm_port."""
         from vcompany.daemon.comm import SendMessagePayload
@@ -559,6 +577,12 @@ class CompanyRoot(Supervisor):
         if self._degraded_mode is not None:
             await self._degraded_mode.start()
             logger.info("DegradedModeManager started")
+
+        # Start health polling loop
+        self._health_poll_task = asyncio.create_task(
+            self._health_poll_loop(), name="health-poll"
+        )
+        logger.info("Health poll started (interval=%ds)", self._health_poll_interval)
 
         if self._scheduler_memory is not None:
             await self._scheduler_memory.open()

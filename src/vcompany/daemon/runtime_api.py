@@ -255,20 +255,20 @@ class RuntimeAPI:
         Raises:
             KeyError: If agent_id is not found.
         """
-        import sys
-
         handle = await self._root._find_handle(agent_id)
         if handle is None:
             raise KeyError(f"Agent {agent_id!r} not found")
         if not handle.is_alive:
-            # Respawn worker process
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "vco_worker",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            # Respawn worker via transport (socket-based, matches hire() path)
+            routing = self._root._routing_state.get_agent(agent_id)
+            transport_name = routing.transport_type if routing else "native"
+            transport = self._root._get_transport(transport_name)
+            reader, writer = await transport.spawn(
+                agent_id,
+                config=handle.config,
+                env={"ANTHROPIC_API_KEY": __import__("os").environ.get("ANTHROPIC_API_KEY", "")},
             )
-            handle._process = process
+            handle.attach_socket(reader, writer)
             await handle.send(StartMessage(agent_id=agent_id, config=handle.config))
             handle._reader_task = asyncio.create_task(
                 self._root._channel_reader(handle),
