@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -174,6 +175,8 @@ async def _run_socket(socket_path_str: str) -> None:
     from vco_worker.channel.socket_server import start_socket_server
 
     socket_path = Path(socket_path_str)
+    # Set env so child processes (Claude Code, hooks) can find the socket
+    os.environ["VCO_WORKER_SOCKET"] = socket_path_str
     connection_event = asyncio.Event()
 
     class SocketWriter:
