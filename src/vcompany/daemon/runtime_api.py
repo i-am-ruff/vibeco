@@ -535,25 +535,24 @@ class RuntimeAPI:
                 )
 
     async def initialize_workflow_master(self, worktree_path: Path) -> None:
-        """Initialize the workflow-master conversation in the daemon layer.
+        """Initialize the workflow-master conversation.
 
-        Called by WorkflowMasterCog.initialize() instead of creating
-        StrategistConversation directly.
+        Uses the worker-side ConversationSession directly (workflow master
+        is a daemon-local conversation, not a routed agent).
         """
-        from vcompany.strategist.conversation import StrategistConversation
+        from vco_worker.conversation import ConversationSession
         from vcompany.strategist.workflow_master_persona import (
             WORKFLOW_MASTER_SESSION_UUID,
             build_workflow_master_persona,
         )
 
         persona_text = build_workflow_master_persona(worktree_path)
-        runtime_persona_path = Path.home() / "vco-workflow-master-persona.md"
-        runtime_persona_path.write_text(persona_text)
-
-        self._wm_conversation = StrategistConversation(
-            persona_path=runtime_persona_path,
+        self._wm_conversation = ConversationSession(
+            persona=persona_text,
             session_id=WORKFLOW_MASTER_SESSION_UUID,
             allowed_tools="Bash Read Write Edit Glob Grep",
+            working_dir=worktree_path,
+            agent_id="workflow-master",
         )
         logger.info("Workflow-master conversation initialized (worktree: %s)", worktree_path)
 
@@ -650,27 +649,61 @@ class RuntimeAPI:
     # -- new_project: replaces on_ready project initialization ─────────
 
     async def create_strategist(self, persona_path: Path | None = None) -> None:
-        """Create the Strategist conversation and register it for Discord routing.
+        """Hire the Strategist as a regular agent behind a transport.
 
-        Works in both standalone mode (no project) and as part of new_project().
-        Uses direct subprocess (no AgentTransport, no AgentContainer).
+        The Strategist is a conversation-type agent running as a vco-worker.
+        Its persona text is loaded here and passed through the config blob.
+        The worker's bootstrap_container() creates a ConversationSession from it.
         """
-        from vcompany.strategist.conversation import StrategistConversation
+        # Load persona text
+        persona_text = self._load_strategist_persona(persona_path)
 
-        conversation = StrategistConversation(
-            persona_path=persona_path,
-            working_dir=Path.cwd(),
+        # Use the strategist's existing Discord channel
+        channel_id = self.get_channel_id("strategist")
+
+        # Hire through the normal path — Strategist is just another agent
+        handle = await self._root.hire(
+            agent_id="strategist",
+            template="generic",
+            agent_type="company",
+            channel_id=channel_id,
+            persona=persona_text,
         )
-        self._strategist_conversation = conversation
 
-        # Register with MentionRouter so Discord messages reach the Strategist
+        # Register with MentionRouter using "Strategist" as the handle name
         if self._mention_router:
-            self._mention_router.register_agent(
+            self._mention_router.register_agent_handle(
                 "Strategist",
-                conversation,
-                channel_id=self.get_channel_id("strategist"),
+                handle,
+                channel_id=channel_id,
             )
-        logger.info("Strategist conversation created and registered")
+        logger.info("Strategist hired as worker agent and registered")
+
+    @staticmethod
+    def _load_strategist_persona(persona_path: Path | None = None) -> str:
+        """Load Strategist persona text from file or use default."""
+        from vcompany.strategist.persona import DEFAULT_PERSONA
+
+        if persona_path is None or not persona_path.exists():
+            raw = DEFAULT_PERSONA
+        else:
+            content = persona_path.read_text().strip()
+            raw = content if content else DEFAULT_PERSONA
+
+        # Populate agent types section
+        try:
+            from vcompany.models.agent_types import get_agent_types_config
+            config = get_agent_types_config()
+            lines = []
+            for name, tc in config.types.items():
+                transport_tag = " [Docker]" if tc.transport == "docker" else ""
+                caps = ", ".join(tc.capabilities) if tc.capabilities else "none"
+                lines.append(f"- `{name}`{transport_tag} -- capabilities: {caps}")
+            agent_types_section = "\n".join(lines) if lines else "- Run `cat agent-types.yaml` to see available types"
+        except Exception:
+            agent_types_section = "- Run `cat agent-types.yaml` to see available types"
+
+        return raw.replace("{agent_types_section}", agent_types_section)
 
     async def new_project(
         self,

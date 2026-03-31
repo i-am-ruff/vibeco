@@ -20,7 +20,6 @@ import discord
 from discord.ext import commands
 
 from vcompany.bot.routing import EntityRegistry, RouteResult, RouteTarget, route_message
-from vcompany.models.messages import MessageContext
 
 # Persistent directory for files sent to the Strategist via Discord
 _STRATEGIST_FILES_DIR = Path.home() / "vco-strategist-files"
@@ -165,24 +164,9 @@ class StrategistCog(commands.Cog):
                 future.set_result(message.content)
             return
 
-        # Route through container's receive_discord_message (same as MentionRouter)
-        runtime_api = _get_runtime_api(self.bot)
-
-        if runtime_api is not None:
-            container = await runtime_api._root._find_container("strategist")
-            if container is not None:
-                content = await self._build_message_with_attachments(message)
-                context = MessageContext(
-                    sender=message.author.display_name,
-                    channel=getattr(message.channel, "name", "strategist"),
-                    content=content,
-                    message_id=str(message.id),
-                )
-                await container.receive_discord_message(context)
-                return
-
-        # No RuntimeAPI or Strategist container available
-        await message.reply("Strategist not initialized yet.")
+        # Strategist is a regular agent behind a transport — MentionRouter
+        # handles message delivery via AgentHandle.send(InboundMessage).
+        # Nothing to do here; MentionRouter's on_message fires separately.
 
     @staticmethod
     def _has_owner_role(member: discord.Member) -> bool:

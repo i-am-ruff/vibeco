@@ -44,6 +44,17 @@ async def bootstrap_container(
     container = WorkerContainer(config=config, agent_id=agent_id, writer=write_fn)
     handler = get_handler(config.handler_type)
     container.set_handler(handler)
+
+    # Wire conversation session for conversation-type handlers
+    if config.handler_type == "conversation" and config.persona:
+        from vco_worker.conversation import ConversationSession
+
+        container._conversation = ConversationSession(
+            persona=config.persona,
+            agent_id=agent_id,
+            working_dir=Path.cwd(),
+        )
+
     await container.start()
     return container
 

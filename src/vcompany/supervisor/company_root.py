@@ -194,6 +194,7 @@ class CompanyRoot(Supervisor):
         agent_type: str | None = None,
         channel_id: str | None = None,
         transport_name: str = "native",
+        persona: str | None = None,
     ) -> AgentHandle:
         """Hire a company-level agent. Creates scratch dir, deploys artifacts,
         spawns vco-worker subprocess, sends StartMessage via channel protocol.
@@ -277,12 +278,14 @@ class CompanyRoot(Supervisor):
 
         # 3. Build worker config dict
         config_dict = {
-            "handler_type": type_config.handler_type if type_config and hasattr(type_config, "handler_type") else "session",
+            "handler_type": type_config.handler if type_config and type_config.handler else "session",
             "agent_type": effective_type,
             "capabilities": list(type_config.capabilities) if type_config else [],
             "gsd_command": type_config.gsd_command if type_config else None,
             "uses_tmux": "uses_tmux" in type_config.capabilities if type_config else True,
         }
+        if persona:
+            config_dict["persona"] = persona
 
         # 4. Create handle -- channel_id is passed in so it's populated BEFORE _save_routing
         handle = AgentHandle(
