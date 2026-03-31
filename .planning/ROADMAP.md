@@ -87,7 +87,7 @@ See phase details in `.planning/milestones/v3.0-ROADMAP.md`.
 - Decimal phases (29.1, 29.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 29: Transport Channel Protocol** - Define the bidirectional message protocol between head and worker (completed 2026-03-31)
-- [ ] **Phase 30: Worker Runtime** - Build vco-worker as a separate installable package with agent lifecycle management
+- [x] **Phase 30: Worker Runtime** - Build vco-worker as a separate installable package with agent lifecycle management (completed 2026-03-31)
 - [ ] **Phase 31: Head Refactor** - Strip daemon to orchestrator with transport handles only, no agent Python objects
 - [ ] **Phase 32: Transport Channel Implementations** - Docker and native transports use the channel protocol
 - [ ] **Phase 33: Container Autonomy** - Agent state lives inside containers, independence and resilience proven
@@ -118,12 +118,12 @@ Plans:
   3. Worker manages full agent lifecycle inside the execution environment: start, health reporting on request, graceful stop on signal
   4. Worker contains the complete agent container runtime -- handler logic (session/conversation/transient), lifecycle FSM, task queue, idle tracking, memory store, checkpoint/restore -- previously daemon-side capabilities now self-managed
   5. Worker has no dependency on discord.py, bot code, or orchestration modules -- only transport channel client and agent process management
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 30-01-PLAN.md -- Scaffold vco-worker package with channel protocol, config, CLI commands
 - [x] 30-02-PLAN.md -- Extract WorkerContainer with adapted handlers and lifecycle FSMs
-- [ ] 30-03-PLAN.md -- Wire worker main loop with message dispatch and bootstrap
+- [x] 30-03-PLAN.md -- Wire worker main loop with message dispatch and bootstrap
 
 ### Phase 31: Head Refactor
 **Goal**: Daemon holds only transport handles and agent metadata -- all container internals run inside the worker on the other side of the transport
@@ -174,7 +174,7 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 29. Transport Channel Protocol | 1/1 | Complete    | 2026-03-31 |
-| 30. Worker Runtime | 2/3 | In Progress|  |
+| 30. Worker Runtime | 3/3 | Complete   | 2026-03-31 |
 | 31. Head Refactor | 0/TBD | Not started | - |
 | 32. Transport Channel Implementations | 0/TBD | Not started | - |
 | 33. Container Autonomy | 0/TBD | Not started | - |

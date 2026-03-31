@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
-status: Ready to execute
-stopped_at: Completed 30-02-PLAN.md
-last_updated: "2026-03-31T15:23:50.068Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 30-03-PLAN.md
+last_updated: "2026-03-31T15:27:06.438Z"
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -49,6 +49,7 @@ Plan: 3 of 3
 | Phase 29 P01 | 2min | 1 tasks | 4 files |
 | Phase 30 P01 | 2min | 2 tasks | 11 files |
 | Phase 30 P02 | 4min | 2 tasks | 15 files |
+| Phase 30 P03 | 2min | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - [Phase 30]: Handler registry uses lazy string-based imports so it can be defined before handler classes exist
 - [Phase 30]: HealthReport stripped of head-side fields (transport_type, docker_container_id, docker_image) -- worker reports status, head adds metadata
 - [Phase 30]: WorkerConversationHandler uses relay mode when no conversation subprocess wired -- avoids anthropic SDK dependency
+- [Phase 30]: StdioWriter uses sync stdout.buffer.write instead of private asyncio StreamWriter APIs
+- [Phase 30]: run_worker accepts duck-typed writer for testable I/O -- any object with write(bytes) + drain()
 
 ### Roadmap Evolution
 
@@ -91,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T15:23:50.065Z
-Stopped at: Completed 30-02-PLAN.md
+Last session: 2026-03-31T15:27:06.435Z
+Stopped at: Completed 30-03-PLAN.md
 Resume file: None
