@@ -38,7 +38,8 @@ packages = ["src/vcompany"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "packages/vco-worker/src"]
+asyncio_mode = "auto"
 markers = [
     "integration: interaction regression tests (run only during vco integrate, not on every pytest run)",
 ]
