@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Container Runtime Abstraction
 status: Ready to execute
-stopped_at: Completed 28-02-PLAN.md
-last_updated: "2026-03-31T04:44:19.143Z"
+stopped_at: Completed 28-03-PLAN.md
+last_updated: "2026-03-31T04:47:26.117Z"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 18
-  completed_plans: 16
+  completed_plans: 17
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 ## Current Position
 
 Phase: 28 (agent-transport-separation) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 
 ## Accumulated Context
 
@@ -63,6 +63,8 @@ Recent decisions affecting current work:
 - [Phase 28]: Handler protocols have identical signatures but separate types for semantic isinstance checks
 - [Phase 28]: Base _send_discord uses daemon.comm.SendMessagePayload (canonical import), _handler typed as Any to avoid import cycle
 - [Phase 28]: Checkpoint lock on handler (D-02 exception): synchronization infra, not agent state
+- [Phase 28]: handler field defaults to None for backward compatibility with legacy subclass routing
+- [Phase 28]: _HANDLER_REGISTRY parallels _TRANSPORT_REGISTRY pattern for consistency
 
 ### Roadmap Evolution
 
@@ -88,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T04:44:19.139Z
-Stopped at: Completed 28-02-PLAN.md
+Last session: 2026-03-31T04:47:26.113Z
+Stopped at: Completed 28-03-PLAN.md
 Resume file: None
