@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
-status: Ready to plan
-stopped_at: Completed 31-03-PLAN.md
-last_updated: "2026-03-31T16:11:23.687Z"
+status: Ready to execute
+stopped_at: Completed 32-01-PLAN.md
+last_updated: "2026-03-31T16:25:18.927Z"
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 9
+  completed_plans: 8
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-31)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 31 — head-refactor
+**Current focus:** Phase 32 — transport-channel-implementations
 
 ## Current Position
 
-Phase: 32
-Plan: Not started
+Phase: 32 (transport-channel-implementations) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Plan: Not started
 | Phase 31 P01 | 2min | 2 tasks | 4 files |
 | Phase 31 P02 | 5min | 2 tasks | 2 files |
 | Phase 31 P03 | 2min | 2 tasks | 2 files |
+| Phase 32 P01 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,7 @@ Recent decisions affecting current work:
 - [Phase 31]: channel_id passed as parameter to CompanyRoot.hire() for routing persistence correctness
 - [Phase 31]: add_company_agent() kept on container path for Strategist backward compat until worker port
 - [Phase 31]: isinstance dispatch for AgentHandle vs AgentContainer in MentionRouterCog _deliver_to_agent()
+- [Phase 32]: ChannelTransport uses typing.Protocol with @runtime_checkable, DockerChannelTransport uses subprocess docker run -i instead of docker-py SDK
 
 ### Roadmap Evolution
 
@@ -102,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T16:06:39.559Z
-Stopped at: Completed 31-03-PLAN.md
+Last session: 2026-03-31T16:25:18.924Z
+Stopped at: Completed 32-01-PLAN.md
 Resume file: None

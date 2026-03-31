@@ -149,10 +149,10 @@ Plans:
   1. Docker transport creates a container running vco-worker, communicates through the channel protocol (docker exec stdin/stdout or mapped TCP port) -- no Unix socket mount into the container
   2. Native transport starts vco-worker in a local process, communicates through the channel protocol (local socket or in-process bridge)
   3. An agent hired with transport "docker" and an agent hired with transport "native" both produce the same observable behavior: signals appear, health reports come through, Discord messages route correctly
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
-- [ ] 32-01-PLAN.md -- ChannelTransport protocol, NativeTransport, and DockerChannelTransport
+- [x] 32-01-PLAN.md -- ChannelTransport protocol, NativeTransport, and DockerChannelTransport
 - [ ] 32-02-PLAN.md -- Wire transports into CompanyRoot.hire() and update Dockerfile
 
 ### Phase 33: Container Autonomy
@@ -185,6 +185,6 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 | 29. Transport Channel Protocol | 1/1 | Complete    | 2026-03-31 |
 | 30. Worker Runtime | 3/3 | Complete    | 2026-03-31 |
 | 31. Head Refactor | 3/3 | Complete    | 2026-03-31 |
-| 32. Transport Channel Implementations | 0/2 | Not started | - |
+| 32. Transport Channel Implementations | 1/2 | In Progress|  |
 | 33. Container Autonomy | 0/TBD | Not started | - |
 | 34. Cleanup and Network Stub | 0/TBD | Not started | - |

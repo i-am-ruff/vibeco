@@ -26,8 +26,8 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 ### Transport Channel
 
 - [x] **CHAN-01**: Bidirectional message protocol defined (head->worker: start/task/message/stop/health-check; worker->head: signal/report/ask/send-file/health-report)
-- [ ] **CHAN-02**: Docker transport uses transport channel instead of Unix socket mount -- vco-worker inside Docker talks through the channel, not a mounted socket
-- [ ] **CHAN-03**: Native transport uses transport channel (local socket or in-process bridge)
+- [x] **CHAN-02**: Docker transport uses transport channel instead of Unix socket mount -- vco-worker inside Docker talks through the channel, not a mounted socket
+- [x] **CHAN-03**: Native transport uses transport channel (local socket or in-process bridge)
 - [ ] **CHAN-04**: Network transport stub exists with TCP/WebSocket interface definition -- not full production impl, but the contract is defined and a basic implementation works
 
 ### Container Autonomy
@@ -102,8 +102,8 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 | HEAD-02 | Phase 31 | Complete |
 | HEAD-03 | Phase 31 | Complete |
 | HEAD-05 | Phase 31 | Complete |
-| CHAN-02 | Phase 32 | Pending |
-| CHAN-03 | Phase 32 | Pending |
+| CHAN-02 | Phase 32 | Complete |
+| CHAN-03 | Phase 32 | Complete |
 | AUTO-01 | Phase 33 | Pending |
 | AUTO-02 | Phase 33 | Pending |
 | AUTO-03 | Phase 33 | Pending |
