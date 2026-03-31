@@ -22,6 +22,7 @@ class AgentRouting(BaseModel):
     handler_type: str = "session"
     config: dict = Field(default_factory=dict)
     capabilities: list[str] = Field(default_factory=list)
+    transport_type: str = "native"  # "native" or "docker" -- needed for reconnection
 
 
 class RoutingState(BaseModel):
