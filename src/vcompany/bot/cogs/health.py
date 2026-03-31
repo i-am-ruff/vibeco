@@ -70,7 +70,10 @@ class HealthCog(commands.Cog):
             )
             return
 
-        tree = await runtime_api.health_tree()
+        from vcompany.container.health import CompanyHealthTree
+
+        tree_data = await runtime_api.health_tree()
+        tree = CompanyHealthTree(**tree_data)
         embed = build_health_tree_embed(
             tree, project_filter=project, agent_filter=agent_id
         )
