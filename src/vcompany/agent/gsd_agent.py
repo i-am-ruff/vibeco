@@ -6,7 +6,7 @@ recovery. Absorbs WorkflowOrchestrator state-tracking responsibilities
 (blocked tracking, phase number).
 
 Phase transitions and review requests are emitted as Discord messages.
-Review decisions and task assignments arrive via receive_discord_message().
+Review decisions and task assignments arrive via handler (GsdSessionHandler).
 """
 
 from __future__ import annotations
@@ -25,10 +25,9 @@ from vcompany.agent.gsd_phases import CheckpointData
 from vcompany.container.container import AgentContainer
 from vcompany.container.context import ContainerContext
 from vcompany.container.health import HealthReport
-from vcompany.models.messages import MessageContext
 
 if TYPE_CHECKING:
-    from vcompany.container.communication import CommunicationPort, SendMessagePayload
+    from vcompany.container.communication import CommunicationPort
 
 logger = logging.getLogger("vcompany.agent.gsd_agent")
 
@@ -46,8 +45,8 @@ class GsdAgent(AgentContainer):
     Extends AgentContainer by replacing ContainerLifecycle with GsdLifecycle
     (compound running state). Phase transitions are checkpointed to
     memory_store for crash recovery. Emits Discord messages for phase
-    transitions and review requests. Receives review decisions and task
-    assignments via Discord.
+    transitions and review requests. Message handling delegated to
+    GsdSessionHandler via base container.
 
     Args:
         context: Immutable agent metadata.
@@ -76,105 +75,6 @@ class GsdAgent(AgentContainer):
         self._max_review_attempts: int = 3
         # AGNT-03: In-memory assignment cache -- restored on start()
         self._current_assignment: dict[str, Any] | None = None
-
-    # --- Properties (override parent for compound state handling) ---
-
-    @property
-    def state(self) -> str:
-        """Current outer lifecycle state as a plain string.
-
-        When in compound state (running), _fsm_state is an OrderedSet like
-        OrderedSet(['running', 'idle']). Return just the outer state.
-        """
-        val = self._fsm_state
-        if isinstance(val, OrderedSet):
-            return str(list(val)[0])
-        return str(val)
-
-    @property
-    def inner_state(self) -> str | None:
-        """Phase sub-state when in running compound state, None otherwise."""
-        val = self._fsm_state
-        if isinstance(val, OrderedSet):
-            items = list(val)
-            if len(items) >= 2:
-                return str(items[1])
-        return None
-
-    # --- Discord Message Handling ---
-
-    async def receive_discord_message(self, context: MessageContext) -> None:
-        """Process an inbound Discord message routed to this GSD agent.
-
-        Handles:
-        - [Review Decision] -- resolve pending review gate with decision
-        - [Task Assigned] -- store task details and persist to memory
-        - Otherwise: log as informational
-
-        Args:
-            context: Message context with sender, channel, content.
-        """
-        content = context.content
-
-        if content.startswith("[Review Decision]"):
-            # Format: "[Review Decision] {decision}" (approve/reject/modify/clarify)
-            decision = content.replace("[Review Decision]", "").strip().split()[0].lower()
-            if self._pending_review is not None and not self._pending_review.done():
-                self._pending_review.set_result(decision)
-                logger.info(
-                    "Agent %s received review decision: %s",
-                    self.context.agent_id, decision,
-                )
-            else:
-                logger.warning(
-                    "Agent %s received review decision but no pending review: %s",
-                    self.context.agent_id, decision,
-                )
-
-        elif content.startswith("[Task Assigned]"):
-            # Format: "[Task Assigned] @{agent_id}: {title} (item: {item_id})"
-            # Extract task details and store
-            assignment: dict[str, Any] = {
-                "raw": content,
-                "assigned_at": datetime.now(timezone.utc).isoformat(),
-            }
-            # Parse item_id if present
-            if "(item: " in content:
-                item_id = content.split("(item: ")[1].rstrip(")")
-                assignment["item_id"] = item_id
-            self._current_assignment = assignment
-            await self.memory.set("current_assignment", json.dumps(assignment))
-            logger.info(
-                "Agent %s received task assignment: %.100s",
-                self.context.agent_id, content,
-            )
-
-        else:
-            logger.info(
-                "Agent %s received message from %s: %.100s",
-                self.context.agent_id, context.sender, content,
-            )
-
-    # --- Discord Output ---
-
-    async def _send_discord(self, channel_name: str, content: str) -> None:
-        """Send a message to a Discord channel via the CommunicationPort.
-
-        Uses self.comm_port (from parent AgentContainer) if available.
-        Channel name is used as a logical identifier; the CommunicationPort
-        adapter handles name-to-id resolution.
-
-        Args:
-            channel_name: Logical channel name (e.g. "agent-alpha", "plan-review").
-            content: Message text to send.
-        """
-        if self.comm_port is None:
-            logger.warning("Cannot send Discord message -- no comm_port wired")
-            return
-        from vcompany.container.communication import SendMessagePayload
-
-        payload = SendMessagePayload(channel_id=channel_name, content=content)
-        await self.comm_port.send_message(payload)
 
     # --- Phase Transition Methods (TYPE-01) ---
 
@@ -370,26 +270,26 @@ class GsdAgent(AgentContainer):
     # --- Lifecycle Overrides ---
 
     async def start(self) -> None:
-        """Transition to running, open memory, restore checkpoint, then launch.
+        """Transition to running with checkpoint restore before transport launch.
 
-        Checkpoint is restored BEFORE tmux launch so that the correct
-        phase-appropriate GSD command is passed to Claude Code on restart.
+        Override order:
+        1. FSM start + memory open
+        2. Checkpoint restore (determines GSD phase)
+        3. GSD command resolution (sets correct command for resumed phase)
+        4. Handler on_start + transport launch (via base remainder)
+        5. Assignment restore
         """
-        # 1. FSM + memory (no tmux yet -- we need checkpoint first)
         self._lifecycle.start()
         await self.memory.open()
-
-        # 2. Restore checkpoint to know what phase we're in
+        # GSD-specific: checkpoint restore before transport launch
         await self._restore_from_checkpoint()
-
-        # 3. Update gsd_command based on restored phase (phase-aware restart)
         self.context.gsd_command = self._resolve_gsd_command()
-
-        # 4. NOW launch tmux with the correct command
-        if self._tmux is not None and self._needs_tmux_session:
-            await self._launch_tmux_session()
-
-        # 5. AGNT-03: Restore assignment context from own MemoryStore
+        # Now handler on_start (if any) + transport launch
+        if self._handler is not None:
+            await self._handler.on_start(self)
+        if self._transport is not None and self._needs_transport:
+            await self._launch_agent()
+        # AGNT-03: Restore assignment context from own MemoryStore
         assignment = await self.get_assignment()
         if assignment is not None:
             self._current_assignment = assignment

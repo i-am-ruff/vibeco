@@ -322,13 +322,15 @@ class AgentContainer:
     # --- Lifecycle Methods ---
 
     async def start(self) -> None:
-        """Transition to running, open memory store, and launch via transport if needed."""
+        """Transition to running, open memory store, call handler on_start, then launch transport."""
         self._lifecycle.start()
         await self.memory.open()
-        if self._transport is not None and self._needs_transport:
-            await self._launch_agent()
+        # Handler on_start runs before transport launch -- GSD handler needs checkpoint
+        # restore before launch to determine the correct GSD command
         if self._handler is not None:
             await self._handler.on_start(self)
+        if self._transport is not None and self._needs_transport:
+            await self._launch_agent()
 
     async def sleep(self) -> None:
         """Transition to sleeping."""

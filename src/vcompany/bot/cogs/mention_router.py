@@ -69,6 +69,8 @@ class MentionRouterCog(commands.Cog):
         if channel_id is not None:
             self._handle_channels[handle] = channel_id
             self._channel_handles[channel_id] = handle
+            # D-05: Store channel_id on container for outbound messages
+            container._channel_id = channel_id
         logger.info(
             "Registered agent handle @%s -> %s (channel=%s)",
             handle,
@@ -81,7 +83,9 @@ class MentionRouterCog(commands.Cog):
         channel_id = self._handle_channels.pop(handle, None)
         if channel_id:
             self._channel_handles.pop(channel_id, None)
-        self._agent_handles.pop(handle, None)
+        container = self._agent_handles.pop(handle, None)
+        if container is not None and channel_id is not None:
+            container._channel_id = None
         logger.info("Unregistered agent handle @%s", handle)
 
     @commands.Cog.listener()
