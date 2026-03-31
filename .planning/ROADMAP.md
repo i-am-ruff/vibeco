@@ -103,7 +103,10 @@ See phase details in `.planning/milestones/v3.0-ROADMAP.md`.
   1. A message protocol specification exists with typed Pydantic models for all head-to-worker messages (start, give-task, message, stop, health-check) and worker-to-head messages (signal, report, ask, send-file, health-report)
   2. The protocol is transport-agnostic -- serializes to bytes/JSON that any channel (stdin/stdout, socket, TCP) can carry
   3. A protocol test suite validates round-trip serialization for every message type
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 29-01-PLAN.md -- Define channel protocol message models and NDJSON framing
 
 ### Phase 30: Worker Runtime
 **Goal**: vco-worker is a separate installable Python package that runs inside any execution environment, accepts a config blob, starts the right agent process, and communicates exclusively through the transport channel
@@ -165,7 +168,7 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 29. Transport Channel Protocol | 0/TBD | Not started | - |
+| 29. Transport Channel Protocol | 0/1 | Not started | - |
 | 30. Worker Runtime | 0/TBD | Not started | - |
 | 31. Head Refactor | 0/TBD | Not started | - |
 | 32. Transport Channel Implementations | 0/TBD | Not started | - |
