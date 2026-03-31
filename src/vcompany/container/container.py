@@ -232,6 +232,12 @@ class AgentContainer:
             **self._transport_setup_kwargs,
         )
 
+        # Verify transport is alive before launching Claude Code
+        if await self._transport.is_alive(self.context.agent_id):
+            logger.info("Transport ready for %s", self.context.agent_id)
+        else:
+            logger.warning("Transport not alive for %s after setup", self.context.agent_id)
+
         cmd = self._build_launch_command()
         await self._transport.exec(self.context.agent_id, cmd)
 
