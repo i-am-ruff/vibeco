@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
-status: Ready to execute
-stopped_at: Completed 33-02-PLAN.md
-last_updated: "2026-03-31T16:53:51.014Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 33-03-PLAN.md
+last_updated: "2026-03-31T16:56:45.723Z"
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -57,6 +57,7 @@ Plan: 3 of 3
 | Phase 32 P02 | 2min | 2 tasks | 3 files |
 | Phase 33 P01 | 2min | 2 tasks | 6 files |
 | Phase 33 P02 | 2min | 2 tasks | 5 files |
+| Phase 33 P03 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,8 @@ Recent decisions affecting current work:
 - [Phase 33]: Worker derives data_dir from Path.cwd() / .vco-state / agent_id, not from daemon config
 - [Phase 33]: SocketWriter proxy wraps current connection writer for seamless reconnection
 - [Phase 33]: Socket-based transports: workers spawned with start_new_session=True and --socket flag, Docker uses -d mode with socket mount
+- [Phase 33]: reconnect_agents() called in start() after RoutingState load for daemon restart survival
+- [Phase 33]: _save_routing takes transport_name param -- transport_type is a routing concern, not a handle property
 
 ### Roadmap Evolution
 
@@ -111,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T16:53:51.010Z
-Stopped at: Completed 33-02-PLAN.md
+Last session: 2026-03-31T16:56:45.719Z
+Stopped at: Completed 33-03-PLAN.md
 Resume file: None
