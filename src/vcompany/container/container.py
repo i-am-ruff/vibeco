@@ -232,10 +232,15 @@ class AgentContainer:
             **self._transport_setup_kwargs,
         )
 
-        # Verify transport is alive before launching Claude Code
-        if await self._transport.is_alive(self.context.agent_id):
-            logger.info("Transport ready for %s", self.context.agent_id)
-        else:
+        # Verify transport is alive and announce to Discord
+        alive = await self._transport.is_alive(self.context.agent_id)
+        if alive and self._channel_id:
+            transport_name = type(self._transport).__name__
+            await self._send_discord(
+                self._channel_id,
+                f"Transport `{transport_name}` is up. Launching Claude Code...",
+            )
+        elif not alive:
             logger.warning("Transport not alive for %s after setup", self.context.agent_id)
 
         cmd = self._build_launch_command()
