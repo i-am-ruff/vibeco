@@ -168,7 +168,7 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 29. Transport Channel Protocol | 1/1 | Complete   | 2026-03-31 |
+| 29. Transport Channel Protocol | 1/1 | Complete    | 2026-03-31 |
 | 30. Worker Runtime | 0/TBD | Not started | - |
 | 31. Head Refactor | 0/TBD | Not started | - |
 | 32. Transport Channel Implementations | 0/TBD | Not started | - |
