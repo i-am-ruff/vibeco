@@ -91,7 +91,7 @@ See phase details in `.planning/milestones/v3.0-ROADMAP.md`.
 - [x] **Phase 31: Head Refactor** - Strip daemon to orchestrator with transport handles only, no agent Python objects (completed 2026-03-31)
 - [x] **Phase 32: Transport Channel Implementations** - Docker and native transports use the channel protocol (completed 2026-03-31)
 - [x] **Phase 33: Container Autonomy** - Agent state lives inside containers, independence and resilience proven (completed 2026-03-31)
-- [ ] **Phase 34: Cleanup and Network Stub** - Remove dead daemon-side code and define network transport contract
+- [x] **Phase 34: Cleanup and Network Stub** - Remove dead daemon-side code and define network transport contract (completed 2026-03-31)
 
 ## Phase Details
 
@@ -178,12 +178,12 @@ Plans:
   1. Daemon-side GsdAgent, CompanyAgent, FulltimeAgent Python objects are deleted -- along with handler factory injection, NoopCommunicationPort, StrategistConversation-from-daemon, and all v3.1 shims
   2. A NetworkTransport stub exists with TCP/WebSocket interface definition -- not production-ready, but the contract is defined and a basic connect/send/receive works
   3. The codebase compiles and all existing functionality (hire, give-task, dismiss, health, status) works after dead code removal
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 34-01-PLAN.md -- Migrate live types from container/ and port StrategistConversation to direct subprocess
 - [x] 34-02-PLAN.md -- Delete dead code directories, clean isinstance branches, remove dead tests
-- [ ] 34-03-PLAN.md -- Create NetworkTransport TCP stub implementing ChannelTransport protocol
+- [x] 34-03-PLAN.md -- Create NetworkTransport TCP stub implementing ChannelTransport protocol
 
 ## Progress
 
@@ -197,4 +197,4 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 | 31. Head Refactor | 3/3 | Complete    | 2026-03-31 |
 | 32. Transport Channel Implementations | 2/2 | Complete    | 2026-03-31 |
 | 33. Container Autonomy | 3/3 | Complete    | 2026-03-31 |
-| 34. Cleanup and Network Stub | 2/3 | In Progress|  |
+| 34. Cleanup and Network Stub | 3/3 | Complete   | 2026-03-31 |
