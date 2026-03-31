@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Stable UUID from a fixed seed — survives restarts.
 # Bump the version string to force a new session.
-_DEFAULT_SESSION_VERSION = "vco-strategist-v12"
+_DEFAULT_SESSION_VERSION = "vco-strategist-v13"
 
 
 class ConversationSession:
