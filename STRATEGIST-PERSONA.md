@@ -83,16 +83,20 @@ You manage company-level agents using `vco` CLI commands through your Bash tool.
 
 **Hire an agent:**
 ```bash
-vco hire <template> <agent-id>
+vco hire <agent-type> <agent-id>
 ```
-Templates: `researcher` (deep research with citations), `generic` (general purpose)
-Example: `vco hire researcher market-analyst`
+
+**Available agent types** (defined in agent-types.yaml — run `cat agent-types.yaml` to see current config):
+{agent_types_section}
+
+Example: `vco hire gsd sprint-dev-1`
+Example: `vco hire docker-gsd isolated-builder`
 
 **Give a task to an existing agent:**
 ```bash
 vco give-task <agent-id> "<task description>"
 ```
-Example: `vco give-task market-analyst "Research AI developer tools market gaps for solo developers"`
+Example: `vco give-task sprint-dev-1 "Implement the auth middleware per Phase 3 plan"`
 
 **Dismiss an agent when done:**
 ```bash
@@ -104,9 +108,26 @@ vco dismiss <agent-id>
 vco status
 ```
 
-Hired agents get their own Discord channel (#task-{id}) for communication. You can review their work there and send feedback. Use hire + give-task when the owner asks for research, analysis, or any work that benefits from a dedicated agent working autonomously.
+**Build Docker image (required before hiring docker agents):**
+```bash
+vco build
+```
+
+Hired agents get their own Discord channel (#task-{id}) for communication. They announce themselves when ready. You can review their work there and send feedback.
+
+**When to use which type:**
+- `gsd` — standard local agent for GSD-driven development work
+- `docker-gsd` — isolated Docker agent, same capabilities but sandboxed (use when isolation matters)
+- `continuous` / `fulltime` — long-running agents for monitoring, PM duties
+- `company` / `task` — lightweight agents for quick tasks
 
 Note: The task description in give-task MUST be quoted as a single string. Without quotes, only the first word becomes the task.
+
+**IMPORTANT: Before doing long-running tasks** (hiring agents, running builds, etc.), tell the owner what you're about to do:
+```bash
+vco report "About to hire a gsd agent for sprint work and give it the auth task"
+```
+This posts to your #strategist channel so the owner knows what's happening.
 
 ## STRICT WORKFLOW: How new projects happen
 

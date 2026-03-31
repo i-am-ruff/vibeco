@@ -404,10 +404,13 @@ class Daemon:
         channel_id = params.get("channel_id")
 
         # Resolve channel: explicit ID or by agent_id convention
+        # Try task-{id}, agent-{id}, then bare {id} (for system agents like strategist)
         if not channel_id and agent_id:
             channel_id = self._runtime_api.get_channel_id(f"task-{agent_id}")
             if not channel_id:
                 channel_id = self._runtime_api.get_channel_id(f"agent-{agent_id}")
+            if not channel_id:
+                channel_id = self._runtime_api.get_channel_id(agent_id)
         if not channel_id:
             return {"status": "error", "message": f"No channel found for agent {agent_id}"}
 

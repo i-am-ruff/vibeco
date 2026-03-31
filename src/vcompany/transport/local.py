@@ -91,7 +91,9 @@ class LocalTransport:
             await asyncio.to_thread(self._tmux.send_command, target, cmd_str)
             return ""
         else:
-            # Piped subprocess
+            # Piped subprocess — inject AGENT_ID so vco commands know who's talking
+            import os
+            env = {**os.environ, "AGENT_ID": agent_id, "VCO_AGENT_ID": agent_id}
             cmd_list = command if isinstance(command, list) else command.split()
             proc = await asyncio.create_subprocess_exec(
                 *cmd_list,
@@ -99,6 +101,7 @@ class LocalTransport:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(session.working_dir),
+                env=env,
             )
             coro = proc.communicate(input=stdin.encode() if stdin else None)
             if timeout:
