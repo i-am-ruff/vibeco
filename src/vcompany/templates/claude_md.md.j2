@@ -9,6 +9,12 @@ Read PROJECT-STATUS.md at the start of every phase. It shows:
 Do not modify PROJECT-STATUS.md. It is auto-generated.
 
 ## Communication
+All communication goes through the daemon socket — you never need network access or Discord credentials.
+
+- `vco report "your message"` — post a status update to your task channel
+- `vco send-file ./path/to/file.md` — share a file in your task channel
+- `vco send-file ./plan.md -m "Ready for review"` — file with a message
+- AskUserQuestion tool — automatically routed to Discord, answer comes back via hook
 - After each /gsd:ship, run /vco:checkin to post your status
 - When called for /vco:standup, report your status and respond
   to any owner feedback before closing

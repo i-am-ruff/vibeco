@@ -2,6 +2,8 @@
 
 Auto-build logic wraps docker-py SDK calls in asyncio.to_thread() to avoid
 blocking the event loop (Pitfall 2 from RESEARCH.md).
+
+Build context is the repo root so the Dockerfile can COPY pyproject.toml and src/.
 """
 
 import asyncio
@@ -13,13 +15,14 @@ import docker.errors
 
 logger = logging.getLogger(__name__)
 
-# Default Dockerfile location relative to repo root
-_DEFAULT_DOCKERFILE_DIR = Path(__file__).parent.parent.parent.parent / "docker"
+# Repo root (build context) and Dockerfile path
+_REPO_ROOT = Path(__file__).parent.parent.parent.parent
+_DEFAULT_DOCKERFILE = _REPO_ROOT / "docker" / "Dockerfile"
 
 
 async def ensure_docker_image(
     image: str,
-    dockerfile_dir: Path | None = None,
+    dockerfile: Path | None = None,
 ) -> bool:
     """Build Docker image if it doesn't exist locally (D-03).
 
@@ -28,12 +31,12 @@ async def ensure_docker_image(
 
     Args:
         image: Docker image name with tag (e.g., "vco-agent:latest").
-        dockerfile_dir: Directory containing Dockerfile. Defaults to docker/ in repo root.
+        dockerfile: Path to Dockerfile. Defaults to docker/Dockerfile in repo root.
 
     Returns:
         True if image was built, False if it already existed.
     """
-    build_dir = dockerfile_dir or _DEFAULT_DOCKERFILE_DIR
+    df = dockerfile or _DEFAULT_DOCKERFILE
     client = docker.from_env()
 
     try:
@@ -41,10 +44,11 @@ async def ensure_docker_image(
         logger.info("Docker image %s found locally", image)
         return False
     except docker.errors.ImageNotFound:
-        logger.info("Docker image %s not found, building from %s...", image, build_dir)
+        logger.info("Docker image %s not found, building...", image)
         await asyncio.to_thread(
             client.images.build,
-            path=str(build_dir),
+            path=str(_REPO_ROOT),
+            dockerfile=str(df),
             tag=image,
             rm=True,
         )
@@ -54,20 +58,20 @@ async def ensure_docker_image(
 
 def build_image_sync(
     image: str,
-    dockerfile_dir: Path | None = None,
+    dockerfile: Path | None = None,
     force: bool = False,
 ) -> bool:
     """Synchronous image build for CLI usage (D-04).
 
     Args:
         image: Docker image name with tag.
-        dockerfile_dir: Directory containing Dockerfile.
+        dockerfile: Path to Dockerfile.
         force: If True, rebuild even if image exists.
 
     Returns:
         True if image was built, False if skipped (already exists and not forced).
     """
-    build_dir = dockerfile_dir or _DEFAULT_DOCKERFILE_DIR
+    df = dockerfile or _DEFAULT_DOCKERFILE
     client = docker.from_env()
 
     if not force:
@@ -78,9 +82,10 @@ def build_image_sync(
         except docker.errors.ImageNotFound:
             pass
 
-    logger.info("Building Docker image %s from %s...", image, build_dir)
+    logger.info("Building Docker image %s...", image)
     client.images.build(
-        path=str(build_dir),
+        path=str(_REPO_ROOT),
+        dockerfile=str(df),
         tag=image,
         rm=True,
     )

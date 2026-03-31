@@ -644,6 +644,37 @@ class RuntimeAPI:
 
     # ── new_project: replaces on_ready project initialization ─────────
 
+    async def create_strategist(self, persona_path: Path | None = None) -> None:
+        """Create the Strategist agent and register it for Discord routing.
+
+        Works in both standalone mode (no project) and as part of new_project().
+        """
+        from vcompany.container.child_spec import ChildSpec
+        from vcompany.container.context import ContainerContext
+
+        strategist_ctx = ContainerContext(
+            agent_id="strategist",
+            agent_type="company",
+            parent_id="company-root",
+            project_id=None,
+        )
+        strategist_spec = ChildSpec(
+            child_id="strategist",
+            agent_type="company",
+            context=strategist_ctx,
+        )
+        strategist_container = await self._root.add_company_agent(strategist_spec)
+
+        if hasattr(strategist_container, 'initialize_conversation'):
+            strategist_container.initialize_conversation(persona_path)
+            if self._mention_router:
+                self._mention_router.register_agent(
+                    "Strategist",
+                    strategist_container,
+                    channel_id=self.get_channel_id("strategist"),
+                )
+        logger.info("Strategist agent created and registered")
+
     async def new_project(
         self,
         project_config: ProjectConfig,
@@ -661,36 +692,12 @@ class RuntimeAPI:
         """
         from vcompany.autonomy.backlog import BacklogQueue
         from vcompany.autonomy.project_state import ProjectStateManager
-        from vcompany.container.child_spec import ChildSpec
-        from vcompany.container.context import ContainerContext
 
         self._project_config = project_config
         self._project_dir = project_dir
 
         # 1. Add Strategist as company-level agent
-        strategist_ctx = ContainerContext(
-            agent_id="strategist",
-            agent_type="company",
-            parent_id="company-root",
-            project_id=None,
-        )
-        strategist_spec = ChildSpec(
-            child_id="strategist",
-            agent_type="company",
-            context=strategist_ctx,
-        )
-        strategist_container = await self._root.add_company_agent(strategist_spec)
-
-        # Wire Strategist conversation (duck-typed: only CompanyAgent has initialize_conversation)
-        if hasattr(strategist_container, 'initialize_conversation'):
-            strategist_container.initialize_conversation(persona_path)
-            # Register Strategist handle with MentionRouterCog
-            if self._mention_router:
-                self._mention_router.register_agent(
-                    "Strategist",
-                    strategist_container,
-                    channel_id=self.get_channel_id("strategist"),
-                )
+        await self.create_strategist(persona_path)
 
         # 2. Build child specs from agents.yaml
         from vcompany.container.factory import get_agent_types_config

@@ -328,6 +328,53 @@ class DockerTransport:
             return session.working_dir / path
         return path  # Assume host path if absolute and not in container
 
+    async def resolve_file_to_host(self, agent_id: str, container_path: str) -> Path:
+        """Resolve a file path from inside the container to a host-accessible path.
+
+        For workspace-mounted paths (/workspace/...), resolves via volume mapping.
+        For paths outside the workspace, uses `docker cp` to pull the file to a
+        temp directory on the host.
+
+        TODO(v4-distributed): This entire approach assumes the daemon and transport
+        share a local filesystem. In a distributed setup (agents on remote servers),
+        file transfer needs to go through a content-based protocol — the daemon
+        should request file bytes over the network, not resolve host paths. The
+        CommunicationPort.send_file should accept bytes/stream, not a host path.
+        This affects: send_file, read_file, write_file, and all volume-mount
+        assumptions in DockerTransport.
+        """
+        session = self._sessions.get(agent_id)
+        if session is None:
+            raise RuntimeError(f"No session for agent {agent_id}")
+
+        path = Path(container_path)
+        path_str = str(path)
+
+        # Workspace-mounted path — direct host filesystem access
+        if path_str.startswith(session.container_workdir) or not path.is_absolute():
+            return self._resolve_host_path(session, path)
+
+        # Path outside workspace — docker cp to temp dir
+        import tempfile
+        container = await asyncio.to_thread(
+            self._client.containers.get, session.container_name
+        )
+        tmp_dir = Path(tempfile.mkdtemp(prefix="vco-file-"))
+        dest = tmp_dir / path.name
+        # docker cp container:/path/to/file /tmp/vco-file-xxx/filename
+        bits, _ = await asyncio.to_thread(container.get_archive, path_str)
+        # get_archive returns a tar stream — extract the single file
+        import tarfile
+        import io
+        tar_bytes = b"".join(bits)
+        with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tar:
+            member = tar.getmembers()[0]
+            extracted = tar.extractfile(member)
+            if extracted is None:
+                raise RuntimeError(f"Cannot extract {container_path} from container")
+            dest.write_bytes(extracted.read())
+        return dest
+
     async def read_file(self, agent_id: str, path: Path) -> str:
         """Read file via host filesystem (volume-mounted workspace)."""
         session = self._sessions.get(agent_id)

@@ -83,6 +83,46 @@ class EditMessagePayload(BaseModel):
     content: str
 
 
+class PostEmbedPayload(BaseModel):
+    """Payload for posting an embed and getting the message ID back."""
+
+    channel_id: str
+    title: str
+    description: str = ""
+    color: int | None = None
+    fields: list[EmbedField] = Field(default_factory=list)
+
+
+class PostEmbedResult(BaseModel):
+    """Result from posting an embed — includes message_id for reply tracking."""
+
+    message_id: str
+
+
+class PollReplyPayload(BaseModel):
+    """Payload for polling replies to a specific message."""
+
+    channel_id: str
+    message_id: str
+    poll_interval: float = 5.0
+    max_polls: int = 120  # 10 minutes default
+
+
+class SendFilePayload(BaseModel):
+    """Payload for sending a file to a channel.
+
+    TODO(v4-distributed): file_path assumes daemon can read the host filesystem.
+    For remote agents, this should accept file bytes (base64-encoded) or a stream
+    URL instead. The transport layer would upload the bytes rather than resolve a
+    local path. This is the protocol-level change needed for multi-machine support.
+    """
+
+    channel_id: str
+    file_path: str  # absolute path on the host filesystem
+    filename: str | None = None  # display name (defaults to basename of file_path)
+    content: str = ""  # optional message text alongside the file
+
+
 # --- Protocol ---
 
 
@@ -90,7 +130,7 @@ class EditMessagePayload(BaseModel):
 class CommunicationPort(Protocol):
     """Platform-agnostic communication interface.
 
-    Any adapter (Discord, Slack, noop) must implement these six async methods.
+    Any adapter (Discord, Slack, noop) must implement these methods.
     Used by the daemon layer for all outbound messaging.
     """
 
@@ -109,6 +149,14 @@ class CommunicationPort(Protocol):
     ) -> CreateChannelResult | None: ...
 
     async def edit_message(self, payload: EditMessagePayload) -> bool: ...
+
+    async def post_embed(
+        self, payload: PostEmbedPayload
+    ) -> PostEmbedResult | None: ...
+
+    async def poll_reply(self, payload: PollReplyPayload) -> str | None: ...
+
+    async def send_file(self, payload: SendFilePayload) -> bool: ...
 
 
 # --- Noop adapter (testing / fallback) ---
@@ -139,4 +187,15 @@ class NoopCommunicationPort:
         )
 
     async def edit_message(self, payload: EditMessagePayload) -> bool:
+        return True
+
+    async def post_embed(
+        self, payload: PostEmbedPayload
+    ) -> PostEmbedResult | None:
+        return PostEmbedResult(message_id="noop-msg")
+
+    async def poll_reply(self, payload: PollReplyPayload) -> str | None:
+        return "noop-reply"
+
+    async def send_file(self, payload: SendFilePayload) -> bool:
         return True

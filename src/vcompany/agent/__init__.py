@@ -9,6 +9,7 @@ from vcompany.agent.fulltime_agent import FulltimeAgent
 from vcompany.agent.gsd_agent import GsdAgent
 from vcompany.agent.gsd_lifecycle import GsdLifecycle
 from vcompany.agent.gsd_phases import CheckpointData, GsdPhase
+from vcompany.agent.task_agent import TaskAgent
 
 __all__ = [
     "CompanyAgent",
@@ -22,4 +23,5 @@ __all__ = [
     "GsdLifecycle",
     "GsdPhase",
     "CheckpointData",
+    "TaskAgent",
 ]

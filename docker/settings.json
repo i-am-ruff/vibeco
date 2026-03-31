@@ -6,9 +6,44 @@
       "Write(*)",
       "Edit(*)",
       "Glob(*)",
-      "Grep(*)",
-      "WebFetch(*)"
+      "Grep(*)"
     ],
     "deny": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "vco ask",
+            "timeout": 86400
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "vco signal --ready --agent-id ${VCO_AGENT_ID}"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "vco signal --idle --agent-id ${VCO_AGENT_ID}"
+          }
+        ]
+      }
+    ]
   }
 }

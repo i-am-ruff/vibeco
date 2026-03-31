@@ -106,16 +106,20 @@ You manage company-level agents using `vco` CLI commands through your Bash tool.
 
 **Hire an agent:**
 ```bash
-vco hire <template> <agent-id>
+vco hire <agent-type> <agent-id>
 ```
-Templates: `researcher` (deep research with citations), `generic` (general purpose)
-Example: `vco hire researcher market-analyst`
+
+**Available agent types** (defined in agent-types.yaml — run `cat agent-types.yaml` to see current config):
+{agent_types_section}
+
+Example: `vco hire gsd sprint-dev-1`
+Example: `vco hire docker-gsd isolated-builder`
 
 **Give a task to an existing agent:**
 ```bash
 vco give-task <agent-id> "<task description>"
 ```
-Example: `vco give-task market-analyst "Research AI developer tools market gaps for solo developers"`
+Example: `vco give-task sprint-dev-1 "Implement the auth middleware per Phase 3 plan"`
 
 **Dismiss an agent when done:**
 ```bash
@@ -127,7 +131,18 @@ vco dismiss <agent-id>
 vco status
 ```
 
-Hired agents get their own Discord channel (#task-{id}) for communication. You can review their work there and send feedback. Use hire + give-task when the owner asks for research, analysis, or any work that benefits from a dedicated agent working autonomously.
+**Build Docker image (required before hiring docker agents):**
+```bash
+vco build
+```
+
+Hired agents get their own Discord channel (#task-{{id}}) for communication. They announce themselves when ready. You can review their work there and send feedback.
+
+**When to use which type:**
+- `gsd` — standard local agent for GSD-driven development work
+- `docker-gsd` — isolated Docker agent, same capabilities but sandboxed (use when isolation matters)
+- `continuous` / `fulltime` — long-running agents for monitoring, PM duties
+- `company` / `task` — lightweight agents for quick tasks
 
 Note: The task description in give-task MUST be quoted as a single string. Without quotes, only the first word becomes the task.
 """
@@ -199,21 +214,42 @@ class StrategistConversation:
 
     @staticmethod
     def _load_persona(persona_path: Path | None) -> str:
-        """Load persona from file, falling back to DEFAULT_PERSONA."""
+        """Load persona from file, falling back to DEFAULT_PERSONA.
+
+        Populates {agent_types_section} from agent-types.yaml so the
+        Strategist knows the real available agent types.
+        """
         if persona_path is None:
-            return DEFAULT_PERSONA
-        if not persona_path.exists():
+            raw = DEFAULT_PERSONA
+        elif not persona_path.exists():
             logger.warning(
                 "Persona file %s not found, using default persona", persona_path
             )
-            return DEFAULT_PERSONA
-        content = persona_path.read_text().strip()
-        if not content:
-            logger.warning(
-                "Persona file %s is empty, using default persona", persona_path
-            )
-            return DEFAULT_PERSONA
-        return content
+            raw = DEFAULT_PERSONA
+        else:
+            content = persona_path.read_text().strip()
+            if not content:
+                logger.warning(
+                    "Persona file %s is empty, using default persona", persona_path
+                )
+                raw = DEFAULT_PERSONA
+            else:
+                raw = content
+
+        # Populate agent types from config
+        try:
+            from vcompany.models.agent_types import get_agent_types_config
+            config = get_agent_types_config()
+            lines = []
+            for name, tc in config.types.items():
+                transport_tag = f" [Docker]" if tc.transport == "docker" else ""
+                caps = ", ".join(tc.capabilities) if tc.capabilities else "none"
+                lines.append(f"- `{name}`{transport_tag} — capabilities: {caps}")
+            agent_types_section = "\n".join(lines) if lines else "- Run `cat agent-types.yaml` to see available types"
+        except Exception:
+            agent_types_section = "- Run `cat agent-types.yaml` to see available types"
+
+        return raw.replace("{agent_types_section}", agent_types_section)
 
     async def _ensure_transport_setup(self) -> None:
         """Set up transport for piped (non-interactive) execution if not already done."""

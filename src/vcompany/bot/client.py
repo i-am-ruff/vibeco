@@ -30,7 +30,7 @@ _COG_EXTENSIONS: list[str] = [
     "vcompany.bot.cogs.commands",
     "vcompany.bot.cogs.alerts",
     "vcompany.bot.cogs.plan_review",
-    "vcompany.bot.cogs.strategist",
+    "vcompany.bot.cogs.mention_router",
     "vcompany.bot.cogs.question_handler",
     "vcompany.bot.cogs.workflow_master",
     "vcompany.bot.cogs.workflow_orchestrator_cog",
@@ -138,26 +138,18 @@ class VcoBot(commands.Bot):
             logger.exception("Failed to set up system channels")
             self._system_channels = {}
 
-        # Initialize Strategist cog channels (always available)
+        # Store strategist persona path for daemon to use when creating Strategist agent
         try:
             from vcompany.bot.config import BotConfig
             bot_config = BotConfig()
-            strategist_cog = self.get_cog("StrategistCog")
-            if strategist_cog:
-                self._strategist_persona_path = (
-                    Path(bot_config.strategist_persona_path)
-                    if bot_config.strategist_persona_path
-                    else None
-                )
-                decisions_path = (
-                    self.project_dir / "state" / "decisions.jsonl"
-                    if self.project_dir
-                    else None
-                )
-                await strategist_cog.initialize(self._strategist_persona_path, decisions_path)
-            logger.info("Strategist channels initialized")
+            self._strategist_persona_path = (
+                Path(bot_config.strategist_persona_path)
+                if bot_config.strategist_persona_path
+                else None
+            )
+            logger.info("Strategist persona path resolved")
         except Exception:
-            logger.exception("Failed to initialize Strategist channels")
+            logger.exception("Failed to resolve Strategist persona path")
 
         # Initialize WorkflowMaster (always available)
         try:

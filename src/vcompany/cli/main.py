@@ -3,6 +3,7 @@
 import click
 
 from vcompany.cli.bot_cmd import bot
+from vcompany.cli.ask_cmd import ask
 from vcompany.cli.build_cmd import build
 from vcompany.cli.clone_cmd import clone
 from vcompany.cli.init_cmd import init
@@ -19,6 +20,7 @@ from vcompany.cli.give_task_cmd import give_task
 from vcompany.cli.health_cmd import health
 from vcompany.cli.hire_cmd import hire
 from vcompany.cli.status_cmd import status
+from vcompany.cli.send_file_cmd import send_file
 from vcompany.cli.signal_cmd import signal
 from vcompany.cli.up_cmd import up
 
@@ -30,6 +32,7 @@ def cli():
     pass
 
 
+cli.add_command(ask)
 cli.add_command(bot)
 cli.add_command(build)
 cli.add_command(clone)
@@ -48,4 +51,5 @@ cli.add_command(dismiss)
 cli.add_command(status)
 cli.add_command(health)
 cli.add_command(new_project)
+cli.add_command(send_file)
 cli.add_command(signal)

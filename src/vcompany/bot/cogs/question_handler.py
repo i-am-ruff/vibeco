@@ -55,6 +55,46 @@ class QuestionHandlerCog(commands.Cog):
         """Inject PMTier for question evaluation. Called from bot startup."""
         self._pm = pm
 
+    def _get_runtime_api(self) -> RuntimeAPI | None:
+        return _get_runtime_api(self.bot)
+
+    async def _post_owner_escalation(
+        self,
+        agent_id: str,
+        question: str,
+        confidence_score: float,
+        channel: discord.TextChannel | None = None,
+    ) -> str:
+        """Post @Owner escalation and wait indefinitely for reply.
+
+        Per D-07: LOW confidence escalations wait indefinitely — no timeout
+        for strategic decisions.
+        """
+        if channel is None:
+            raise RuntimeError("No channel available for owner escalation")
+
+        owner_role = discord.utils.get(channel.guild.roles, name="vco-owner")
+        mention = owner_role.mention if owner_role else "@Owner"
+
+        msg = await channel.send(
+            f"{mention} -- Strategic decision needed\n\n"
+            f"**Agent:** {agent_id}\n"
+            f"**Question:** {question}\n"
+            f"**PM confidence:** {confidence_score:.0%}\n\n"
+            f"Please reply to this message with your decision."
+        )
+
+        # Wait for a reply to this specific message
+        def check(m: discord.Message) -> bool:
+            return (
+                m.reference is not None
+                and getattr(m.reference, "message_id", None) == msg.id
+                and not m.author.bot
+            )
+
+        reply = await self.bot.wait_for("message", check=check)
+        return reply.content
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
         """Detect question embeds in agent channels and auto-answer via PM.
@@ -138,14 +178,12 @@ class QuestionHandlerCog(commands.Cog):
                 f"[PM] Escalating to @Strategist -- confidence too low for: {question_text[:200]}"
             )
 
-            strategist_cog = self.bot.get_cog("StrategistCog")
-            if strategist_cog is not None:
-                strat_answer = await strategist_cog.handle_pm_escalation(
+            runtime_api = self._get_runtime_api()
+            if runtime_api is not None:
+                strat_answer = await runtime_api.handle_pm_escalation(
                     agent_id, question_text, decision.confidence.score
                 )
                 if strat_answer:
-                    # Strategist answered -- reply to original question
-                    # Strategist speaks without prefix per D-05
                     await message.reply(strat_answer)
                     await self._log_decision(
                         agent_id, question_text, strat_answer, "MEDIUM", "Strategist"
@@ -153,23 +191,17 @@ class QuestionHandlerCog(commands.Cog):
                     return
                 else:
                     # Strategist also unsure -- escalate to Owner in agent channel (D-03)
-                    await message.channel.send(
-                        f"[PM] @Owner -- strategic decision needed for {agent_id}: {question_text[:200]}"
-                    )
-                    owner_answer = await strategist_cog.post_owner_escalation(
-                        agent_id,
-                        question_text,
-                        decision.confidence.score,
+                    owner_answer = await self._post_owner_escalation(
+                        agent_id, question_text, decision.confidence.score,
                         channel=message.channel,
                     )
-                    # Reply to original question with owner's decision
                     await message.reply(f"Owner decided: {owner_answer}")
                     await self._log_decision(
                         agent_id, question_text, owner_answer, "OWNER", "Owner"
                     )
                     return
 
-            # StrategistCog not available -- question sits for manual reply
+            # RuntimeAPI not available -- question sits for manual reply
 
     async def _log_decision(
         self,

@@ -60,6 +60,7 @@ class CompanyRoot(Supervisor):
         transport_deps: dict | None = None,
         project_dir: Path | None = None,
         signal_router: object | None = None,
+        comm_port: object | None = None,
     ) -> None:
         # CompanyRoot has no parent and no child_specs at init --
         # projects are added dynamically via add_project().
@@ -77,8 +78,7 @@ class CompanyRoot(Supervisor):
         )
         self._projects: dict[str, ProjectSupervisor] = {}
         self._company_agents: dict[str, AgentContainer] = {}
-        # Shared NoopCommunicationPort for all containers -- real impl in later phases
-        self._comm_port = NoopCommunicationPort()
+        self._comm_port = comm_port or NoopCommunicationPort()
         self._transport_deps = transport_deps
         self._project_dir = project_dir
         # Degraded mode manager (RESL-03)

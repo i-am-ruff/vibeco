@@ -15,10 +15,16 @@ logger = logging.getLogger("vcompany.daemon.signal_handler")
 
 
 class SignalRouter:
-    """Routes incoming agent signals to registered container callbacks."""
+    """Routes incoming agent signals to registered container callbacks.
+
+    Two listener layers:
+    - _handlers: per-agent container callbacks (signal → container._handle_signal)
+    - _listeners: daemon-level observers (e.g. post to Discord on first "ready")
+    """
 
     def __init__(self) -> None:
         self._handlers: dict[str, Callable[[str], Awaitable[None]]] = {}
+        self._listeners: list[Callable[[str, str], Awaitable[None]]] = []
 
     def register(self, agent_id: str, handler: Callable[[str], Awaitable[None]]) -> None:
         """Register a signal handler for an agent. Handler receives signal type ('ready'|'idle')."""
@@ -30,6 +36,10 @@ class SignalRouter:
         self._handlers.pop(agent_id, None)
         logger.debug("Signal handler unregistered for %s", agent_id)
 
+    def add_listener(self, listener: Callable[[str, str], Awaitable[None]]) -> None:
+        """Add a daemon-level signal listener. Called with (agent_id, signal_type) on every delivery."""
+        self._listeners.append(listener)
+
     async def deliver(self, agent_id: str, signal_type: str) -> bool:
         """Deliver a signal to the registered handler. Returns False if no handler found."""
         handler = self._handlers.get(agent_id)
@@ -37,6 +47,12 @@ class SignalRouter:
             logger.warning("No signal handler for agent %s (signal: %s)", agent_id, signal_type)
             return False
         await handler(signal_type)
+        # Notify daemon-level listeners (fire-and-forget, don't block delivery)
+        for listener in self._listeners:
+            try:
+                await listener(agent_id, signal_type)
+            except Exception:
+                logger.exception("Signal listener error for %s/%s", agent_id, signal_type)
         logger.info("Signal delivered: agent=%s type=%s", agent_id, signal_type)
         return True
 

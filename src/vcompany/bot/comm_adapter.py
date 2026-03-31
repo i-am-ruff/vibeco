@@ -16,7 +16,11 @@ from vcompany.daemon.comm import (
     CreateChannelResult,
     CreateThreadPayload,
     EditMessagePayload,
+    PollReplyPayload,
+    PostEmbedPayload,
+    PostEmbedResult,
     SendEmbedPayload,
+    SendFilePayload,
     SendMessagePayload,
     SubscribePayload,
     ThreadResult,
@@ -168,6 +172,76 @@ class DiscordCommunicationPort:
             logger.warning(
                 "edit_message: HTTP error editing message %s",
                 payload.message_id,
+                exc_info=True,
+            )
+            return False
+
+    async def post_embed(
+        self, payload: PostEmbedPayload
+    ) -> PostEmbedResult | None:
+        """Post an embed and return the message ID (for reply tracking)."""
+        channel = self._resolve_channel(payload.channel_id)
+        if channel is None:
+            logger.warning("post_embed: channel %s not found", payload.channel_id)
+            return None
+        embed = discord.Embed(
+            title=payload.title,
+            description=payload.description,
+            color=discord.Colour(payload.color) if payload.color is not None else None,
+        )
+        for field in payload.fields:
+            embed.add_field(name=field.name, value=field.value, inline=field.inline)
+        msg = await channel.send(embed=embed)
+        return PostEmbedResult(message_id=str(msg.id))
+
+    async def poll_reply(self, payload: PollReplyPayload) -> str | None:
+        """Poll for a reply to a specific message. Blocks until reply or timeout."""
+        import asyncio
+
+        channel = self._resolve_channel(payload.channel_id)
+        if channel is None:
+            return None
+        msg_id = int(payload.message_id)
+        polls_done = 0
+        max_polls = payload.max_polls
+
+        while polls_done < max_polls:
+            try:
+                async for message in channel.history(after=discord.Object(id=msg_id), limit=20):
+                    ref = message.reference
+                    if ref and ref.message_id == msg_id:
+                        return message.content
+            except discord.HTTPException:
+                pass
+            polls_done += 1
+            await asyncio.sleep(payload.poll_interval)
+
+        return None
+
+    async def send_file(self, payload: SendFilePayload) -> bool:
+        """Send a file to a channel as a Discord attachment."""
+        from pathlib import Path
+
+        channel = self._resolve_channel(payload.channel_id)
+        if channel is None:
+            logger.warning("send_file: channel %s not found", payload.channel_id)
+            return False
+
+        file_path = Path(payload.file_path)
+        if not file_path.exists():
+            logger.warning("send_file: file %s not found", payload.file_path)
+            return False
+
+        filename = payload.filename or file_path.name
+        try:
+            attachment = discord.File(fp=str(file_path), filename=filename)
+            await channel.send(content=payload.content or None, file=attachment)
+            return True
+        except discord.HTTPException:
+            logger.warning(
+                "send_file: failed to send %s to channel %s",
+                filename,
+                payload.channel_id,
                 exc_info=True,
             )
             return False

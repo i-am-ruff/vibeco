@@ -111,7 +111,7 @@ class CompanyAgent(AgentContainer):
                 return
 
             response = await self._conversation.send(context.content)
-            await self._send_discord(context.channel, response)
+            await self._send_discord(context.channel_id or context.channel, response)
             logger.info(
                 "Strategist responded to message from %s (len=%d)",
                 context.sender, len(response),
@@ -135,7 +135,7 @@ class CompanyAgent(AgentContainer):
         if self.comm_port is None:
             logger.warning("Cannot send Discord message -- no comm_port wired")
             return
-        from vcompany.container.communication import SendMessagePayload
+        from vcompany.daemon.comm import SendMessagePayload
 
         payload = SendMessagePayload(channel_id=channel_name, content=content)
         await self.comm_port.send_message(payload)

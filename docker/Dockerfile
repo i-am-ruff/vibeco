@@ -20,10 +20,16 @@ RUN npm install -g @anthropic-ai/claude-code
 # Apply tweakcc patches at build time (D-02) -- deterministic, no runtime surprises
 RUN npx tweakcc --apply
 
+# Install vcompany (vco CLI) so agents can use vco signal/report/send-file/ask
+# Build context is repo root — Dockerfile is at docker/Dockerfile
+COPY pyproject.toml /opt/vcompany/pyproject.toml
+COPY src/ /opt/vcompany/src/
+RUN cd /opt/vcompany && uv pip install --system -e .
+
 # Default Claude settings baked into image (D-09)
 # Container writable layer preserves modifications across stop/start
 RUN mkdir -p /root/.claude
-COPY settings.json /root/.claude/settings.json
+COPY docker/settings.json /root/.claude/settings.json
 
 # Working directory mounted at runtime via -v host_clone:/workspace
 WORKDIR /workspace

@@ -24,7 +24,8 @@ class MessageContext(BaseModel):
     """
 
     sender: str
-    channel: str
+    channel: str  # channel name (e.g. "strategist")
+    channel_id: str | None = None  # numeric Discord channel ID for replies
     content: str
     parent_message: str | None = None
     message_id: str | None = None

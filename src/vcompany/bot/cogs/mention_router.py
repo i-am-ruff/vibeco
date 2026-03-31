@@ -1,21 +1,25 @@
-"""MentionRouterCog: Generic @mention routing for all agent types.
+"""MentionRouterCog: Unified message routing for all agent types.
 
-Watches all messages for @AgentHandle text patterns and delivers
-matching messages to the target container via receive_discord_message().
+Two routing modes:
+- **Channel-based**: All messages in an agent's primary channel go to that agent
+  (no @mention needed — if you're in #strategist, you're talking to the Strategist)
+- **@mention-based**: Messages in any channel containing @Handle go to that agent
 
 Design decisions:
 - D-01: Discord is the ONLY interaction channel for inter-agent communication
 - D-02: All agent communication surfaces through Discord channels
 - D-04: No agent-type-specific routing -- all agents receive the same MessageContext
 
-The routing is completely generic: register_agent(handle, container) maps
-a text handle to any AgentContainer subclass. No isinstance checks, no
-agent-type conditionals.
+Completely generic: register_agent(handle, container, channel_id) maps a handle
+to any AgentContainer subclass. No isinstance checks, no agent-type conditionals.
+No separate cogs per agent type.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import discord
@@ -29,22 +33,23 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Shared directory for files attached to Discord messages
+_ATTACHMENT_DIR = Path.home() / "vco-attachments"
+
 
 class MentionRouterCog(commands.Cog):
-    """Generic @mention router that delivers Discord messages to agent containers.
+    """Unified message router: channel-based + @mention-based delivery.
 
-    Maintains a registry of handle -> container mappings. When a message
-    contains @Handle text, it builds a MessageContext and calls
+    Maintains a registry of handle -> container mappings and
+    channel_id -> handle reverse lookups. Messages are delivered via
     container.receive_discord_message(context).
-
-    Per D-04: completely agent-type-agnostic. Any AgentContainer subclass
-    can be registered with any handle string.
     """
 
     def __init__(self, bot: VcoBot) -> None:
         self.bot = bot
         self._agent_handles: dict[str, AgentContainer] = {}
-        self._handle_channels: dict[str, str] = {}
+        self._handle_channels: dict[str, str] = {}  # handle -> channel_id
+        self._channel_handles: dict[str, str] = {}  # channel_id -> handle (reverse)
 
     def register_agent(
         self,
@@ -52,77 +57,111 @@ class MentionRouterCog(commands.Cog):
         container: AgentContainer,
         channel_id: str | None = None,
     ) -> None:
-        """Register an agent handle for @mention routing.
+        """Register an agent handle for message routing.
 
         Args:
-            handle: Text handle (e.g. "Strategist", "PMProjectX").
+            handle: Text handle (e.g. "Strategist", "agent-sprint-dev").
             container: AgentContainer to deliver messages to.
-            channel_id: Optional primary channel ID for this agent.
+            channel_id: Primary channel ID — all messages in this channel
+                route to this agent without needing @mention.
         """
         self._agent_handles[handle] = container
         if channel_id is not None:
             self._handle_channels[handle] = channel_id
+            self._channel_handles[channel_id] = handle
         logger.info(
-            "Registered agent handle @%s -> %s",
+            "Registered agent handle @%s -> %s (channel=%s)",
             handle,
             container.context.agent_id,
+            channel_id or "none",
         )
 
     def unregister_agent(self, handle: str) -> None:
-        """Remove an agent handle from the routing registry.
-
-        Args:
-            handle: Text handle to unregister.
-        """
+        """Remove an agent handle from the routing registry."""
+        channel_id = self._handle_channels.pop(handle, None)
+        if channel_id:
+            self._channel_handles.pop(channel_id, None)
         self._agent_handles.pop(handle, None)
-        self._handle_channels.pop(handle, None)
         logger.info("Unregistered agent handle @%s", handle)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
-        """Scan messages for @Handle patterns and route to registered agents.
+        """Route messages to agents via channel ownership or @mention.
 
-        Skips bot messages (D-04, prevents bot loop -- Pitfall 1) and
-        the bot's own messages for extra safety.
+        Priority:
+        1. If message is in an agent's primary channel → deliver to that agent
+        2. If message contains @Handle text → deliver to matching agent(s)
         """
-        # Skip bot messages to prevent loops (D-04, Pitfall 1)
         if message.author.bot:
             return
-
-        # Extra safety: skip own messages
         if self.bot.user and message.author.id == self.bot.user.id:
             return
-
         if not self._agent_handles:
             return
 
+        channel_id = str(message.channel.id)
+
+        # Channel-based routing: message is in an agent's own channel
+        handle = self._channel_handles.get(channel_id)
+        if handle is not None:
+            await self._deliver_to_agent(handle, message)
+            return
+
+        # @mention-based routing: scan for @Handle patterns
         content = message.content
-        for handle in self._agent_handles:
-            if f"@{handle}" in content:
-                await self._deliver_to_agent(handle, message)
+        for h in self._agent_handles:
+            if f"@{h}" in content:
+                await self._deliver_to_agent(h, message)
+
+    async def _build_content_with_attachments(self, message: discord.Message) -> str:
+        """Download attachments and append file paths to message content.
+
+        Files saved to ~/vco-attachments/{timestamp}_{filename} so agents
+        can reference them via Read tool. Works for all agent types.
+        """
+        content = message.content or ""
+        if not message.attachments:
+            return content
+
+        _ATTACHMENT_DIR.mkdir(exist_ok=True)
+        file_refs = []
+        for att in message.attachments:
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            safe_name = att.filename.replace(" ", "_")
+            dest = _ATTACHMENT_DIR / f"{ts}_{safe_name}"
+            try:
+                data = await att.read()
+                dest.write_bytes(data)
+                file_refs.append(f"[attached file: {dest}]")
+                logger.info("Saved attachment: %s (%d bytes)", dest, len(data))
+            except Exception:
+                logger.exception("Failed to download attachment %s", att.filename)
+                file_refs.append(f"[failed to download: {att.filename}]")
+
+        if file_refs:
+            content = content + "\n" + "\n".join(file_refs) if content else "\n".join(file_refs)
+        return content
 
     async def _deliver_to_agent(
         self, handle: str, message: discord.Message
     ) -> None:
         """Build MessageContext and deliver to the agent container.
 
-        Fetches reply parent content if the message is a reply (D-15:
-        immediate parent only, not full chain).
-
-        Args:
-            handle: Matched agent handle.
-            message: Discord message to deliver.
+        Downloads attachments to local files and fetches reply parent
+        content if the message is a reply (D-15: immediate parent only).
         """
         try:
             container = self._agent_handles.get(handle)
             if container is None:
                 return
 
-            # Build base context
+            content = await self._build_content_with_attachments(message)
+
             context = MessageContext(
                 sender=message.author.display_name,
                 channel=getattr(message.channel, "name", "unknown"),
-                content=message.content,
+                channel_id=str(message.channel.id),
+                content=content,
                 message_id=str(message.id),
             )
 
@@ -142,7 +181,6 @@ class MentionRouterCog(commands.Cog):
                         }
                     )
                 except discord.NotFound:
-                    # Parent message deleted -- deliver without parent context
                     context = context.model_copy(
                         update={
                             "parent_message": None,

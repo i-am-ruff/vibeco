@@ -15,7 +15,14 @@ from pathlib import Path
 from aiohttp import web
 
 from vcompany.container.factory import set_agent_types_config
-from vcompany.daemon.comm import CommunicationPort, NoopCommunicationPort, SendMessagePayload
+from vcompany.daemon.comm import (
+    CommunicationPort,
+    NoopCommunicationPort,
+    PollReplyPayload,
+    PostEmbedPayload,
+    SendFilePayload,
+    SendMessagePayload,
+)
 from vcompany.daemon.runtime_api import RuntimeAPI
 from vcompany.daemon.server import SocketServer
 from vcompany.daemon.signal_handler import SignalRouter, create_signal_app
@@ -163,17 +170,22 @@ class Daemon:
 
         # Claude health check for degraded mode
         async def claude_health_check() -> bool:
+            """Check Claude Code operational status via public status page.
+
+            No API key needed — uses Anthropic's Statuspage API.
+            Checks the 'Claude Code' component specifically.
+            """
             try:
-                import anthropic
-                client = anthropic.AsyncAnthropic()
-                await client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=1,
-                    messages=[{"role": "user", "content": "ping"}],
-                )
-                return True
+                import httpx
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get("https://status.claude.com/api/v2/summary.json")
+                    data = resp.json()
+                    for component in data.get("components", []):
+                        if component.get("name") == "Claude Code":
+                            return component.get("status") == "operational"
+                return True  # component not found, assume ok
             except Exception:
-                return False
+                return True  # status page unreachable, don't block on that
 
         # Create TmuxManager
         tmux_manager = TmuxManager()
@@ -234,6 +246,7 @@ class Daemon:
             transport_deps=transport_deps,
             project_dir=project_dir,
             signal_router=self._signal_router,
+            comm_port=comm_port_getter(),
         )
         await company_root.start()
         self._company_root = company_root
@@ -242,7 +255,31 @@ class Daemon:
         runtime_api = RuntimeAPI(company_root, comm_port_getter)
         api_ref[0] = runtime_api
         self._runtime_api = runtime_api
+
+        # Wire MentionRouterCog so agents can be registered for Discord routing
+        mention_router = self._bot.get_cog("MentionRouterCog")
+        if mention_router:
+            runtime_api.set_mention_router(mention_router)
         logger.info("RuntimeAPI initialized")
+
+        # Listen for "ready" signals and announce in agent's task channel
+        _announced: set[str] = set()
+
+        async def _on_agent_signal(agent_id: str, signal_type: str) -> None:
+            if signal_type != "ready" or agent_id in _announced:
+                return
+            _announced.add(agent_id)
+            channel_id = runtime_api.get_channel_id(f"task-{agent_id}")
+            if not channel_id:
+                return
+            await comm_port_getter().send_message(
+                SendMessagePayload(
+                    channel_id=channel_id,
+                    content=f"**{agent_id}** is online and ready for tasks.",
+                )
+            )
+
+        self._signal_router.add_listener(_on_agent_signal)
 
         # Register channel IDs from bot's system channels (if available)
         if hasattr(self._bot, '_system_channels'):
@@ -263,6 +300,9 @@ class Daemon:
             self._server.register_method("status", self._handle_status)
             self._server.register_method("health_tree", self._handle_health_tree)
             self._server.register_method("new_project", self._handle_new_project)
+            self._server.register_method("send_message", self._handle_send_message)
+            self._server.register_method("send_file", self._handle_send_file)
+            self._server.register_method("ask", self._handle_ask)
 
     async def _init_project(self, runtime_api: RuntimeAPI) -> None:
         """Initialize project if config available. Wire cogs through RuntimeAPI only.
@@ -276,19 +316,19 @@ class Daemon:
         project_config = self._project_config
         project_dir = self._project_dir
 
-        if project_config is None or project_dir is None:
-            logger.info("No project loaded -- running in Strategist-only mode")
-            return
-
         persona_path = getattr(self._bot, '_strategist_persona_path', None)
 
-        # Wire StrategistCog to CompanyAgent via RuntimeAPI
+        if project_config is None or project_dir is None:
+            # No project — still create the Strategist agent so it responds in Discord
+            logger.info("No project loaded -- creating Strategist in standalone mode")
+            await runtime_api.create_strategist(persona_path)
+            return
+
+        # Full project mode — creates Strategist + project agents
         await runtime_api.new_project(project_config, project_dir, persona_path)
 
-        # NOTE: StrategistCog and PlanReviewCog access RuntimeAPI exclusively.
-        # No direct container injection needed — cogs use _get_runtime_api(self.bot).
-        #   daemon.runtime_api.handle_plan_approval(agent_id, plan_path)
-        #   daemon.runtime_api.handle_plan_rejection(agent_id, plan_path, feedback)
+        # MentionRouterCog handles all message routing (channel-based + @mention).
+        # Strategist is registered as an agent with its channel — no special cog needed.
         # This is wired in Plan 20-04 when cogs are updated.
 
         logger.info("Project %s initialized in daemon", project_config.project)
@@ -298,7 +338,11 @@ class Daemon:
     async def _handle_hire(self, params: dict) -> dict:
         if not self._runtime_api:
             raise RuntimeError("RuntimeAPI not initialized")
-        agent_id = await self._runtime_api.hire(params["agent_id"], params.get("template", "generic"))
+        agent_id = await self._runtime_api.hire(
+            params["agent_id"],
+            params.get("template", "generic"),
+            agent_type=params.get("agent_type"),
+        )
         return {"agent_id": agent_id}
 
     async def _handle_give_task(self, params: dict) -> dict:
@@ -345,6 +389,144 @@ class Daemon:
         await self._runtime_api.new_project(config, project_dir, persona_path)
 
         return {"status": "ok", "project": config.project}
+
+    async def _handle_send_message(self, params: dict) -> dict:
+        """Route a message from an agent to its Discord channel via CommunicationPort.
+
+        Agents call this via daemon socket instead of hitting Discord API directly.
+        Resolves channel by agent_id (task-{id}) or explicit channel_id.
+        """
+        if not self._runtime_api or not self._comm_port:
+            raise RuntimeError("Daemon not initialized")
+
+        content = params.get("content", "")
+        agent_id = params.get("agent_id", "")
+        channel_id = params.get("channel_id")
+
+        # Resolve channel: explicit ID or by agent_id convention
+        if not channel_id and agent_id:
+            channel_id = self._runtime_api.get_channel_id(f"task-{agent_id}")
+            if not channel_id:
+                channel_id = self._runtime_api.get_channel_id(f"agent-{agent_id}")
+        if not channel_id:
+            return {"status": "error", "message": f"No channel found for agent {agent_id}"}
+
+        success = await self._comm_port.send_message(
+            SendMessagePayload(channel_id=channel_id, content=content)
+        )
+        return {"status": "ok" if success else "error"}
+
+    async def _handle_send_file(self, params: dict) -> dict:
+        """Send a file from an agent's workspace to its Discord channel.
+
+        The agent passes a file path as it sees it (e.g. /workspace/plan.md
+        inside Docker). The daemon resolves it to the host filesystem path
+        using the transport's volume mapping.
+        """
+        if not self._runtime_api or not self._comm_port:
+            raise RuntimeError("Daemon not initialized")
+
+        agent_id = params.get("agent_id", "")
+        file_path = params.get("file_path", "")
+        filename = params.get("filename")
+        content = params.get("content", "")
+        channel_id = params.get("channel_id")
+
+        if not file_path:
+            return {"status": "error", "message": "No file_path provided"}
+
+        # Resolve container path → host path via transport.
+        # TODO(v4-distributed): This assumes daemon and agent share a local
+        # filesystem (same machine). For remote agents, send_file should accept
+        # file bytes over the network instead of resolving host paths. See
+        # DockerTransport.resolve_file_to_host() for the full TODO.
+        if agent_id:
+            container = await self._runtime_api._root._find_container(agent_id)
+            if container and hasattr(container, "_transport") and container._transport:
+                transport = container._transport
+                if hasattr(transport, "resolve_file_to_host"):
+                    try:
+                        host_path = await transport.resolve_file_to_host(agent_id, file_path)
+                        file_path = str(host_path)
+                    except Exception as e:
+                        return {"status": "error", "message": f"Cannot resolve file: {e}"}
+
+        # Resolve channel
+        if not channel_id and agent_id:
+            channel_id = self._runtime_api.get_channel_id(f"task-{agent_id}")
+            if not channel_id:
+                channel_id = self._runtime_api.get_channel_id(f"agent-{agent_id}")
+        if not channel_id:
+            return {"status": "error", "message": f"No channel found for agent {agent_id}"}
+
+        success = await self._comm_port.send_file(
+            SendFilePayload(
+                channel_id=channel_id,
+                file_path=file_path,
+                filename=filename,
+                content=content,
+            )
+        )
+        return {"status": "ok" if success else "error"}
+
+    async def _handle_ask(self, params: dict) -> dict:
+        """Post a question embed and poll for a reply via CommunicationPort.
+
+        Replaces ask_discord.py's direct Discord API usage. Agents call this
+        via daemon socket — no network access or bot token needed in the agent.
+        """
+        if not self._runtime_api or not self._comm_port:
+            raise RuntimeError("Daemon not initialized")
+
+        agent_id = params.get("agent_id", "")
+        questions = params.get("questions", [])
+        timeout_mode = params.get("timeout_mode", "continue")
+
+        if not questions:
+            return {"status": "error", "message": "No questions provided"}
+
+        # Resolve channel
+        channel_id = self._runtime_api.get_channel_id(f"task-{agent_id}")
+        if not channel_id:
+            channel_id = self._runtime_api.get_channel_id(f"agent-{agent_id}")
+        if not channel_id:
+            return {"status": "error", "answer": f"No channel found for agent {agent_id}"}
+
+        # Format question as embed
+        q = questions[0]
+        options = q.get("options", [])
+        options_text = "\n".join(
+            f"**{i+1}. {opt['label']}** — {opt.get('description', '')}"
+            for i, opt in enumerate(options)
+        )
+        result = await self._comm_port.post_embed(
+            PostEmbedPayload(
+                channel_id=channel_id,
+                title=f"Question from {agent_id}",
+                description=f"{q.get('question', '')}\n\n{options_text}",
+                color=0x3498DB,
+            )
+        )
+        if not result:
+            return {"status": "error", "answer": "Failed to post question"}
+
+        # Poll for reply
+        answer = await self._comm_port.poll_reply(
+            PollReplyPayload(
+                channel_id=channel_id,
+                message_id=result.message_id,
+            )
+        )
+
+        if answer is None:
+            # Timeout fallback
+            if timeout_mode == "continue" and options:
+                first = options[0]
+                fallback = f"Auto-selected (timeout): {first.get('label', 'Unknown')}"
+                return {"status": "timeout", "answer": fallback}
+            return {"status": "timeout", "answer": "No answer received within timeout"}
+
+        return {"status": "ok", "answer": answer}
 
     # ── Boot notifications ────────────────────────────────────────────
 
