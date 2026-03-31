@@ -342,6 +342,12 @@ class CompanyRoot(Supervisor):
                     handle.update_health(msg)
                 elif isinstance(msg, SignalMessage):
                     logger.info("Agent %s signal: %s %s", handle.agent_id, msg.signal, msg.detail)
+                    if msg.signal == "ready" and handle.channel_id:
+                        detail = f" ({msg.detail})" if msg.detail else ""
+                        await self._route_report(
+                            handle,
+                            ReportMessage(channel=handle.channel_id, content=f"[system] **{handle.agent_id}** is ready{detail}."),
+                        )
                 elif isinstance(msg, ReportMessage):
                     await self._route_report(handle, msg)
                 elif isinstance(msg, AskMessage):
