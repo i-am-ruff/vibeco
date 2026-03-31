@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
-status: Defining requirements
-stopped_at: ""
-last_updated: "2026-03-31T08:30:00.000Z"
+status: Ready to plan
+stopped_at: "v4.0 roadmap created"
+last_updated: "2026-03-31T09:00:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -18,15 +18,36 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-03-31)
 
-**Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly — all operable from Discord.
-**Current focus:** v4.0 — Distributed Agent Runtime (defining requirements)
+**Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
+**Current focus:** Phase 29 - Transport Channel Protocol
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-31 — Milestone v4.0 started
+Phase: 29 of 34 (Transport Channel Protocol)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-03-31 -- v4.0 roadmap created (6 phases, 17 requirements)
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0 (v4.0 milestone)
+- Average duration: -
+- Total execution time: 0 hours
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| - | - | - | - |
+
+**Recent Trend:**
+- Prior milestone (v3.1): 5 phases, 18 plans completed
+- Trend: Stable
+
+*Updated after each plan completion*
 
 ## Accumulated Context
 
@@ -35,53 +56,21 @@ Last activity: 2026-03-31 — Milestone v4.0 started
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [v3.1 scope]: Phase 24 first — surface all hidden inter-agent communication to Discord before transport abstraction
-- [v3.1 scope]: No agent-specific hardcoding in RuntimeAPI — PM is just an agent with rules, not special Python
-- [v3.1 scope]: AgentTransport protocol for local/Docker/network execution environments
-- [v3.1 scope]: Socket-based agent signaling replaces sentinel temp files
-- [v3.1 scope]: State persistence deferred to v3.2+
-- [v3.1 scope]: Nyquist validation disabled — focus on implementation quality over test ceremony
-- [Phase 24]: Injected async callback pattern for BacklogQueue mutation notifications -- decoupled from Discord/CommunicationPort
-- [Phase 24]: Generic handle-based @mention routing (no agent-type checks) via MentionRouterCog
-- [Phase 24]: Prefix-based message dispatch pattern for Discord agent communication
-- [Phase 24]: escalate_to_strategist changed from request-response to fire-and-forget Discord message
-- [Phase 24]: Strategist container accessed via company_root instead of stored ref; PM handle as PM{project}; BacklogQueue on_mutation via CommunicationPort
-- [Phase 24]: Kept RuntimeAPI SendMessagePayload notifications alongside [Review] messages -- different purposes
-- [Phase 25]: AgentTransport uses @runtime_checkable Protocol (structural subtyping, same as CommunicationPort)
-- [Phase 25]: LocalTransport accepts optional TmuxManager via constructor injection for testability
-- [Phase 25]: Unix socket for signal HTTP server (avoids TCP port conflicts)
-- [Phase 25]: Silent failure in vco signal when daemon unreachable (hooks must not block agents)
-- [Phase 25]: ChildSpec gets transport field for factory lookup; factory creates new transport per container from transport_deps
-- [Phase 26]: docker_image is a plain optional string with no validator -- factory validates at runtime
-- [Phase 26]: Container naming uses vco-{project}-{agent_id} for deterministic reuse
-- [Phase 26]: Volume-based file I/O for DockerTransport read_file/write_file (not docker cp)
-- [Phase 27]: Separate async/sync Docker build interfaces: ensure_docker_image for hire-flow, build_image_sync for CLI
-- [Phase 27]: Factory resolves per-transport deps from agent type config instead of passing global dict (D-01)
-- [Phase 27]: Module-level set/get pattern for agent types config avoids threading through constructors
-- [Phase 27]: hasattr duck typing over isinstance for method guards (resolve_review, initialize_conversation, backlog)
-- [Phase 27]: Dual registry by type string and class name enables docker-gsd -> GsdAgent mapping via container_class config
-- [Phase 27]: Auto-build placed in company_root.hire() not factory -- factory is sync, ensure_docker_image is async
-- [Phase 27]: Transport type detection in health_report uses hasattr duck typing on _image attribute
-- [Phase 28]: Handler protocols have identical signatures but separate types for semantic isinstance checks
-- [Phase 28]: Base _send_discord uses daemon.comm.SendMessagePayload (canonical import), _handler typed as Any to avoid import cycle
-- [Phase 28]: Checkpoint lock on handler (D-02 exception): synchronization infra, not agent state
-- [Phase 28]: handler field defaults to None for backward compatibility with legacy subclass routing
-- [Phase 28]: _HANDLER_REGISTRY parallels _TRANSPORT_REGISTRY pattern for consistency
-- [Phase 28]: GsdAgent keeps checkpoint/phase methods locally rather than delegating to handler
-- [Phase 28]: Handler on_start runs between memory.open() and transport launch for correct checkpoint-restore ordering
-- [Phase 28]: TaskAgent inner_state override kept for .phase marker file (different mechanism than OrderedSet)
+- [v3.1]: AgentTransport protocol separates WHERE from HOW
+- [v3.1]: Handler extraction makes session/conversation/transient orthogonal to transport
+- [v4.0]: Containers run INSIDE transports, not as daemon-side Python objects
+- [v4.0]: vco splits into vco-head (orchestration) and vco-worker (container runtime)
+- [v4.0]: Transport channel is the ONLY communication between head and worker
+- [v4.0]: vco-worker must be installable standalone -- no discord.py, no bot code, no orchestration
 
 ### Roadmap Evolution
 
-- Phase 27 added: Docker Integration Wiring — per-transport deps, docker_image flow, auto-build, parametric setup, remove hardcoded type checks, e2e Docker agent via Discord
-- Phase 28 added: Agent-Transport Separation Refactor — extract handler types from agent subclasses into composable pieces orthogonal to transport
+- Phase 29-34 created: v4.0 Distributed Agent Runtime -- 6 phases derived from 17 requirements
 
 ### Blockers/Concerns
 
-- [Architecture]: PM currently receives events via internal post_event() asyncio.Queue — invisible on Discord
-- [Architecture]: RuntimeAPI has PM-specific methods (_on_phase_complete, pm_event_sink) — hardcoded agent routing
-- [Architecture]: BacklogQueue operations are silent internal state changes — not visible on Discord
-- [Architecture]: Plan review decisions (approve/reject) routed internally, not through Discord channels
+- [Tech debt]: Test suite needs cleanup (asyncio patterns, Click 8.3 compat) -- carried from v3.1
+- [Architecture]: Current daemon-side container objects must coexist with new worker until Phase 34 removes them
 
 ### Pending Todos
 
@@ -95,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T04:54:46.449Z
-Stopped at: Completed 28-04-PLAN.md
+Last session: 2026-03-31
+Stopped at: v4.0 roadmap created (6 phases, 17 requirements mapped)
 Resume file: None

@@ -13,33 +13,33 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 - [ ] **WORK-02**: vco-worker accepts config blob at startup (handler type, capabilities, gsd_command, persona, env vars) and self-configures the right agent process
 - [ ] **WORK-03**: vco-worker manages agent lifecycle inside the execution environment (start, health reporting, graceful stop)
 - [ ] **WORK-04**: vco-worker communicates exclusively through the transport channel (no socket mounts, no shared filesystem, no direct Discord access)
-- [ ] **WORK-05**: Worker contains full agent container runtime — handler logic (session/conversation/transient), lifecycle FSM, task queue, idle tracking, memory store, checkpoint/restore — same capabilities as previous daemon-side containers but self-managed behind the transport boundary
+- [ ] **WORK-05**: Worker contains full agent container runtime -- handler logic (session/conversation/transient), lifecycle FSM, task queue, idle tracking, memory store, checkpoint/restore -- same capabilities as previous daemon-side containers but self-managed behind the transport boundary
 
 ### Head Refactor
 
-- [ ] **HEAD-01**: Daemon holds transport handle + agent metadata per agent (id, type, capabilities, channel_id, handler type, config) — enough to route messages, report health, and identify agents without knowing internals
-- [ ] **HEAD-02**: Hire flow creates Discord channel, registers routing, sends config blob through transport — worker bootstraps from config
+- [ ] **HEAD-01**: Daemon holds transport handle + agent metadata per agent (id, type, capabilities, channel_id, handler type, config) -- enough to route messages, report health, and identify agents without knowing internals
+- [ ] **HEAD-02**: Hire flow creates Discord channel, registers routing, sends config blob through transport -- worker bootstraps from config
 - [ ] **HEAD-03**: Health tree populated from worker health reports received through transport, not daemon-side container objects
-- [ ] **HEAD-04**: Dead code removed — daemon-side GsdAgent/CompanyAgent/FulltimeAgent Python objects, handler factory injection, NoopCommunicationPort, StrategistConversation-from-daemon, all v3.1 shims
-- [ ] **HEAD-05**: Discord channel/category lifecycle managed by head — create on hire, cleanup on dismiss, routing persists across daemon restarts
+- [ ] **HEAD-04**: Dead code removed -- daemon-side GsdAgent/CompanyAgent/FulltimeAgent Python objects, handler factory injection, NoopCommunicationPort, StrategistConversation-from-daemon, all v3.1 shims
+- [ ] **HEAD-05**: Discord channel/category lifecycle managed by head -- create on hire, cleanup on dismiss, routing persists across daemon restarts
 
 ### Transport Channel
 
-- [ ] **CHAN-01**: Bidirectional message protocol defined (head→worker: start/task/message/stop/health-check; worker→head: signal/report/ask/send-file/health-report)
-- [ ] **CHAN-02**: Docker transport uses transport channel instead of Unix socket mount — vco-worker inside Docker talks through the channel, not a mounted socket
+- [ ] **CHAN-01**: Bidirectional message protocol defined (head->worker: start/task/message/stop/health-check; worker->head: signal/report/ask/send-file/health-report)
+- [ ] **CHAN-02**: Docker transport uses transport channel instead of Unix socket mount -- vco-worker inside Docker talks through the channel, not a mounted socket
 - [ ] **CHAN-03**: Native transport uses transport channel (local socket or in-process bridge)
-- [ ] **CHAN-04**: Network transport stub exists with TCP/WebSocket interface definition — not full production impl, but the contract is defined and a basic implementation works
+- [ ] **CHAN-04**: Network transport stub exists with TCP/WebSocket interface definition -- not full production impl, but the contract is defined and a basic implementation works
 
 ### Container Autonomy
 
-- [ ] **AUTO-01**: Agent state (conversations, checkpoints, memory, session files) lives inside the execution environment — not on the daemon side
-- [ ] **AUTO-02**: Duplicating a transport creates a fully independent agent — no shared daemon-side state between agents of the same type
-- [ ] **AUTO-03**: Container survives daemon restart — worker continues running, reconnects via transport channel when head comes back
+- [ ] **AUTO-01**: Agent state (conversations, checkpoints, memory, session files) lives inside the execution environment -- not on the daemon side
+- [ ] **AUTO-02**: Duplicating a transport creates a fully independent agent -- no shared daemon-side state between agents of the same type
+- [ ] **AUTO-03**: Container survives daemon restart -- worker continues running, reconnects via transport channel when head comes back
 
 ## Previously Completed
 
 <details>
-<summary>v3.1 Container Runtime Abstraction (44 requirements) — shipped 2026-03-31</summary>
+<summary>v3.1 Container Runtime Abstraction (44 requirements) -- shipped 2026-03-31</summary>
 
 ### Discord Visibility
 - [x] **VIS-01** through **VIS-06**: All inter-agent events surfaced through Discord
@@ -59,7 +59,7 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 </details>
 
 <details>
-<summary>v3.0 CLI-First Architecture Rewrite (36 requirements) — shipped 2026-03-29</summary>
+<summary>v3.0 CLI-First Architecture Rewrite (36 requirements) -- shipped 2026-03-29</summary>
 
 - [x] Runtime daemon with Unix socket API
 - [x] CommunicationPort protocol + DiscordCommunicationPort adapter
@@ -71,7 +71,7 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 </details>
 
 <details>
-<summary>v2.0/v2.1 Agent Container Architecture — shipped 2026-03-28</summary>
+<summary>v2.0/v2.1 Agent Container Architecture -- shipped 2026-03-28</summary>
 
 - [x] Lifecycle FSM, supervision tree, 4 agent types, health tree, resilience, PM autonomy
 - [x] Work initiation, PM review gates, auto distribution, event routing, stuck detection
@@ -82,30 +82,30 @@ Requirements for Distributed Agent Runtime. Each maps to roadmap phases.
 
 | Feature | Reason |
 |---------|--------|
-| Full production network deployment | v4 defines the transport stub — production multi-machine is v5 |
+| Full production network deployment | v4 defines the transport stub -- production multi-machine is v5 |
 | Non-Discord CommunicationPort adapters (Slack, web) | Separate concern from transport architecture |
 | Kubernetes/orchestrator integration | Docker compose or raw Docker only |
-| Agent-to-agent direct messaging | By design — all communication through Discord channels via head |
+| Agent-to-agent direct messaging | By design -- all communication through Discord channels via head |
 | State persistence across Docker container rebuilds | Handled by transport channel reconnect, not filesystem persistence |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WORK-01 | TBD | Planned |
-| WORK-02 | TBD | Planned |
-| WORK-03 | TBD | Planned |
-| WORK-04 | TBD | Planned |
-| WORK-05 | TBD | Planned |
-| HEAD-01 | TBD | Planned |
-| HEAD-02 | TBD | Planned |
-| HEAD-03 | TBD | Planned |
-| HEAD-04 | TBD | Planned |
-| HEAD-05 | TBD | Planned |
-| CHAN-01 | TBD | Planned |
-| CHAN-02 | TBD | Planned |
-| CHAN-03 | TBD | Planned |
-| CHAN-04 | TBD | Planned |
-| AUTO-01 | TBD | Planned |
-| AUTO-02 | TBD | Planned |
-| AUTO-03 | TBD | Planned |
+| CHAN-01 | Phase 29 | Pending |
+| WORK-01 | Phase 30 | Pending |
+| WORK-02 | Phase 30 | Pending |
+| WORK-03 | Phase 30 | Pending |
+| WORK-04 | Phase 30 | Pending |
+| WORK-05 | Phase 30 | Pending |
+| HEAD-01 | Phase 31 | Pending |
+| HEAD-02 | Phase 31 | Pending |
+| HEAD-03 | Phase 31 | Pending |
+| HEAD-05 | Phase 31 | Pending |
+| CHAN-02 | Phase 32 | Pending |
+| CHAN-03 | Phase 32 | Pending |
+| AUTO-01 | Phase 33 | Pending |
+| AUTO-02 | Phase 33 | Pending |
+| AUTO-03 | Phase 33 | Pending |
+| HEAD-04 | Phase 34 | Pending |
+| CHAN-04 | Phase 34 | Pending |
