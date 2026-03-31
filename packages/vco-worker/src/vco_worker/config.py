@@ -18,7 +18,7 @@ class WorkerConfig(BaseModel):
     gsd_command: str | None = None
     persona: str | None = None
     env_vars: dict[str, str] = Field(default_factory=dict)
-    data_dir: str = "/tmp/vco-worker/data"
+    data_dir: str | None = None  # Deprecated: worker derives from cwd. Kept for backward compat.
     project_id: str | None = None
     project_dir: str | None = None
     project_session_name: str | None = None

@@ -51,7 +51,7 @@ class WorkerContainer:
         )
         self._fsm_state: str | None = None
         self._lifecycle = self._create_lifecycle()
-        data_dir = Path(config.data_dir) / agent_id
+        data_dir = Path.cwd() / ".vco-state" / agent_id
         self.memory = MemoryStore(data_dir / "memory.db")
         self._writer = writer
         self._created_at = datetime.now(timezone.utc)

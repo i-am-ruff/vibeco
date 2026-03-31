@@ -24,6 +24,7 @@ class HeadMessageType(StrEnum):
     MESSAGE = "message"
     STOP = "stop"
     HEALTH_CHECK = "health-check"
+    RECONNECT = "reconnect"
 
 
 class WorkerMessageType(StrEnum):
@@ -80,6 +81,13 @@ class HealthCheckMessage(BaseModel):
     type: Literal[HeadMessageType.HEALTH_CHECK] = HeadMessageType.HEALTH_CHECK
 
 
+class ReconnectMessage(BaseModel):
+    """Head tells worker it has reconnected -- worker should send current state."""
+
+    type: Literal[HeadMessageType.RECONNECT] = HeadMessageType.RECONNECT
+    agent_id: str
+
+
 # --- Worker-to-head messages ---
 
 
@@ -132,7 +140,7 @@ class HealthReportMessage(BaseModel):
 # --- Discriminated unions ---
 
 HeadMessage = Annotated[
-    Union[StartMessage, GiveTaskMessage, InboundMessage, StopMessage, HealthCheckMessage],
+    Union[StartMessage, GiveTaskMessage, InboundMessage, StopMessage, HealthCheckMessage, ReconnectMessage],
     Field(discriminator="type"),
 ]
 
