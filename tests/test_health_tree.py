@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from vcompany.container.child_spec import ChildSpec, RestartPolicy
-from vcompany.container.context import ContainerContext
-from vcompany.container.health import CompanyHealthTree, HealthNode, HealthReport, HealthTree
+from vcompany.supervisor.child_spec import ChildSpec, RestartPolicy
+from vcompany.supervisor.child_spec import ContainerContext
+from vcompany.supervisor.health import CompanyHealthTree, HealthNode, HealthReport, HealthTree
 from vcompany.supervisor.company_root import CompanyRoot
 from vcompany.supervisor.strategies import RestartStrategy
 from vcompany.supervisor.supervisor import Supervisor

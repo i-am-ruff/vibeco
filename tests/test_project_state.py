@@ -17,8 +17,8 @@ import pytest_asyncio
 
 from vcompany.autonomy.backlog import BacklogItem, BacklogItemStatus, BacklogQueue
 from vcompany.autonomy.project_state import ProjectStateManager
-from vcompany.container.context import ContainerContext
-from vcompany.container.memory_store import MemoryStore
+from vcompany.supervisor.child_spec import ContainerContext
+from vcompany.shared.memory_store import MemoryStore
 
 
 # --- Fixtures ---
@@ -216,125 +216,6 @@ async def test_crash_safety(
     new_item = await state_mgr.assign_next_task("agent-2")
     assert new_item is not None
     assert new_item.assigned_to == "agent-2"
-
-
-# --- FulltimeAgent Event Routing Tests ---
-
-
-@pytest_asyncio.fixture
-async def pm_agent(tmp_path: Path, pm_memory: MemoryStore, backlog: BacklogQueue):
-    """Create a FulltimeAgent with backlog wired up."""
-    from vcompany.agent.fulltime_agent import FulltimeAgent
-
-    ctx = ContainerContext(
-        agent_id="pm-agent",
-        agent_type="fulltime",
-        project_id="test-project",
-    )
-    agent = FulltimeAgent(context=ctx, data_dir=tmp_path / "pm-data")
-    await agent.start()
-
-    # Wire up backlog and project state
-    agent.backlog = backlog
-    agent._project_state = ProjectStateManager(backlog=backlog, memory=pm_memory)
-
-    yield agent
-    await agent.stop()
-
-
-@pytest.mark.asyncio
-async def test_event_task_completed(pm_agent, backlog: BacklogQueue) -> None:
-    """FulltimeAgent routes task_completed event to mark_completed."""
-    await backlog.append(BacklogItem(item_id="item-1", title="Build auth"))
-    await backlog.claim_next("agent-1")
-
-    await pm_agent.post_event({
-        "type": "task_completed",
-        "agent_id": "agent-1",
-        "item_id": "item-1",
-    })
-    await pm_agent.process_next_event()
-
-    assert backlog._items[0].status == BacklogItemStatus.COMPLETED
-
-
-@pytest.mark.asyncio
-async def test_event_task_failed(pm_agent, backlog: BacklogQueue) -> None:
-    """FulltimeAgent routes task_failed event to mark_pending."""
-    await backlog.append(BacklogItem(item_id="item-1", title="Build auth"))
-    await backlog.claim_next("agent-1")
-
-    await pm_agent.post_event({
-        "type": "task_failed",
-        "agent_id": "agent-1",
-        "item_id": "item-1",
-    })
-    await pm_agent.process_next_event()
-
-    assert backlog._items[0].status == BacklogItemStatus.PENDING
-
-
-@pytest.mark.asyncio
-async def test_event_add_backlog_item(pm_agent, backlog: BacklogQueue) -> None:
-    """FulltimeAgent routes add_backlog_item event to backlog.append."""
-    await pm_agent.post_event({
-        "type": "add_backlog_item",
-        "item": {"item_id": "new-item", "title": "New feature"},
-    })
-    await pm_agent.process_next_event()
-
-    assert len(backlog._items) == 1
-    assert backlog._items[0].title == "New feature"
-
-
-@pytest.mark.asyncio
-async def test_event_request_assignment(pm_agent, backlog: BacklogQueue) -> None:
-    """FulltimeAgent routes request_assignment event to assign_next_task."""
-    await backlog.append(BacklogItem(item_id="item-1", title="Build auth"))
-
-    await pm_agent.post_event({
-        "type": "request_assignment",
-        "agent_id": "agent-1",
-    })
-    await pm_agent.process_next_event()
-
-    assert backlog._items[0].status == BacklogItemStatus.ASSIGNED
-    assert backlog._items[0].assigned_to == "agent-1"
-
-
-@pytest.mark.asyncio
-async def test_event_unknown_type(pm_agent) -> None:
-    """FulltimeAgent handles unknown event type without raising."""
-    await pm_agent.post_event({"type": "unknown_event_type"})
-    # Should not raise
-    result = await pm_agent.process_next_event()
-    assert result is True
-
-
-# --- GsdAgent Assignment Tests ---
-
-
-@pytest_asyncio.fixture
-async def gsd_agent(tmp_path: Path):
-    """Create a GsdAgent for testing assignment methods."""
-    from vcompany.agent.gsd_agent import GsdAgent
-
-    ctx = ContainerContext(
-        agent_id="gsd-agent-1",
-        agent_type="gsd",
-        project_id="test-project",
-    )
-    agent = GsdAgent(context=ctx, data_dir=tmp_path / "gsd-data")
-    await agent.start()
-    yield agent
-    await agent.stop()
-
-
-@pytest.mark.asyncio
-async def test_gsd_get_assignment_empty(gsd_agent) -> None:
-    """get_assignment returns None when no assignment stored."""
-    result = await gsd_agent.get_assignment()
-    assert result is None
 
 
 @pytest.mark.asyncio

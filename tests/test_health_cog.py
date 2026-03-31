@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from vcompany.container.health import (
+from vcompany.supervisor.health import (
     CompanyHealthTree,
     HealthNode,
     HealthReport,

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from vcompany.container.memory_store import MemoryStore
+from vcompany.shared.memory_store import MemoryStore
 from vcompany.supervisor.scheduler import ScheduleEntry, Scheduler
 
 

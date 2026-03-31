@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 
 from vcompany.autonomy.backlog import BacklogItem, BacklogItemStatus, BacklogQueue
-from vcompany.container.memory_store import MemoryStore
+from vcompany.shared.memory_store import MemoryStore
 
 
 @pytest_asyncio.fixture

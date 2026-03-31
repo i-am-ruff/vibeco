@@ -2,8 +2,8 @@
 
 import pytest
 
-from vcompany.container.child_spec import ChildSpec
-from vcompany.container.context import ContainerContext
+from vcompany.supervisor.child_spec import ChildSpec
+from vcompany.supervisor.child_spec import ContainerContext
 from vcompany.supervisor.company_root import CompanyRoot
 from vcompany.supervisor.project_supervisor import ProjectSupervisor
 from vcompany.supervisor.strategies import RestartStrategy

@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from vcompany.container.child_spec import ChildSpec
-from vcompany.container.context import ContainerContext
+from vcompany.supervisor.child_spec import ChildSpec
+from vcompany.supervisor.child_spec import ContainerContext
 from vcompany.resilience.degraded_mode import DegradedModeManager
 from vcompany.supervisor.company_root import CompanyRoot
 

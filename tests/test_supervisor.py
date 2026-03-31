@@ -2,8 +2,8 @@
 
 import pytest
 
-from vcompany.container.child_spec import ChildSpec, RestartPolicy
-from vcompany.container.context import ContainerContext
+from vcompany.supervisor.child_spec import ChildSpec, RestartPolicy
+from vcompany.supervisor.child_spec import ContainerContext
 from vcompany.supervisor.strategies import RestartStrategy
 from vcompany.supervisor.supervisor import Supervisor
 

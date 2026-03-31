@@ -1,7 +1,7 @@
 """Tests for ChildSpec model and ChildSpecRegistry (CONT-05)."""
 
-from vcompany.container.child_spec import ChildSpec, ChildSpecRegistry, RestartPolicy
-from vcompany.container.context import ContainerContext
+from vcompany.supervisor.child_spec import ChildSpec, ChildSpecRegistry, RestartPolicy
+from vcompany.supervisor.child_spec import ContainerContext
 
 
 def _make_context(agent_id: str = "agent-1", agent_type: str = "gsd") -> ContainerContext:

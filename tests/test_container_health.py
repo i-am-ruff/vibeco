@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from vcompany.container.health import HealthReport
+from vcompany.supervisor.health import HealthReport
 
 
 class TestHealthReport:

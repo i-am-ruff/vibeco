@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from vcompany.container.memory_store import MemoryStore
+from vcompany.shared.memory_store import MemoryStore
 
 
 @pytest.mark.asyncio
