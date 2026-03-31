@@ -88,7 +88,7 @@ See phase details in `.planning/milestones/v3.0-ROADMAP.md`.
 
 - [x] **Phase 29: Transport Channel Protocol** - Define the bidirectional message protocol between head and worker (completed 2026-03-31)
 - [x] **Phase 30: Worker Runtime** - Build vco-worker as a separate installable package with agent lifecycle management (completed 2026-03-31)
-- [ ] **Phase 31: Head Refactor** - Strip daemon to orchestrator with transport handles only, no agent Python objects
+- [x] **Phase 31: Head Refactor** - Strip daemon to orchestrator with transport handles only, no agent Python objects (completed 2026-03-31)
 - [ ] **Phase 32: Transport Channel Implementations** - Docker and native transports use the channel protocol
 - [ ] **Phase 33: Container Autonomy** - Agent state lives inside containers, independence and resilience proven
 - [ ] **Phase 34: Cleanup and Network Stub** - Remove dead daemon-side code and define network transport contract
@@ -134,12 +134,12 @@ Plans:
   2. `vco hire` creates a Discord channel, registers routing, and sends a config blob through the transport -- the worker bootstraps itself from that config
   3. Health tree is populated from health-report messages received through the transport channel, not from daemon-side container health methods
   4. Discord channel/category lifecycle is managed by head -- create on hire, cleanup on dismiss, routing state persists across daemon restarts
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 31-01-PLAN.md -- AgentHandle model and routing state persistence
 - [x] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
-- [ ] 31-03-PLAN.md -- Refactor MentionRouter and Daemon wiring
+- [x] 31-03-PLAN.md -- Refactor MentionRouter and Daemon wiring
 
 ### Phase 32: Transport Channel Implementations
 **Goal**: Both Docker and native transports use the channel protocol end-to-end -- no socket mounts, no shared filesystem between head and worker
@@ -153,7 +153,7 @@ Plans:
 
 Plans:
 - [x] 31-01-PLAN.md -- AgentHandle model and routing state persistence
-- [ ] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
+- [x] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
 - [ ] 31-03-PLAN.md -- Refactor MentionRouter and Daemon wiring
 
 ### Phase 33: Container Autonomy
@@ -167,7 +167,7 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 31-01-PLAN.md -- AgentHandle model and routing state persistence
+- [x] 31-01-PLAN.md -- AgentHandle model and routing state persistence
 - [ ] 31-02-PLAN.md -- Refactor CompanyRoot and RuntimeAPI for channel messages
 - [ ] 31-03-PLAN.md -- Refactor MentionRouter and Daemon wiring
 
@@ -195,7 +195,7 @@ Phases execute in numeric order: 29 -> 29.1 -> 29.2 -> 30 -> ... -> 34
 |-------|----------------|--------|-----------|
 | 29. Transport Channel Protocol | 1/1 | Complete    | 2026-03-31 |
 | 30. Worker Runtime | 3/3 | Complete    | 2026-03-31 |
-| 31. Head Refactor | 2/3 | In Progress|  |
+| 31. Head Refactor | 3/3 | Complete   | 2026-03-31 |
 | 32. Transport Channel Implementations | 0/TBD | Not started | - |
 | 33. Container Autonomy | 0/TBD | Not started | - |
 | 34. Cleanup and Network Stub | 0/TBD | Not started | - |

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
-status: Ready to execute
-stopped_at: Completed 31-02-PLAN.md
-last_updated: "2026-03-31T16:02:29.391Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 31-03-PLAN.md
+last_updated: "2026-03-31T16:06:39.574Z"
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -52,6 +52,7 @@ Plan: 3 of 3
 | Phase 30 P03 | 2min | 1 tasks | 4 files |
 | Phase 31 P01 | 2min | 2 tasks | 4 files |
 | Phase 31 P02 | 5min | 2 tasks | 2 files |
+| Phase 31 P03 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,7 @@ Recent decisions affecting current work:
 - [Phase 31]: RoutingState persists as JSON -- filesystem-first, no database, human-readable
 - [Phase 31]: channel_id passed as parameter to CompanyRoot.hire() for routing persistence correctness
 - [Phase 31]: add_company_agent() kept on container path for Strategist backward compat until worker port
+- [Phase 31]: isinstance dispatch for AgentHandle vs AgentContainer in MentionRouterCog _deliver_to_agent()
 
 ### Roadmap Evolution
 
@@ -100,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T16:02:29.389Z
-Stopped at: Completed 31-02-PLAN.md
+Last session: 2026-03-31T16:06:39.559Z
+Stopped at: Completed 31-03-PLAN.md
 Resume file: None
