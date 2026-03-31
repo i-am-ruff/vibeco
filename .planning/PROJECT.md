@@ -26,7 +26,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ## Current State
 
-**v4.0 in progress (2026-03-31).** Phases 29-31 complete — transport channel protocol, vco-worker package, and head refactor (daemon uses AgentHandle + channel messages, routing persistence). v3.1 complete — transport abstraction, Docker runtime, agent-types config, handler extraction done.
+**v4.0 in progress (2026-03-31).** Phases 29-32 complete — transport channel protocol, vco-worker package, head refactor, and transport implementations (NativeTransport + DockerChannelTransport). v3.1 complete — transport abstraction, Docker runtime, agent-types config, handler extraction done.
 
 ## Previously Shipped
 
@@ -110,7 +110,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 - ✓ Transport channel protocol — typed Pydantic v2 message models, NDJSON framing, round-trip tested — v4.0 Phase 29
 - ✓ Container bootstrapping via transport — hire() sends config blob through channel, worker self-configures — v4.0 Phase 31
 - [ ] Agent state inside container (conversations, checkpoints, memory)
-- [ ] Docker containers without socket mount
+- ✓ Docker containers without socket mount — DockerChannelTransport uses `docker run -i`, no socket mounts — v4.0 Phase 32
 - [ ] Dead code removal (daemon-side containers, handler factory injection, shims)
 - [ ] Network transport stub
 
@@ -178,4 +178,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31 after Phase 31 completion*
+*Last updated: 2026-03-31 after Phase 32 completion*
