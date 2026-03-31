@@ -32,6 +32,9 @@ from vcompany.supervisor.scheduler import Scheduler
 from vcompany.supervisor.strategies import RestartStrategy
 from vcompany.supervisor.supervisor import Supervisor
 from vcompany.transport.channel.framing import decode_worker
+from vcompany.transport.channel_transport import ChannelTransport
+from vcompany.transport.docker_channel import DockerChannelTransport
+from vcompany.transport.native import NativeTransport
 from vcompany.transport.channel.messages import (
     AskMessage,
     HealthReportMessage,
@@ -150,6 +153,32 @@ class CompanyRoot(Supervisor):
             projects=project_trees,
         )
 
+    def _get_transport(self, transport_name: str) -> ChannelTransport:
+        """Get or create a transport by name.
+
+        Transports are lazily instantiated and cached for reuse across
+        multiple hire() calls with the same transport type.
+
+        Args:
+            transport_name: Transport identifier ('native' or 'docker').
+
+        Returns:
+            A ChannelTransport implementation.
+
+        Raises:
+            ValueError: If transport_name is not recognized.
+        """
+        if not hasattr(self, '_transports'):
+            self._transports: dict[str, ChannelTransport] = {}
+        if transport_name not in self._transports:
+            if transport_name == "native":
+                self._transports[transport_name] = NativeTransport()
+            elif transport_name == "docker":
+                self._transports[transport_name] = DockerChannelTransport()
+            else:
+                raise ValueError(f"Unknown transport: {transport_name}. Use 'native' or 'docker'.")
+        return self._transports[transport_name]
+
     # Available agent templates. Maps template name to Jinja2 template file.
     AGENT_TEMPLATES: dict[str, dict] = {
         "generic": {"claude_md": "task_claude_md.md.j2", "extras": []},
@@ -162,6 +191,7 @@ class CompanyRoot(Supervisor):
         template: str = "generic",
         agent_type: str | None = None,
         channel_id: str | None = None,
+        transport_name: str = "native",
     ) -> AgentHandle:
         """Hire a company-level agent. Creates scratch dir, deploys artifacts,
         spawns vco-worker subprocess, sends StartMessage via channel protocol.
@@ -262,13 +292,14 @@ class CompanyRoot(Supervisor):
             channel_id=channel_id,
         )
 
-        # 5. Spawn worker subprocess
-        worker_cmd = [sys.executable, "-m", "vco_worker"]
-        process = await asyncio.create_subprocess_exec(
-            *worker_cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        # 5. Spawn worker via transport (native subprocess or Docker container)
+        import os
+        transport = self._get_transport(transport_name)
+        process = await transport.spawn(
+            agent_id,
+            config=config_dict,
+            env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
+            working_dir=str(working_dir),
         )
         handle._process = process
 
