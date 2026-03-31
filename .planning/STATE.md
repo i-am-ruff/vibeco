@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
-status: Ready to plan
-stopped_at: "v4.0 roadmap created"
-last_updated: "2026-03-31T09:00:00.000Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 29-01-PLAN.md
+last_updated: "2026-03-31T06:29:16.118Z"
 progress:
   total_phases: 6
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,20 +19,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-31)
 
 **Core value:** Agents run autonomously without hanging on terminal input, stay coordinated through contracts and status awareness, and produce integrated code that merges cleanly -- all operable from Discord.
-**Current focus:** Phase 29 - Transport Channel Protocol
+**Current focus:** Phase 29 — transport-channel-protocol
 
 ## Current Position
 
-Phase: 29 of 34 (Transport Channel Protocol)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-31 -- v4.0 roadmap created (6 phases, 17 requirements)
-
-Progress: [░░░░░░░░░░] 0%
+Phase: 29 (transport-channel-protocol) — EXECUTING
+Plan: 1 of 1
 
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0 (v4.0 milestone)
 - Average duration: -
 - Total execution time: 0 hours
@@ -44,10 +41,12 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 **Recent Trend:**
+
 - Prior milestone (v3.1): 5 phases, 18 plans completed
 - Trend: Stable
 
 *Updated after each plan completion*
+| Phase 29 P01 | 2min | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -62,6 +61,8 @@ Recent decisions affecting current work:
 - [v4.0]: vco splits into vco-head (orchestration) and vco-worker (container runtime)
 - [v4.0]: Transport channel is the ONLY communication between head and worker
 - [v4.0]: vco-worker must be installable standalone -- no discord.py, no bot code, no orchestration
+- [Phase 29]: StrEnum discriminators for channel protocol messages -- human-readable JSON type fields
+- [Phase 29]: Separate TypeAdapter per direction -- decode_head/decode_worker enforce type-level direction safety
 
 ### Roadmap Evolution
 
@@ -84,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31
-Stopped at: v4.0 roadmap created (6 phases, 17 requirements mapped)
+Last session: 2026-03-31T06:29:16.103Z
+Stopped at: Completed 29-01-PLAN.md
 Resume file: None
