@@ -191,12 +191,16 @@ class StrategistConversation:
         env["VCO_AGENT_ID"] = self._agent_id
         return env
 
-    async def send(self, content: str) -> str:
+    async def send(self, content: str | object) -> str:
         """Send a message and get the Strategist's response.
 
+        Accepts either a plain string or an InboundMessage (from MentionRouter).
         First call: creates session with persona as first message.
         Subsequent calls: resume with user message.
         """
+        # MentionRouter sends InboundMessage objects — extract .content
+        if hasattr(content, "content"):
+            content = content.content
         async with self._lock:
             if self._initialized:
                 self._message_count += 1
