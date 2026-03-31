@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+from pathlib import Path
 from typing import Any
 
 from vco_worker.channel.framing import decode_head, encode
@@ -21,6 +22,7 @@ from vco_worker.channel.messages import (
     HealthCheckMessage,
     HealthReportMessage,
     InboundMessage,
+    ReconnectMessage,
     SignalMessage,
     StartMessage,
     StopMessage,
@@ -83,6 +85,22 @@ async def run_worker(
             await write_fn.drain()
             logger.info("Worker bootstrapped for agent %s", msg.agent_id)
 
+        elif isinstance(msg, ReconnectMessage):
+            # Head has reconnected -- send current state via HealthReport
+            if container is not None:
+                report = container.health_report()
+                write_fn.write(encode(HealthReportMessage(
+                    status=report.state,
+                    agent_state=report.inner_state or "",
+                    uptime_seconds=report.uptime,
+                )))
+                await write_fn.drain()
+                logger.info("Reconnected: sent health report for %s", msg.agent_id)
+            else:
+                # Container not started yet -- send unknown status
+                write_fn.write(encode(HealthReportMessage(status="unknown")))
+                await write_fn.drain()
+
         elif isinstance(msg, GiveTaskMessage):
             if container is None:
                 logger.warning("Received GiveTask before StartMessage")
@@ -136,6 +154,126 @@ class StdioWriter:
         pass
 
 
+async def _run_socket(socket_path_str: str) -> None:
+    """Run worker using Unix domain socket as the transport channel.
+
+    Worker listens on socket_path. Head connects and communicates via NDJSON.
+    When head disconnects, worker keeps running and waits for reconnection.
+    """
+    from vco_worker.channel.socket_server import start_socket_server
+
+    socket_path = Path(socket_path_str)
+    connection_event = asyncio.Event()
+
+    class SocketWriter:
+        """Writer that sends to the currently connected head."""
+
+        def __init__(self) -> None:
+            self._writer: asyncio.StreamWriter | None = None
+
+        def write(self, data: bytes) -> None:
+            if self._writer is not None and not self._writer.is_closing():
+                self._writer.write(data)
+
+        async def drain(self) -> None:
+            if self._writer is not None and not self._writer.is_closing():
+                await self._writer.drain()
+
+    writer_proxy = SocketWriter()
+    container_holder: list[WorkerContainer | None] = [None]
+
+    async def handle_connection(
+        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        writer_proxy._writer = writer
+        logger.info("Head connected via socket")
+
+        try:
+            async for line in reader:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    msg = decode_head(stripped)
+                except Exception:
+                    logger.warning("Failed to decode: %s", stripped[:200])
+                    continue
+
+                if isinstance(msg, StartMessage):
+                    if container_holder[0] is not None:
+                        logger.warning("StartMessage but container already running")
+                        continue
+                    container_holder[0] = await bootstrap_container(
+                        msg.agent_id, msg.config, writer_proxy
+                    )
+                    writer_proxy.write(encode(SignalMessage(signal="ready")))
+                    await writer_proxy.drain()
+
+                elif isinstance(msg, ReconnectMessage):
+                    if container_holder[0] is not None:
+                        report = container_holder[0].health_report()
+                        writer_proxy.write(encode(HealthReportMessage(
+                            status=report.state,
+                            agent_state=report.inner_state or "",
+                            uptime_seconds=report.uptime,
+                        )))
+                        await writer_proxy.drain()
+                        logger.info("Reconnect: sent health for %s", msg.agent_id)
+                    else:
+                        writer_proxy.write(encode(HealthReportMessage(status="unknown")))
+                        await writer_proxy.drain()
+
+                elif isinstance(msg, GiveTaskMessage):
+                    if container_holder[0]:
+                        await container_holder[0].give_task(msg.description)
+
+                elif isinstance(msg, InboundMessage):
+                    if container_holder[0]:
+                        await container_holder[0].handle_inbound(msg)
+
+                elif isinstance(msg, HealthCheckMessage):
+                    if container_holder[0]:
+                        report = container_holder[0].health_report()
+                        writer_proxy.write(encode(HealthReportMessage(
+                            status=report.state,
+                            agent_state=report.inner_state or "",
+                            uptime_seconds=report.uptime,
+                        )))
+                        await writer_proxy.drain()
+
+                elif isinstance(msg, StopMessage):
+                    if container_holder[0]:
+                        await container_holder[0].stop()
+                        writer_proxy.write(encode(SignalMessage(signal="stopped")))
+                        await writer_proxy.drain()
+                    # Close the socket server and exit
+                    connection_event.set()
+                    return
+
+        except asyncio.CancelledError:
+            pass
+        except (ConnectionResetError, BrokenPipeError):
+            logger.info("Head disconnected -- waiting for reconnection")
+        finally:
+            if not writer.is_closing():
+                writer.close()
+            writer_proxy._writer = None
+
+    server = await start_socket_server(socket_path, handle_connection)
+    logger.info("Worker listening on %s", socket_path)
+
+    try:
+        await connection_event.wait()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        server.close()
+        await server.wait_closed()
+        socket_path.unlink(missing_ok=True)
+        if container_holder[0] is not None and container_holder[0].state != "stopped":
+            await container_holder[0].stop()
+
+
 async def _run_stdio() -> None:
     """Run worker using stdin/stdout as the transport channel.
 
@@ -155,12 +293,26 @@ async def _run_stdio() -> None:
 
 def main() -> None:
     """Entry point for vco-worker CLI command."""
+    import argparse
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
         stream=sys.stderr,  # Log to stderr, keep stdout for channel messages
     )
-    asyncio.run(_run_stdio())
+    parser = argparse.ArgumentParser(description="vco-worker agent runtime")
+    parser.add_argument(
+        "--socket",
+        type=str,
+        default=None,
+        help="Unix socket path for channel communication (default: use stdio)",
+    )
+    args = parser.parse_args()
+
+    if args.socket:
+        asyncio.run(_run_socket(args.socket))
+    else:
+        asyncio.run(_run_stdio())
 
 
 if __name__ == "__main__":
