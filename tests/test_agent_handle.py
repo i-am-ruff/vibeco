@@ -80,7 +80,7 @@ class TestAgentHandleSend:
     async def test_send_raises_when_no_process(self):
         h = _make_handle()
         msg = InboundMessage(sender="user", channel="general", content="hi")
-        with pytest.raises(RuntimeError, match="No process attached"):
+        with pytest.raises(RuntimeError, match="No connection to agent"):
             await h.send(msg)
 
 

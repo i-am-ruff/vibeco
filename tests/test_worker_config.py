@@ -17,7 +17,7 @@ class TestWorkerConfigMinimal:
     def test_defaults(self):
         config = WorkerConfig(handler_type="session")
         assert config.agent_type == "gsd"
-        assert config.data_dir == "/tmp/vco-worker/data"
+        assert config.data_dir is None  # cwd-relative, derived at runtime
         assert config.capabilities == []
         assert config.gsd_command is None
         assert config.persona is None
