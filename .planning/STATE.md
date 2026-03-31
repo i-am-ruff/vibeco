@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
 status: Ready to execute
-stopped_at: Completed 34-01-PLAN.md
-last_updated: "2026-03-31T17:23:08.520Z"
+stopped_at: Completed 34-02-PLAN.md
+last_updated: "2026-03-31T17:36:24.601Z"
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-31)
 ## Current Position
 
 Phase: 34 (cleanup-and-network-stub) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Plan: 2 of 3
 | Phase 33 P02 | 2min | 2 tasks | 5 files |
 | Phase 33 P03 | 2min | 1 tasks | 1 files |
 | Phase 34 P01 | 5min | 2 tasks | 17 files |
+| Phase 34 P02 | 10min | 2 tasks | 72 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Recent decisions affecting current work:
 - [Phase 33]: _save_routing takes transport_name param -- transport_type is a routing concern, not a handle property
 - [Phase 34]: Migrated types (HealthReport, ChildSpec, MemoryStore) to permanent homes outside container/
 - [Phase 34]: StrategistConversation uses direct subprocess instead of AgentTransport
+- [Phase 34]: ContainerContext moved into supervisor/child_spec.py -- co-located with ChildSpec
+- [Phase 34]: All isinstance dispatch branches removed -- all agents are AgentHandle
 
 ### Roadmap Evolution
 
@@ -117,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T17:23:08.505Z
-Stopped at: Completed 34-01-PLAN.md
+Last session: 2026-03-31T17:36:24.597Z
+Stopped at: Completed 34-02-PLAN.md
 Resume file: None
