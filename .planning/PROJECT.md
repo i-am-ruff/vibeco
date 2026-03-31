@@ -26,7 +26,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ## Current State
 
-**v4.0 in progress (2026-03-31).** Phase 29 complete — transport channel protocol with typed Pydantic v2 message models and NDJSON framing. v3.1 complete — transport abstraction, Docker runtime, agent-types config, handler extraction done.
+**v4.0 in progress (2026-03-31).** Phases 29-30 complete — transport channel protocol and vco-worker package (standalone container runtime with lifecycle FSMs, adapted handlers, main loop). v3.1 complete — transport abstraction, Docker runtime, agent-types config, handler extraction done.
 
 ## Previously Shipped
 
@@ -105,7 +105,7 @@ Agents run autonomously without hanging on terminal input, stay coordinated thro
 
 ### Active
 
-- [ ] vco-worker package — lightweight container-side runtime
+- ✓ vco-worker package — standalone installable package with WorkerContainer, lifecycle FSMs, adapted handlers, main loop — v4.0 Phase 30
 - [ ] vco-head — daemon as pure orchestrator with transport handles only
 - ✓ Transport channel protocol — typed Pydantic v2 message models, NDJSON framing, round-trip tested — v4.0 Phase 29
 - [ ] Container bootstrapping via transport
@@ -178,4 +178,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31 after Phase 29 completion*
+*Last updated: 2026-03-31 after Phase 30 completion*
