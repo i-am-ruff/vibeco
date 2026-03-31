@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distributed Agent Runtime
 status: Ready to execute
-stopped_at: Completed 30-01-PLAN.md
-last_updated: "2026-03-31T15:16:57.550Z"
+stopped_at: Completed 30-02-PLAN.md
+last_updated: "2026-03-31T15:23:50.068Z"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-31)
 ## Current Position
 
 Phase: 30 (worker-runtime) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Plan: 2 of 3
 *Updated after each plan completion*
 | Phase 29 P01 | 2min | 1 tasks | 4 files |
 | Phase 30 P01 | 2min | 2 tasks | 11 files |
+| Phase 30 P02 | 4min | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Recent decisions affecting current work:
 - [Phase 29]: Separate TypeAdapter per direction -- decode_head/decode_worker enforce type-level direction safety
 - [Phase 30]: Duplicate channel protocol files verbatim into worker package for zero vcompany dependency
 - [Phase 30]: Handler registry uses lazy string-based imports so it can be defined before handler classes exist
+- [Phase 30]: HealthReport stripped of head-side fields (transport_type, docker_container_id, docker_image) -- worker reports status, head adds metadata
+- [Phase 30]: WorkerConversationHandler uses relay mode when no conversation subprocess wired -- avoids anthropic SDK dependency
 
 ### Roadmap Evolution
 
@@ -88,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T15:16:57.547Z
-Stopped at: Completed 30-01-PLAN.md
+Last session: 2026-03-31T15:23:50.065Z
+Stopped at: Completed 30-02-PLAN.md
 Resume file: None
