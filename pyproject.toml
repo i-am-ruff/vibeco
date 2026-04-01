@@ -17,6 +17,7 @@ dependencies = [
     "python-statemachine>=3.0.0",
     "aiosqlite>=0.22.1",
     "docker>=7.1,<8",
+    "vco-worker",
 ]
 
 [project.scripts]
@@ -43,6 +44,9 @@ asyncio_mode = "auto"
 markers = [
     "integration: interaction regression tests (run only during vco integrate, not on every pytest run)",
 ]
+
+[tool.uv.sources]
+vco-worker = { workspace = true }
 
 [tool.uv.workspace]
 members = ["packages/*"]

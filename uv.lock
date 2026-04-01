@@ -6,6 +6,12 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[manifest]
+members = [
+    "vco-worker",
+    "vcompany",
+]
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
@@ -1205,6 +1211,27 @@ wheels = [
 ]
 
 [[package]]
+name = "vco-worker"
+version = "0.1.0"
+source = { editable = "packages/vco-worker" }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "click" },
+    { name = "pydantic" },
+    { name = "python-statemachine" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "click", specifier = ">=8.1.6" },
+    { name = "pydantic", specifier = ">=2.11,<3" },
+    { name = "python-statemachine", specifier = ">=3.0.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
 name = "vcompany"
 version = "0.1.0"
 source = { editable = "." }
@@ -1221,6 +1248,7 @@ dependencies = [
     { name = "python-statemachine" },
     { name = "pyyaml" },
     { name = "rich" },
+    { name = "vco-worker" },
 ]
 
 [package.dev-dependencies]
@@ -1244,6 +1272,7 @@ requires-dist = [
     { name = "python-statemachine", specifier = ">=3.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=14.0" },
+    { name = "vco-worker", editable = "packages/vco-worker" },
 ]
 
 [package.metadata.requires-dev]
