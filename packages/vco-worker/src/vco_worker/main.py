@@ -175,8 +175,9 @@ async def _run_socket(socket_path_str: str) -> None:
     from vco_worker.channel.socket_server import start_socket_server
 
     socket_path = Path(socket_path_str)
-    # Set env so child processes (Claude Code, hooks) can find the socket
-    os.environ["VCO_WORKER_SOCKET"] = socket_path_str
+    # NOTE: Do NOT set VCO_WORKER_SOCKET here. Child processes connecting
+    # to this socket displace the daemon's connection (writer_proxy gets
+    # overwritten). Child→worker comms needs a separate channel (future work).
     connection_event = asyncio.Event()
 
     class SocketWriter:

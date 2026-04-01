@@ -133,7 +133,6 @@ class ConversationSession:
         env = dict(os.environ)
         env["AGENT_ID"] = self._agent_id
         env["VCO_AGENT_ID"] = self._agent_id
-        env["VCO_WORKER_SOCKET"] = f"/tmp/vco-worker-{self._agent_id}.sock"
         return env
 
     def _resume_command(self) -> list[str]:
