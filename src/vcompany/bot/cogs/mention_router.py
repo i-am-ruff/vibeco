@@ -121,16 +121,22 @@ class MentionRouterCog(commands.Cog):
         if message.author.bot and not (self.bot.user and message.author.id == self.bot.user.id):
             return  # Ignore other bots, but process our own bot's messages (agent reports)
         if not self._agent_handles:
+            logger.debug("No agent handles registered, skipping message")
             return
 
         is_own_bot = self.bot.user and message.author.id == self.bot.user.id
         channel_id = str(message.channel.id)
+        logger.debug(
+            "on_message: channel=%s is_bot=%s handles=%s channel_handles=%s",
+            channel_id, is_own_bot, list(self._agent_handles.keys()), dict(self._channel_handles),
+        )
 
         # Channel-based routing: message is in an agent's own channel
         # Skip for bot messages — prevents agents receiving their own output
         if not is_own_bot:
             handle = self._channel_handles.get(channel_id)
             if handle is not None:
+                logger.info("Channel-routing message to @%s from %s", handle, message.author.display_name)
                 await self._deliver_to_agent(handle, message)
                 return
 

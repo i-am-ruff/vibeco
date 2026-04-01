@@ -660,6 +660,7 @@ class RuntimeAPI:
 
         # Use the strategist's existing Discord channel
         channel_id = self.get_channel_id("strategist")
+        logger.info("create_strategist: channel_id=%s, all_channels=%s", channel_id, list(self._channel_ids.keys()))
 
         # Hire through the normal path — Strategist is just another agent
         handle = await self._root.hire(

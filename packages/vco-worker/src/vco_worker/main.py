@@ -309,10 +309,15 @@ def main() -> None:
     """Entry point for vco-worker CLI command."""
     import argparse
 
+    # Log to file so logs are visible even when stderr is piped to daemon
+    log_file = Path.home() / "vco-worker.log"
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-        stream=sys.stderr,  # Log to stderr, keep stdout for channel messages
+        handlers=[
+            logging.StreamHandler(sys.stderr),
+            logging.FileHandler(str(log_file), mode="a"),
+        ],
     )
     parser = argparse.ArgumentParser(description="vco-worker agent runtime")
     parser.add_argument(
