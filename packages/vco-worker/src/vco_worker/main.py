@@ -175,9 +175,11 @@ async def _run_socket(socket_path_str: str) -> None:
     from vco_worker.channel.socket_server import start_socket_server
 
     socket_path = Path(socket_path_str)
-    # NOTE: Do NOT set VCO_WORKER_SOCKET here. Child processes connecting
-    # to this socket displace the daemon's connection (writer_proxy gets
-    # overwritten). Child→worker comms needs a separate channel (future work).
+    # Outbox socket: child processes (Claude Code hooks) send WorkerMessages here.
+    # Worker forwards them to the head via the head socket. Separate from head
+    # socket to prevent child connections from displacing the daemon's connection.
+    outbox_path = Path(socket_path_str.replace(".sock", "-outbox.sock"))
+    os.environ["VCO_WORKER_SOCKET"] = str(outbox_path)
     connection_event = asyncio.Event()
 
     class SocketWriter:
@@ -274,8 +276,35 @@ async def _run_socket(socket_path_str: str) -> None:
                 writer.close()
             writer_proxy._writer = None
 
+    async def handle_outbox_connection(
+        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        """Handle a child process sending messages via the outbox socket.
+
+        Reads one or more NDJSON lines and forwards them to the head via
+        writer_proxy. Does NOT replace writer_proxy._writer.
+        """
+        try:
+            async for line in reader:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                # Forward raw bytes to head (it's already a WorkerMessage)
+                writer_proxy.write(stripped + b"\n")
+                await writer_proxy.drain()
+                logger.debug("Forwarded outbox message to head: %s", stripped[:100])
+        except (ConnectionResetError, BrokenPipeError, asyncio.CancelledError):
+            pass
+        finally:
+            if not writer.is_closing():
+                writer.close()
+
     server = await start_socket_server(socket_path, handle_connection)
-    logger.info("Worker listening on %s", socket_path)
+    logger.info("Worker listening on %s (head socket)", socket_path)
+
+    # Start outbox socket for child→worker→head forwarding
+    outbox_server = await asyncio.start_unix_server(handle_outbox_connection, path=str(outbox_path))
+    logger.info("Outbox listening on %s (child socket)", outbox_path)
 
     try:
         await connection_event.wait()
@@ -284,7 +313,10 @@ async def _run_socket(socket_path_str: str) -> None:
     finally:
         server.close()
         await server.wait_closed()
+        outbox_server.close()
+        await outbox_server.wait_closed()
         socket_path.unlink(missing_ok=True)
+        outbox_path.unlink(missing_ok=True)
         if container_holder[0] is not None and container_holder[0].state != "stopped":
             await container_holder[0].stop()
 

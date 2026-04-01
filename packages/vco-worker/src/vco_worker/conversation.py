@@ -133,6 +133,8 @@ class ConversationSession:
         env = dict(os.environ)
         env["AGENT_ID"] = self._agent_id
         env["VCO_AGENT_ID"] = self._agent_id
+        # VCO_WORKER_SOCKET is set by _run_socket to the outbox path
+        # (inherited from os.environ, no need to set explicitly here)
         return env
 
     def _resume_command(self) -> list[str]:
