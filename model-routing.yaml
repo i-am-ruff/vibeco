@@ -1,0 +1,197 @@
+version: 1
+
+providers:
+  anthropic:
+    auth: api_key
+    notes: API-first premium lane for strategic work and high-risk coding.
+  deepseek:
+    auth: api_key
+    notes: Default worker and reviewer lane due to cost efficiency.
+  google:
+    auth: api_key
+    notes: Cheap ingestion and summarization lane.
+
+profiles:
+  researcher:
+    provider: google
+    model: gemini-3.1-flash-lite
+    purpose: Summarize docs, logs, backlog items, and large tool outputs.
+    max_attempts: 1
+    allowed_actions:
+      - summarize
+      - classify
+      - condense
+      - extract
+
+  worker_default:
+    provider: deepseek
+    model: deepseek-chat
+    purpose: Default PM and worker lane for routine implementation and routing.
+    max_attempts: 2
+    allowed_actions:
+      - decompose
+      - implement
+      - refactor
+      - test
+
+  reviewer:
+    provider: deepseek
+    model: deepseek-reasoner
+    purpose: Diagnose failures, review diffs, and find hidden regressions.
+    max_attempts: 1
+    allowed_actions:
+      - review
+      - diagnose
+      - verify
+      - root_cause
+
+  premium_coder:
+    provider: anthropic
+    model: claude-sonnet-4.6
+    purpose: Handle high-risk coding, complex refactors, and premium review.
+    max_attempts: 1
+    allowed_actions:
+      - implement
+      - redesign
+      - debug
+      - review
+
+  strategist:
+    provider: anthropic
+    model: claude-opus-4.6
+    purpose: Handle project kickoff, milestone planning, and architecture decisions.
+    max_attempts: 1
+    allowed_actions:
+      - kickoff
+      - architect
+      - plan
+      - resolve_policy
+
+escalation_chains:
+  research:
+    steps:
+      - researcher
+      - strategist
+    terminal: human
+
+  coding:
+    steps:
+      - worker_default
+      - reviewer
+      - premium_coder
+      - strategist
+    terminal: human
+
+  review:
+    steps:
+      - reviewer
+      - premium_coder
+      - strategist
+    terminal: human
+
+situations:
+  design_doc_ingestion:
+    description: Large design docs, docs, logs, and backlog material.
+    profile: researcher
+    chain: research
+    when:
+      - input is mostly reading or summarization
+      - objective is context compression
+
+  project_kickoff:
+    description: New project initiation from owner prompt and design doc.
+    profile: strategist
+    chain: research
+    when:
+      - owner starts a new build
+      - roadmap or milestone plan does not exist
+
+  milestone_planning:
+    description: Milestone design, interface contracts, or architecture resets.
+    profile: strategist
+    chain: research
+    when:
+      - output changes cross-agent plans
+      - work requires contract or milestone decisions
+
+  routine_decomposition:
+    description: Break work into tickets, route tasks, and manage backlog state.
+    profile: worker_default
+    chain: coding
+    when:
+      - work is planning but not architectural
+      - task can be handled with existing project policy
+
+  routine_coding:
+    description: Normal coding within owned files and bounded blast radius.
+    profile: worker_default
+    chain: coding
+    when:
+      - change is local
+      - no high-risk path is touched
+
+  bug_triage:
+    description: Review logs, failing tests, or suspected hidden regressions.
+    profile: reviewer
+    chain: review
+    when:
+      - task is mainly diagnosis
+      - implementation is blocked on root-cause analysis
+
+  high_risk_coding:
+    description: Cross-cutting refactors, security-sensitive code, or shared runtime changes.
+    profile: premium_coder
+    chain: coding
+    when:
+      - task touches high-risk paths
+      - default blast-radius thresholds are exceeded
+
+  final_review:
+    description: Verify medium/high-risk changes before merge or release.
+    profile: reviewer
+    chain: review
+    when:
+      - change is medium or high risk
+      - regression risk is non-trivial
+
+thresholds:
+  default_max_files: 5
+  default_max_changed_lines: 600
+  reviewer_max_files: 8
+  reviewer_max_changed_lines: 1000
+  worker_failed_attempts_before_reviewer: 1
+  worker_failed_attempts_before_premium: 2
+  premium_failed_attempts_before_strategist: 1
+  strategist_failed_attempts_before_human: 1
+
+high_risk_paths:
+  - src/vcompany/autonomy/**
+  - src/vcompany/daemon/**
+  - src/vcompany/supervisor/**
+  - src/vcompany/transport/**
+  - src/vcompany/coordination/**
+  - src/vcompany/models/messages.py
+  - src/vcompany/models/config.py
+  - packages/vco-worker/src/vco_worker/conversation.py
+  - packages/vco-worker/src/vco_worker/handler/**
+  - agent-types.yaml
+  - CLAUDE.md
+  - VCO-ARCHITECTURE.md
+
+strategic_triggers:
+  - new project kickoff
+  - milestone or roadmap design
+  - interface contract rewrite
+  - provider or budget policy decision
+  - ownership boundary change
+  - unresolved requirement conflict
+
+model_aliases:
+  worker_default:
+    current: deepseek-chat
+    candidate: DeepSeek V4
+    cutover_requirements:
+      - official API availability is confirmed
+      - required tool calling works
+      - vCompany acceptance tests pass
+      - two shadow runs complete without rollback
