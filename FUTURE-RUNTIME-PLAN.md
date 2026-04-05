@@ -69,84 +69,7 @@ It is a future-development reference, not a final implementation spec.
 - Review:
   - `deepseek-reasoner -> claude-sonnet-4.6 -> claude-opus-4.6 -> human`
 
-## Why Not Use ClawCode As The Base
-
-Even for personal use, where redistribution risk matters less, ClawCode is still
-the wrong foundation for vCompany.
-
-### 1. Wrong abstraction level
-
-vCompany is not trying to become "a Claude Code clone". It needs:
-
-- multi-provider routing
-- role-based model selection
-- cost governance
-- provider-specific fallbacks
-- a durable project-memory layer
-- runtime-independent workflow control
-
-ClawCode is oriented around reproducing a Claude-Code-like runtime, which is too
-low-level and too provider-specific for the center of this architecture.
-
-### 2. It does not remove the hard work
-
-Even if ClawCode gives a Claude-like shell/runtime experience, vCompany would
-still need to build:
-
-- provider router
-- budget governor
-- session store
-- transcript compaction
-- project memory model
-- GSD compatibility layer
-- cross-runtime tool bus
-- escalation engine
-
-That means ClawCode would not actually eliminate the main architectural work.
-
-### 3. Maintenance economics are bad
-
-If vCompany forks or internalizes a Claude-Code-like rewrite, it becomes
-responsible for keeping that runtime current while also building the actual
-multi-agent system on top of it.
-
-That creates two products to maintain:
-
-- a local agent runtime
-- vCompany itself
-
-That is not a good trade when official Claude tooling already exists.
-
-### 4. Official Claude tooling is now available
-
-Anthropic now exposes Claude Code programmatically through the official Agent
-SDK. That gives access to the real Claude-side agent loop, sessions, hooks,
-plugins, MCP, and file-checkpointing without needing to build or depend on a
-reimplementation.
-
-So for Claude lanes, the better path is:
-
-- use the official Anthropic Agent SDK
-- let vCompany wrap it behind a runtime adapter
-
-### 5. ClawCode is still the wrong center even if parts are useful
-
-It is still reasonable to inspect ClawCode for ideas or isolated techniques, but
-not to make it the architectural core. At most:
-
-- borrow patterns
-- compare UX
-- inspect how it models tool calls or context
-
-Do not make it the backbone of the multi-provider harness.
-
-### 6. Provenance noise is unnecessary even if personal
-
-For a private project, license exposure is less important. But provenance and
-clean-room questions still make ClawCode a noisy dependency. Since there is a
-better official Anthropic integration path, vCompany does not need that risk.
-
-## What To Use Instead
+## What To Use
 
 ### Claude lanes
 
@@ -550,8 +473,6 @@ multi-provider architecture.
 
 ### Decisions explicitly not favored
 
-- Do not make ClawCode the base of the system.
-- Do not rebuild all of Claude Code internally unless there is no official path.
 - Do not make runtime-local session memory the source of truth.
 - Do not couple GSD permanently to a single provider runtime.
 
